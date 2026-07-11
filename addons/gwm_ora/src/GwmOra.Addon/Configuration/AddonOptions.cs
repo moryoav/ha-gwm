@@ -8,6 +8,9 @@ public sealed class AddonOptions
     [JsonPropertyName("country")]
     public string Country { get; init; } = "DE";
 
+    [JsonPropertyName("region")]
+    public string Region { get; init; } = "eu";
+
     [JsonPropertyName("username")]
     public string Username { get; init; } = String.Empty;
 
@@ -72,6 +75,12 @@ public static class AddonOptionsLoader
             throw new InvalidOperationException("Option 'country' must be a two-letter country code such as DE or GB.");
         }
 
+        var region = (options.Region ?? "eu").Trim().ToLowerInvariant();
+        if (region is not ("eu" or "aus"))
+        {
+            throw new InvalidOperationException("Option 'region' must be 'eu' or 'aus'.");
+        }
+
         if (String.IsNullOrWhiteSpace(options.Username))
         {
             throw new InvalidOperationException("Option 'username' is required.");
@@ -96,6 +105,7 @@ public static class AddonOptionsLoader
         return new AddonOptions
         {
             Country = country,
+            Region = region,
             Username = options.Username.Trim(),
             Password = options.Password,
             VerificationCode = String.IsNullOrWhiteSpace(options.VerificationCode) ? null : options.VerificationCode.Trim(),

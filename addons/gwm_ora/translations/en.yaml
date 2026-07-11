@@ -2,6 +2,9 @@ configuration:
   country:
     name: Country
     description: Two-letter country code for the GWM account region, for example DE or GB.
+  region:
+    name: Region / cloud gateway
+    description: GWM cloud region to connect to. Use eu for Europe/Israel accounts or aus for Australia/New Zealand accounts.
   username:
     name: Username
     description: E-mail address used for the GWM ORA account.

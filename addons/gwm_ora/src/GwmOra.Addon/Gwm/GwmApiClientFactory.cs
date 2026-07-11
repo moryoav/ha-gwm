@@ -41,7 +41,7 @@ public sealed class GwmApiClientFactory
             }
         }
 
-        var client = new GwmApiClient(new HttpClient(), new HttpClient(httpHandler), _loggerFactory)
+        var client = new GwmApiClient(new HttpClient(), new HttpClient(httpHandler), _loggerFactory, options.Region)
         {
             Country = options.Country
         };

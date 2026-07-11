@@ -18,8 +18,9 @@ public partial class GwmApiClient
     {
     }
 
-    public GwmApiClient(HttpClient h5Client, HttpClient appClient, ILoggerFactory loggerFactory)
+    public GwmApiClient(HttpClient h5Client, HttpClient appClient, ILoggerFactory loggerFactory, string region = "eu")
     {
+        var gateway = string.IsNullOrWhiteSpace(region) ? "eu" : region.Trim().ToLowerInvariant();
         _logger = loggerFactory.CreateLogger<GwmApiClient>();
         _h5Client = h5Client;
         _h5Client.DefaultRequestHeaders.Add("rs", "2");
@@ -28,13 +29,13 @@ public partial class GwmApiClient
         _h5Client.DefaultRequestHeaders.Add("language", "en");
         _h5Client.DefaultRequestHeaders.Add("systemType", "1");
         _h5Client.DefaultRequestHeaders.Add("cver", "");
-        _h5Client.BaseAddress = new Uri("https://eu-h5-gateway.gwmcloud.com/app-api/api/v1.0/");
+        _h5Client.BaseAddress = new Uri($"https://{gateway}-h5-gateway.gwmcloud.com/app-api/api/v1.0/");
         
         _appClient = appClient;
         _appClient.DefaultRequestHeaders.Add("rs", "2");
         _appClient.DefaultRequestHeaders.Add("terminal", "GW_APP_ORA");
         _appClient.DefaultRequestHeaders.Add("brand", "3");
-        _appClient.BaseAddress = new Uri("https://eu-app-gateway.gwmcloud.com/app-api/api/v1.0/");
+        _appClient.BaseAddress = new Uri($"https://{gateway}-app-gateway.gwmcloud.com/app-api/api/v1.0/");
     }
 
     public string Language
