@@ -60,14 +60,19 @@ public sealed class GwmAuthenticationService
 
     private async Task RefreshTokenAsync(GwmApiClient client, CancellationToken cancellationToken)
     {
+        var isAus = String.Equals(_options.Region, "aus", StringComparison.OrdinalIgnoreCase);
         var request = new RefreshTokenRequest
         {
-            DeviceId = _stateStore.State.DeviceId,
+            // AU binds the token to the 16-hex device id used at login (client.DeviceId).
+            DeviceId = isAus ? client.DeviceId : _stateStore.State.DeviceId,
             AccessToken = _stateStore.State.AccessToken,
             RefreshToken = _stateStore.State.RefreshToken
         };
 
-        client.SetAccessToken(String.Empty);
+        if (!isAus)
+        {
+            client.SetAccessToken(String.Empty);
+        }
         var response = await client.RefreshTokenAsync(request, cancellationToken);
         await _stateStore.UpdateAsync(state =>
         {
@@ -79,6 +84,12 @@ public sealed class GwmAuthenticationService
 
     private async Task LoginAsync(GwmApiClient client, CancellationToken cancellationToken)
     {
+        if (String.Equals(_options.Region, "aus", StringComparison.OrdinalIgnoreCase))
+        {
+            await LoginAusAsync(client, cancellationToken);
+            return;
+        }
+
         var request = new LoginAccountRequest
         {
             Country = _options.Country,
@@ -167,6 +178,84 @@ public sealed class GwmAuthenticationService
         }
     }
 
+    // AU/NZ login: loginAccount with a plaintext password; a new device needs an e-mail code
+    // carried in `verifyCode`. Day-to-day the token is kept alive by RefreshTokenAsync (no code).
+    private async Task LoginAusAsync(GwmApiClient client, CancellationToken cancellationToken)
+    {
+        var request = new AuLoginAccountRequest
+        {
+            Account = _options.Username,
+            Password = _options.Password,
+            DeviceId = client.DeviceId,
+            Country = _options.Country
+        };
+
+        if (!String.IsNullOrWhiteSpace(_options.VerificationCode))
+        {
+            var code = _options.VerificationCode!.Trim();
+            try
+            {
+                await client.CheckSmsCodeAsync(new CheckSmsCode { Email = _options.Username, SmsCode = code }, cancellationToken);
+            }
+            catch (GwmApiException ex)
+            {
+                _logger.LogWarning("GWM (AU) checkSMSCode returned {Code} {Message}; continuing to login", ex.Code, ex.Message);
+            }
+
+            request.VerifyCode = code;
+            try
+            {
+                var response = await client.LoginAccountAusAsync(request, cancellationToken);
+                await StoreLoginResponseAsync(client, response, cancellationToken);
+                await _supervisorOptions.ClearVerificationCodeAsync(cancellationToken);
+                _logger.LogInformation("GWM (AU) verification code accepted and tokens stored");
+            }
+            catch (GwmApiException ex)
+            {
+                await _stateStore.UpdateAsync(state => state.VerificationCodeRequestedAt = null, cancellationToken);
+                throw new GwmVerificationRequiredException(
+                    "GWM rejected the configured verification_code. Clear it, restart the add-on to request a fresh code, then enter the new code and restart again.",
+                    ex);
+            }
+            return;
+        }
+
+        try
+        {
+            var response = await client.LoginAccountAusAsync(request, cancellationToken);
+            await StoreLoginResponseAsync(client, response, cancellationToken);
+        }
+        catch (GwmApiException ex) when (IsVerificationRequired(ex))
+        {
+            await RequestVerificationCodeAusAsync(client, cancellationToken);
+            throw new GwmVerificationRequiredException(
+                "GWM requires e-mail verification for this new device. A code was sent to the account e-mail; enter it in the add-on option 'verification_code', save, and restart the add-on.",
+                ex);
+        }
+    }
+
+    private async Task RequestVerificationCodeAusAsync(GwmApiClient client, CancellationToken cancellationToken)
+    {
+        var now = DateTimeOffset.UtcNow;
+        var lastRequest = _stateStore.State.VerificationCodeRequestedAt;
+        if (lastRequest.HasValue && now - lastRequest.Value < VerificationCodeRequestInterval)
+        {
+            return;
+        }
+
+        try
+        {
+            await client.GetSmsCodeAusAsync(new AuGetSmsCode { Email = _options.Username }, cancellationToken);
+            await _stateStore.UpdateAsync(state => state.VerificationCodeRequestedAt = now, cancellationToken);
+            _logger.LogWarning("GWM (AU) new-device verification: a code was sent to the account e-mail");
+        }
+        catch (GwmApiException ex)
+        {
+            throw new GwmVerificationRequiredException(
+                $"GWM (AU) requires verification, but requesting a code failed: {ex.Message}", ex);
+        }
+    }
+
     private async Task StoreLoginResponseAsync(
         GwmApiClient client,
         LoginAccountResponse response,
@@ -186,6 +275,7 @@ public sealed class GwmAuthenticationService
     private static bool IsVerificationRequired(GwmApiException ex)
     {
         return ex.Code == "110641" ||
+               ex.Code == "309702" ||           // AU new-device login
                ex.Message.Contains("verification code", StringComparison.OrdinalIgnoreCase);
     }
 }

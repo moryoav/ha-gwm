@@ -1,6 +1,8 @@
 using GwmOra.Addon.Configuration;
 using GwmOra.Addon.Models;
 using GwmOra.Addon.RemoteCommands;
+using libgwmapi;
+using libgwmapi.DTO.Vehicle;
 
 namespace GwmOra.Addon.Gwm;
 
@@ -80,14 +82,25 @@ public sealed class GwmVehicleService
             var snapshots = new List<VehicleSnapshot>(vehicles.Length);
             foreach (var vehicle in vehicles)
             {
-                var statusTask = client.GetLastVehicleStatusAsync(vehicle.Vin, cancellationToken);
-                var basicsTask = client.GetVehicleBasicsInfoAsync(vehicle.Vin, cancellationToken);
-                await Task.WhenAll(statusTask, basicsTask);
+                var status = await client.GetLastVehicleStatusAsync(vehicle.Vin, cancellationToken);
+
+                // vehicleBasicsInfo only supplies the AC target-temperature default and is not
+                // validated on every gateway (AU returns 607099); a business error here must not
+                // abort the whole poll, so fall back to defaults and keep the status telemetry.
+                VehicleBasicsInfo basics;
+                try
+                {
+                    basics = await client.GetVehicleBasicsInfoAsync(vehicle.Vin, cancellationToken);
+                }
+                catch (GwmApiException)
+                {
+                    basics = new VehicleBasicsInfo();
+                }
 
                 snapshots.Add(VehicleSnapshotMapper.Map(
                     vehicle,
-                    await statusTask,
-                    await basicsTask,
+                    status,
+                    basics,
                     RemoteCommandsAvailable,
                     _remoteCommandStore.GetLastStatus(vehicle.Vin)));
             }

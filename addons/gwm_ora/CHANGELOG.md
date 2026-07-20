@@ -6,6 +6,17 @@ This project follows semantic versioning. HACS uses the latest GitHub release ta
 
 ## [Unreleased]
 
+## [0.2.15] - 2026-07-20
+
+### Added
+
+- Australia/New Zealand support for the `aus` region: account login against the `aus-h5-gateway` using GWM's `bt-auth` request signing, new-device e-mail verification (enter the emailed code in the `verification_code` option, save, and restart), and token refresh. Vehicle discovery and status polling now work for ANZ accounts. Set `region: aus` and the account's registration country (for example `NZ`).
+
+### Fixed
+
+- Accept numeric fields that the ANZ gateway returns as JSON strings (for example `securityTime`), so responses deserialize correctly.
+- A failed optional `vehicleBasicsInfo` request no longer aborts a poll; vehicle status is still published from the core endpoints.
+
 ## [0.2.14] - 2026-06-24
 
 ### Fixed
