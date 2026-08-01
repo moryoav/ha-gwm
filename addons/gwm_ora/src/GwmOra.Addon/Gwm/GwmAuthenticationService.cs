@@ -39,6 +39,15 @@ public sealed class GwmAuthenticationService
             catch (GwmApiException ex)
             {
                 _logger.LogInformation("Stored GWM access token rejected: {Code} {Message}", ex.Code, ex.Message);
+
+                // 607501 = the account was logged in on another device. Refreshing renews the
+                // token but does NOT reclaim the active session (AU/NZ is single-session), so a
+                // full re-login is the only way to recover.
+                if (ex.Code == "607501")
+                {
+                    await LoginAsync(client, cancellationToken);
+                    return;
+                }
             }
         }
 
@@ -47,11 +56,20 @@ public sealed class GwmAuthenticationService
             try
             {
                 await RefreshTokenAsync(client, cancellationToken);
+                // Refreshing renews the token but does not prove the session is still ours
+                // (single-session on AU/NZ). Verify it; a 607501 here means another device took
+                // the session and only a full re-login can reclaim it.
+                await client.GetUserBaseInfoAsync(cancellationToken);
                 return;
             }
             catch (GwmApiException ex)
             {
                 _logger.LogWarning("GWM token refresh failed: {Code} {Message}", ex.Code, ex.Message);
+                if (ex.Code == "607501")
+                {
+                    await LoginAsync(client, cancellationToken);
+                    return;
+                }
             }
         }
 

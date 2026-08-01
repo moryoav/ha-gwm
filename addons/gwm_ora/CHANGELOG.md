@@ -16,6 +16,7 @@ This project follows semantic versioning. HACS uses the latest GitHub release ta
 
 - Accept numeric fields that the ANZ gateway returns as JSON strings (for example `securityTime`), so responses deserialize correctly.
 - A failed optional `vehicleBasicsInfo` request no longer aborts a poll; vehicle status is still published from the core endpoints.
+- Recover from `607501` ("logged in elsewhere") by performing a full re-login. The ANZ backend is single-session, and refreshing a token does not reclaim a session taken by another device, so the add-on now re-authenticates instead of getting stuck.
 
 ## [0.2.14] - 2026-06-24
 
