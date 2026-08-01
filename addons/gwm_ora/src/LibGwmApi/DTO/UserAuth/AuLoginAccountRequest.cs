@@ -29,22 +29,22 @@ public class AuLoginAccountRequest
     public string Country { get; set; }
 
     [JsonPropertyName("accountId")]
-    public string? AccountId { get; set; }
+    public string AccountId { get; set; }
 
     [JsonPropertyName("uid")]
-    public string? Uid { get; set; }
+    public string Uid { get; set; }
 
     [JsonPropertyName("smsCode")]
-    public string? SmsCode { get; set; }
+    public string SmsCode { get; set; }
 
     [JsonPropertyName("pushToken")]
     public string PushToken { get; set; } = String.Empty;
 
     [JsonPropertyName("loginEmail")]
-    public string? LoginEmail { get; set; }
+    public string LoginEmail { get; set; }
 
     // Present only on the second loginAccount call (after the code); omitted on the first.
     [JsonPropertyName("verifyCode")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    public string? VerifyCode { get; set; }
+    public string VerifyCode { get; set; }
 }
