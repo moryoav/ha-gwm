@@ -6,6 +6,16 @@ This project follows semantic versioning. HACS uses the latest GitHub release ta
 
 ## [Unreleased]
 
+## [0.2.15] - 2026-08-01
+
+### Changed
+
+- Removed duplicate repository-root integration brand assets while keeping the canonical copies alongside the custom integration.
+
+### Fixed
+
+- Aligned the integration manifest and add-on metadata with the `v0.2.15` release.
+
 ## [0.2.14] - 2026-06-24
 
 ### Fixed
