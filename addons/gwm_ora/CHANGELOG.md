@@ -16,6 +16,16 @@ This project follows semantic versioning. HACS uses the latest GitHub release ta
 - A failed optional `vehicleBasicsInfo` request no longer aborts a poll; vehicle status is still published from the core endpoints.
 - Recover from `607501` ("logged in elsewhere") by performing a full re-login (aus only). The ANZ backend is single-session, and refreshing a token does not reclaim a session taken by another device, so the add-on now re-authenticates instead of getting stuck.
 
+## [0.2.15] - 2026-08-01
+
+### Changed
+
+- Removed duplicate repository-root integration brand assets while keeping the canonical copies alongside the custom integration.
+
+### Fixed
+
+- Aligned the integration manifest and add-on metadata with the `v0.2.15` release.
+
 ## [0.2.14] - 2026-06-24
 
 ### Fixed
