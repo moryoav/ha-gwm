@@ -26,6 +26,11 @@
         "default": "mdi:car-door-lock"
       }
     },
+    "number": {
+      "climate_run_time": {
+        "default": "mdi:timer-outline"
+      }
+    },
     "sensor": {
       "command_status": {
         "default": "mdi:progress-clock"

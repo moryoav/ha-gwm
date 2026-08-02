@@ -6,6 +6,16 @@ This project follows semantic versioning. HACS uses the latest GitHub release ta
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-08-02
+
+### Added
+
+- Added a Home Assistant **Climate run time** number entity that saves a 5-to-30-minute duration for the next A/C command.
+
+### Fixed
+
+- Correctly convert the saved GWM climate duration between the cloud settings endpoint's seconds and the vehicle command's minutes.
+
 ## [0.3.0] - 2026-08-02
 
 ### Added

@@ -44,20 +44,39 @@ public sealed class RemoteCommandService
     public RemoteCommandSnapshot EnqueueClimate(string vin, ClimateCommandRequest request)
     {
         EnsureRemoteCommandsAvailable();
+        ValidateClimateRequest(request);
+        var mode = request.Mode?.Trim().ToLowerInvariant();
+
+        var commandName = mode is null && !request.Temperature.HasValue ? "A/C run time" : "A/C";
+        var command = _store.Create(vin, commandName);
+        _ = Task.Run(() => ExecuteClimateAsync(command.Id, request, _lifetime.ApplicationStopping), CancellationToken.None);
+        return command;
+    }
+
+    public static void ValidateClimateRequest(ClimateCommandRequest request)
+    {
         var mode = request.Mode?.Trim().ToLowerInvariant();
         if (mode is not null and not ("cool" or "off"))
         {
             throw new ArgumentException("Climate command mode must be 'cool' or 'off'.", nameof(request));
         }
 
-        if (mode is null && !request.Temperature.HasValue)
+        if (request.OperationTimeMinutes is int operationTime
+            && !VehicleSnapshotMapper.IsValidOperationTime(operationTime))
         {
-            throw new ArgumentException("Climate command requires a mode or temperature.", nameof(request));
+            throw new ArgumentException("Climate run time must be a whole number from 5 to 30 minutes.", nameof(request));
         }
 
-        var command = _store.Create(vin, "A/C");
-        _ = Task.Run(() => ExecuteClimateAsync(command.Id, request, _lifetime.ApplicationStopping), CancellationToken.None);
-        return command;
+        if (mode is null && !request.Temperature.HasValue && !request.OperationTimeMinutes.HasValue)
+        {
+            throw new ArgumentException("Climate command requires a mode, temperature, or run time.", nameof(request));
+        }
+    }
+
+    public static bool ShouldSendClimateCommand(ClimateCommandRequest request, bool currentlyOn)
+    {
+        return !String.IsNullOrWhiteSpace(request.Mode)
+               || (request.Temperature.HasValue && currentlyOn);
     }
 
     public RemoteCommandSnapshot EnqueueLock(string vin, LockCommandRequest request)
@@ -90,19 +109,50 @@ public sealed class RemoteCommandService
             var client = await AuthenticatedClientAsync(cancellationToken);
             _store.Update(id, "in_progress", $"{command.Name}: loading current settings");
 
-            var statusTask = client.GetLastVehicleStatusAsync(command.Vin, cancellationToken);
-            var basicsTask = client.GetVehicleBasicsInfoOrDefaultAsync(command.Vin, cancellationToken);
-            await Task.WhenAll(statusTask, basicsTask);
-
-            var status = await statusTask;
-            var basics = await basicsTask;
-            var currentlyOn = status.Items?.FirstOrDefault(x => x.Code == "2202001")?.Value?.ToString() == "1";
-            var temperature = VehicleSnapshotMapper.NormalizeTemperature(
-                request.Temperature?.ToString(System.Globalization.CultureInfo.InvariantCulture)
-                ?? basics.Config?.AirConditionerTemperature,
-                22);
-            var operationTime = VehicleSnapshotMapper.NormalizeOperationTime(request.OperationTimeMinutes, 30);
             var mode = request.Mode?.Trim().ToLowerInvariant();
+            var runTimeOnly = mode is null && !request.Temperature.HasValue;
+            var basicsTask = client.GetVehicleBasicsInfoOrDefaultAsync(command.Vin, cancellationToken);
+            Task<VehicleStatus>? statusTask = mode is null && request.Temperature.HasValue
+                ? client.GetLastVehicleStatusAsync(command.Vin, cancellationToken)
+                : null;
+            if (statusTask is null)
+            {
+                await basicsTask;
+            }
+            else
+            {
+                await Task.WhenAll(statusTask, basicsTask);
+            }
+
+            var basics = await basicsTask;
+            var currentlyOn = statusTask is not null
+                              && (await statusTask).Items?.FirstOrDefault(x => x.Code == "2202001")?.Value?.ToString() == "1";
+            int temperature;
+            if (runTimeOnly)
+            {
+                if (!VehicleSnapshotMapper.TryGetValidTemperature(
+                        basics.Config?.AirConditionerTemperature,
+                        out temperature))
+                {
+                    _store.Update(
+                        id,
+                        "failed",
+                        $"{command.Name}: failed - current A/C temperature is unavailable; no settings were changed");
+                    return;
+                }
+            }
+            else
+            {
+                temperature = VehicleSnapshotMapper.NormalizeTemperature(
+                    request.Temperature?.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                    ?? basics.Config?.AirConditionerTemperature,
+                    22);
+            }
+
+            var operationTime = request.OperationTimeMinutes
+                                ?? VehicleSnapshotMapper.NormalizeOperationTime(
+                                    basics.Config?.AirConditionerStatusTime,
+                                    VehicleSnapshotMapper.DefaultOperationTimeMinutes);
 
             if (mode is not null and not ("cool" or "off"))
             {
@@ -110,20 +160,20 @@ public sealed class RemoteCommandService
                 return;
             }
 
-            if (mode == "cool" || request.Temperature.HasValue)
+            if (mode == "cool" || request.Temperature.HasValue || request.OperationTimeMinutes.HasValue)
             {
                 _store.Update(id, "in_progress", $"{command.Name}: updating vehicle defaults");
-                await client.ModifyVehicleRemoteCtlInfoAsync(new ModifyVecicleRemoteCtl
-                {
-                    AirConditionerTemperature = temperature.ToString(System.Globalization.CultureInfo.InvariantCulture),
-                    AirConditionerTime = operationTime.ToString(System.Globalization.CultureInfo.InvariantCulture),
-                    Vin = command.Vin
-                }, cancellationToken);
+                await client.ModifyVehicleRemoteCtlInfoAsync(
+                    RemoteCommandFactory.CreateClimateDefaults(command.Vin, temperature, operationTime),
+                    cancellationToken);
             }
 
-            if (mode is null && request.Temperature.HasValue && !currentlyOn)
+            if (!ShouldSendClimateCommand(request, currentlyOn))
             {
-                _store.Update(id, "completed", $"{command.Name}: saved; A/C is off so no remote command was sent");
+                var status = runTimeOnly
+                    ? $"{command.Name}: saved; applies to the next A/C command"
+                    : $"{command.Name}: saved; A/C is off so no remote command was sent";
+                _store.Update(id, "completed", status);
                 return;
             }
 

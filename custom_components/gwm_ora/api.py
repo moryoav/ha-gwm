@@ -59,6 +59,7 @@ class GwmOraApiClient:
         *,
         mode: str | None = None,
         temperature: int | None = None,
+        operation_time_minutes: int | None = None,
     ) -> dict[str, Any]:
         """Queue a climate command."""
         payload: dict[str, Any] = {}
@@ -66,6 +67,8 @@ class GwmOraApiClient:
             payload["mode"] = mode
         if temperature is not None:
             payload["temperature"] = temperature
+        if operation_time_minutes is not None:
+            payload["operation_time_minutes"] = operation_time_minutes
         return await self._request(
             "POST",
             f"/vehicles/{vin}/commands/climate",

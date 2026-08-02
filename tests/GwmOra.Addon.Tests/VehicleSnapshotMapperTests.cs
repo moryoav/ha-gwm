@@ -36,7 +36,11 @@ public class VehicleSnapshotMapperTests
         };
         var basics = new VehicleBasicsInfo
         {
-            Config = new VehicleConfig { AirConditionerTemperature = "23" }
+            Config = new VehicleConfig
+            {
+                AirConditionerTemperature = "23",
+                AirConditionerStatusTime = "900"
+            }
         };
 
         var snapshot = VehicleSnapshotMapper.Map(vehicle, status, basics, true, "ok");
@@ -52,9 +56,62 @@ public class VehicleSnapshotMapperTests
         Assert.True(snapshot.Values.ChargePlugConnected);
         Assert.Equal("cool", snapshot.Climate.Mode);
         Assert.Equal(23, snapshot.Climate.TargetTemperatureC);
+        Assert.Equal(15, snapshot.Climate.OperationTimeMinutes);
         Assert.NotNull(snapshot.Location);
         Assert.True(snapshot.Capabilities.RemoteCommands);
         Assert.Equal("80", snapshot.RawItems["2013021"].Value);
+    }
+
+    [Theory]
+    [InlineData("300", 5)]
+    [InlineData("900", 15)]
+    [InlineData("1800", 30)]
+    [InlineData("30", 30)]
+    [InlineData("25", 25)]
+    public void NormalizeOperationTimeConvertsCloudSeconds(string? value, int expected)
+    {
+        Assert.Equal(
+            expected,
+            VehicleSnapshotMapper.NormalizeOperationTime(value, VehicleSnapshotMapper.DefaultOperationTimeMinutes));
+    }
+
+    [Theory]
+    [InlineData("200")]
+    [InlineData("301")]
+    [InlineData("invalid")]
+    [InlineData(null)]
+    public void NormalizeOperationTimeUsesProvidedFallbackForInvalidValues(string? value)
+    {
+        Assert.Equal(17, VehicleSnapshotMapper.NormalizeOperationTime(value, 17));
+    }
+
+    [Theory]
+    [InlineData(5, true)]
+    [InlineData(15, true)]
+    [InlineData(30, true)]
+    [InlineData(4, false)]
+    [InlineData(16, true)]
+    [InlineData(31, false)]
+    public void OperationTimeValidationUsesSupportedRange(int value, bool expected)
+    {
+        Assert.Equal(expected, VehicleSnapshotMapper.IsValidOperationTime(value));
+    }
+
+    [Theory]
+    [InlineData("16", true, 16)]
+    [InlineData("32", true, 32)]
+    [InlineData("15", false, 0)]
+    [InlineData("33", false, 0)]
+    [InlineData(null, false, 0)]
+    public void TryGetValidTemperatureRejectsMissingAndOutOfRangeValues(
+        string? value,
+        bool expectedResult,
+        int expectedTemperature)
+    {
+        var result = VehicleSnapshotMapper.TryGetValidTemperature(value, out var temperature);
+
+        Assert.Equal(expectedResult, result);
+        Assert.Equal(expectedTemperature, temperature);
     }
 
     private static VehicleStatusItems Item(string code, object value, string? unit)
