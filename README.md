@@ -23,9 +23,10 @@ Remote commands can take time. The car may report several pending attempts befor
 
 Manual path:
 
-1. Go to **Settings** -> **Add-ons**.
-2. Open **Repositories** from the menu.
-3. Add:
+1. Go to **Settings** -> **Apps**.
+2. Select **Install app**.
+3. Open **Repositories** from the menu.
+4. Add:
 
 ```text
 https://github.com/moryoav/ha-gwm_ora
@@ -79,25 +80,19 @@ After successful authentication, the add-on Web UI should show **Authenticated**
 
 [![Open the GWM ORA HACS repository](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=moryoav&repository=ha-gwm_ora&category=integration)
 
-Manual HACS path:
+GWM ORA is available in the default HACS catalog, so no custom repository setup is required.
 
-1. Open HACS.
-2. Add a custom repository.
-3. Use:
-
-```text
-https://github.com/moryoav/ha-gwm_ora
-```
-
-4. Select category **Integration**.
-5. Install **GWM ORA**.
-6. Restart Home Assistant.
+1. Select the button above, or open HACS and search for **GWM ORA** under **Integrations**.
+2. Select **GWM ORA** and choose **Download**.
+3. Restart Home Assistant.
 
 ### 4. Add the Integration
 
 [![Add the GWM ORA integration](https://my.home-assistant.io/badges/config_flow_start.svg)](https://my.home-assistant.io/redirect/config_flow_start/?domain=gwm_ora)
 
-The integration should discover the running add-on and ask for confirmation. You do not enter your GWM username or password in the integration.
+After Home Assistant restarts, open **Settings** -> **Devices & services**. The integration should discover the running add-on as **GWM ORA**; select it and confirm setup. If it is not discovered, select **Add integration** and search for **GWM ORA**.
+
+You do not enter your GWM username or password in the integration.
 
 ## Entities
 
@@ -249,7 +244,7 @@ Special thanks to [zivillian](https://github.com/zivillian) and the [zivillian/o
 Deep thanks to [wilberforce](https://github.com/wilberforce) for reverse-engineering the ANZ authentication and signing flow, implementing AU/NZ support, and validating it against a live vehicle.
 
 [banner]: https://raw.githubusercontent.com/moryoav/ha-gwm_ora/main/brand/banner.png
-[hacs-badge]: https://img.shields.io/badge/HACS-Custom-41BDF5.svg?style=flat-square
+[hacs-badge]: https://img.shields.io/badge/HACS-Default-41BDF5.svg?style=flat-square
 [hacs-url]: https://github.com/hacs/integration
 [release-badge]: https://img.shields.io/github/v/release/moryoav/ha-gwm_ora?style=flat-square
 [release-url]: https://github.com/moryoav/ha-gwm_ora/releases

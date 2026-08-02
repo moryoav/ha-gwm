@@ -24,6 +24,13 @@ This project follows semantic versioning. HACS uses the latest GitHub release ta
 - Treat only the known ANZ `607099` response from optional `vehicleBasicsInfo` calls as non-fatal, including climate-command preflight; all EU and other GWM API errors still surface.
 - Recover from ANZ `607501` ("logged in elsewhere") responses with a full re-login because refreshing a token does not reclaim a session taken by another device.
 
+## [0.2.16] - 2026-08-02
+
+### Changed
+
+- Simplified HACS installation instructions now that GWM ORA is available in the default HACS catalog.
+- Aligned the integration manifest and add-on metadata with the `v0.2.16` release.
+
 ## [0.2.15] - 2026-08-01
 
 ### Changed
