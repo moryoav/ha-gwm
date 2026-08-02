@@ -6,6 +6,13 @@ This project follows semantic versioning. HACS uses the latest GitHub release ta
 
 ## [Unreleased]
 
+## [0.2.16] - 2026-08-02
+
+### Changed
+
+- Simplified HACS installation instructions now that GWM ORA is available in the default HACS catalog.
+- Aligned the integration manifest and add-on metadata with the `v0.2.16` release.
+
 ## [0.2.15] - 2026-08-01
 
 ### Changed
