@@ -91,7 +91,7 @@ public sealed class RemoteCommandService
             _store.Update(id, "in_progress", $"{command.Name}: loading current settings");
 
             var statusTask = client.GetLastVehicleStatusAsync(command.Vin, cancellationToken);
-            var basicsTask = client.GetVehicleBasicsInfoAsync(command.Vin, cancellationToken);
+            var basicsTask = client.GetVehicleBasicsInfoOrDefaultAsync(command.Vin, cancellationToken);
             await Task.WhenAll(statusTask, basicsTask);
 
             var status = await statusTask;

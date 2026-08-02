@@ -249,7 +249,7 @@ public sealed class GwmAuthenticationService
             var response = await client.LoginAccountAusAsync(request, cancellationToken);
             await StoreLoginResponseAsync(client, response, cancellationToken);
         }
-        catch (GwmApiException ex) when (IsVerificationRequired(ex))
+        catch (GwmApiException ex) when (IsAusVerificationRequired(ex))
         {
             await RequestVerificationCodeAusAsync(client, cancellationToken);
             throw new GwmVerificationRequiredException(
@@ -299,7 +299,12 @@ public sealed class GwmAuthenticationService
     private static bool IsVerificationRequired(GwmApiException ex)
     {
         return ex.Code == "110641" ||
-               ex.Code == "309702" ||           // AU new-device login
                ex.Message.Contains("verification code", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsAusVerificationRequired(GwmApiException ex)
+    {
+        return ex.Code == "309702" ||
+               IsVerificationRequired(ex);
     }
 }

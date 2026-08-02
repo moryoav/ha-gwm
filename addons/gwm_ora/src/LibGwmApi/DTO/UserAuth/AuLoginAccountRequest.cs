@@ -6,7 +6,8 @@ namespace libgwmapi.DTO.UserAuth;
 /// AU/NZ (aus) loginAccount body. Differs from the EU <see cref="LoginAccountRequest"/>:
 /// password is PLAINTEXT, agreement is [1,2], appType is the string "0", the SMS code goes
 /// in <c>verifyCode</c> (present only on the second, post-code call), and it carries the
-/// null placeholder fields the app sends. Captured live 2026-07-20 (see gwm-au-login-SOLVED.md).
+/// null placeholder fields the app sends. Captured live on 2026-07-20 during the work
+/// documented in issue #1 and pull request #5.
 /// </summary>
 public class AuLoginAccountRequest
 {

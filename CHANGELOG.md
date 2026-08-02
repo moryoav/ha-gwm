@@ -6,15 +6,23 @@ This project follows semantic versioning. HACS uses the latest GitHub release ta
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-08-02
+
 ### Added
 
-- Australia/New Zealand support for the `aus` region: account login against the `aus-h5-gateway` using GWM's `bt-auth` request signing, new-device e-mail verification (enter the emailed code in the `verification_code` option, save, and restart), and token refresh. Vehicle discovery and status polling now work for ANZ accounts. Set `region: aus` and the account's registration country (for example `NZ`). The EU path is unchanged.
+- Australia/New Zealand support for the `aus` region: account login against the `aus-h5-gateway` using GWM's `bt-auth` request signing, new-device e-mail verification, token refresh, vehicle discovery, and status polling. Set `region: aus` and the account's registration country (for example `AU` or `NZ`). The existing `eu` behavior remains unchanged.
+
+### Changed
+
+- Keep lock, climate, and close-window controls available for `aus` accounts when remote commands are explicitly enabled with a security PIN. These commands are experimental and unconfirmed on the ANZ backend pending live user testing.
+- Document the ANZ single-session limitation and recommend a dedicated shared vehicle account.
 
 ### Fixed
 
-- Accept numeric fields that the ANZ gateway returns as JSON strings (for example `securityTime`), so responses deserialize correctly (aus only).
-- A failed optional `vehicleBasicsInfo` request no longer aborts a poll; vehicle status is still published from the core endpoints.
-- Recover from `607501` ("logged in elsewhere") by performing a full re-login (aus only). The ANZ backend is single-session, and refreshing a token does not reclaim a session taken by another device, so the add-on now re-authenticates instead of getting stuck.
+- Accept numeric fields that the ANZ gateway returns as JSON strings, such as `securityTime`, while retaining strict EU deserialization.
+- Canonicalize signed ANZ GET parameters using the GWM app-family ordering, lowercase-key, and concatenation rules, while removing empty query parameters rejected by the gateway.
+- Treat only the known ANZ `607099` response from optional `vehicleBasicsInfo` calls as non-fatal, including climate-command preflight; all EU and other GWM API errors still surface.
+- Recover from ANZ `607501` ("logged in elsewhere") responses with a full re-login because refreshing a token does not reclaim a session taken by another device.
 
 ## [0.2.15] - 2026-08-01
 

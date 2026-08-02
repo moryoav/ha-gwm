@@ -16,8 +16,8 @@ public partial class GwmApiClient
     private string _deviceId = String.Empty;
 
     // The AU/NZ gateway is loosely typed and returns some numeric fields as JSON strings
-    // (e.g. "securityTime":"0"). AllowReadingFromString accepts both forms; it is strictly
-    // more permissive, so EU responses (already numeric) deserialize identically.
+    // (e.g. "securityTime":"0"). This lenient option is selected for aus responses only;
+    // EU responses continue to use the default strict deserializer.
     private static readonly JsonSerializerOptions SerializerOptions = new()
     {
         NumberHandling = JsonNumberHandling.AllowReadingFromString

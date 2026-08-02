@@ -1,7 +1,7 @@
 configuration:
   country:
     name: Country
-    description: Two-letter country code for the GWM account region, for example DE or GB.
+    description: Two-letter account registration country, for example DE, GB, AU, or NZ. It must match the country used when the account was created.
   region:
     name: Region / cloud gateway
     description: GWM cloud region to connect to. Use eu for Europe/Israel accounts or aus for Australia/New Zealand accounts.
@@ -19,7 +19,7 @@ configuration:
     description: Optional 6-digit vehicle remote control PIN from the official app. Required for A/C, lock, unlock, and close-window commands.
   enable_remote_commands:
     name: Enable remote commands
-    description: Allow Home Assistant to send vehicle remote commands through this add-on.
+    description: Allow Home Assistant to send vehicle remote commands through this add-on. Australia/New Zealand command support is experimental and unconfirmed.
   poll_interval_seconds:
     name: Poll interval
     description: Number of seconds between GWM cloud status polls.
