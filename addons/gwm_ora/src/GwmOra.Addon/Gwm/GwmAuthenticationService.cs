@@ -28,6 +28,9 @@ public sealed class GwmAuthenticationService
 
     public async Task EnsureAuthenticatedAsync(GwmApiClient client, CancellationToken cancellationToken)
     {
+        // The single-session recovery below is AU/NZ-specific; EU keeps its original flow.
+        var isAus = String.Equals(_options.Region, "aus", StringComparison.OrdinalIgnoreCase);
+
         if (!String.IsNullOrWhiteSpace(_stateStore.State.AccessToken))
         {
             client.SetAccessToken(_stateStore.State.AccessToken);
@@ -43,7 +46,7 @@ public sealed class GwmAuthenticationService
                 // 607501 = the account was logged in on another device. Refreshing renews the
                 // token but does NOT reclaim the active session (AU/NZ is single-session), so a
                 // full re-login is the only way to recover.
-                if (ex.Code == "607501")
+                if (isAus && ex.Code == "607501")
                 {
                     await LoginAsync(client, cancellationToken);
                     return;
@@ -56,16 +59,19 @@ public sealed class GwmAuthenticationService
             try
             {
                 await RefreshTokenAsync(client, cancellationToken);
-                // Refreshing renews the token but does not prove the session is still ours
-                // (single-session on AU/NZ). Verify it; a 607501 here means another device took
-                // the session and only a full re-login can reclaim it.
-                await client.GetUserBaseInfoAsync(cancellationToken);
+                // AU/NZ only: refreshing renews the token but does not prove the session is still
+                // ours (single-session). Verify it; a 607501 here means another device took the
+                // session and only a full re-login can reclaim it.
+                if (isAus)
+                {
+                    await client.GetUserBaseInfoAsync(cancellationToken);
+                }
                 return;
             }
             catch (GwmApiException ex)
             {
                 _logger.LogWarning("GWM token refresh failed: {Code} {Message}", ex.Code, ex.Message);
-                if (ex.Code == "607501")
+                if (isAus && ex.Code == "607501")
                 {
                     await LoginAsync(client, cancellationToken);
                     return;

@@ -194,7 +194,8 @@ public partial class GwmApiClient
         T result;
         try
         {
-            result = JsonSerializer.Deserialize<T>(content, SerializerOptions);
+            // aus-only leniency; EU keeps the default deserializer (null == original behaviour).
+            result = JsonSerializer.Deserialize<T>(content, _region == "aus" ? SerializerOptions : null);
         }
         catch (JsonException) when (!response.IsSuccessStatusCode)
         {
