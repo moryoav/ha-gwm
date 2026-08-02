@@ -18,8 +18,9 @@ The integration stores only the add-on host, port, generated API token, and disc
 ## Setup
 
 1. Install and start the `GWM ORA` add-on.
-2. Install this custom integration.
-3. Confirm the discovered `GWM ORA` integration in Home Assistant.
+2. Open HACS, search for **GWM ORA** under **Integrations**, select it, and choose **Download**.
+3. Restart Home Assistant.
+4. Open **Settings** > **Devices & services** and confirm the discovered **GWM ORA** integration.
 
 If discovery does not appear, restart the add-on and then restart Home Assistant.
 
