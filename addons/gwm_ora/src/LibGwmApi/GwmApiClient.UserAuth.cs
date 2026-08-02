@@ -26,6 +26,22 @@ public partial class GwmApiClient
         return PostH5Async<LoginAccountRequest, LoginAccountResponse>("userAuth/loginAccount", request, cancellationToken);
     }
 
+    // AU/NZ (aus) login: loginAccount with a plaintext password and, on a new device, a verifyCode.
+    public Task<LoginAccountResponse> LoginAccountAusAsync(AuLoginAccountRequest request, CancellationToken cancellationToken)
+    {
+        return PostH5Async<AuLoginAccountRequest, LoginAccountResponse>("userAuth/loginAccount", request, cancellationToken);
+    }
+
+    public Task GetSmsCodeAusAsync(AuGetSmsCode request, CancellationToken cancellationToken)
+    {
+        return PostH5Async("userAuth/getSMSCode", request, cancellationToken);
+    }
+
+    public Task CheckSmsCodeAsync(CheckSmsCode request, CancellationToken cancellationToken)
+    {
+        return PostH5Async("userAuth/checkSMSCode", request, cancellationToken);
+    }
+
     public Task CheckSecurityPasswordAsync(CheckSecurityPassword request, CancellationToken cancellationToken)
     {
         return PostH5Async("userAuth/checkSecurityPassword", request, cancellationToken);

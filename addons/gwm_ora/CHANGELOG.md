@@ -6,6 +6,24 @@ This project follows semantic versioning. HACS uses the latest GitHub release ta
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-08-02
+
+### Added
+
+- Australia/New Zealand support for the `aus` region: account login against the `aus-h5-gateway` using GWM's `bt-auth` request signing, new-device e-mail verification, token refresh, vehicle discovery, and status polling. Set `region: aus` and the account's registration country (for example `AU` or `NZ`). The existing `eu` behavior remains unchanged.
+
+### Changed
+
+- Keep lock, climate, and close-window controls available for `aus` accounts when remote commands are explicitly enabled with a security PIN. These commands are experimental and unconfirmed on the ANZ backend pending live user testing.
+- Document the ANZ single-session limitation and recommend a dedicated shared vehicle account.
+
+### Fixed
+
+- Accept numeric fields that the ANZ gateway returns as JSON strings, such as `securityTime`, while retaining strict EU deserialization.
+- Canonicalize signed ANZ GET parameters using the GWM app-family ordering, lowercase-key, and concatenation rules, while removing empty query parameters rejected by the gateway.
+- Treat only the known ANZ `607099` response from optional `vehicleBasicsInfo` calls as non-fatal, including climate-command preflight; all EU and other GWM API errors still surface.
+- Recover from ANZ `607501` ("logged in elsewhere") responses with a full re-login because refreshing a token does not reclaim a session taken by another device.
+
 ## [0.2.16] - 2026-08-02
 
 ### Changed

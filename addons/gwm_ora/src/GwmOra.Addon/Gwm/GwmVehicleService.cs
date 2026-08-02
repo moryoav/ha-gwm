@@ -81,7 +81,7 @@ public sealed class GwmVehicleService
             foreach (var vehicle in vehicles)
             {
                 var statusTask = client.GetLastVehicleStatusAsync(vehicle.Vin, cancellationToken);
-                var basicsTask = client.GetVehicleBasicsInfoAsync(vehicle.Vin, cancellationToken);
+                var basicsTask = client.GetVehicleBasicsInfoOrDefaultAsync(vehicle.Vin, cancellationToken);
                 await Task.WhenAll(statusTask, basicsTask);
 
                 snapshots.Add(VehicleSnapshotMapper.Map(
