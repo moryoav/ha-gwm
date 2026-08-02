@@ -12,8 +12,11 @@ The integration stores only the add-on host, port, generated API token, and disc
 - Binary sensor
 - Device tracker
 - Climate
+- Number
 - Lock
 - Button
+
+The **Climate run time** number entity saves a duration from 5 to 30 minutes, in one-minute steps, for the next A/C command. Changing it does not start or stop the A/C.
 
 ## Setup
 

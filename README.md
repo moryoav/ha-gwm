@@ -8,7 +8,7 @@ Control and monitor your GWM ORA from Home Assistant. The add-on connects to you
 ## What You Get
 
 - Battery SOC, range, odometer, charging, plug, cabin temperature, tire pressure, tire temperature, lock, window, A/C, and location entities.
-- Native Home Assistant controls for A/C, door lock/unlock, and closing windows.
+- Native Home Assistant controls for A/C mode, temperature, run time, door lock/unlock, and closing windows.
 - A remote command status sensor that shows progress while commands are being sent to the car.
 - Automatic discovery of the add-on by the integration.
 - A small add-on Web UI showing add-on health and the latest cached vehicle summary.
@@ -100,6 +100,7 @@ You do not enter your GWM username or password in the integration.
 - Binary sensors: charging active, charge plug, A/C active, lock open, windows open, air circulation, front defroster.
 - Device tracker: vehicle GPS location when available.
 - Climate: A/C mode `off`/`cool`, target temperature, current cabin temperature.
+- Number: climate run time from 5 to 30 minutes in one-minute steps.
 - Lock: lock and unlock vehicle doors.
 - Button: close all windows.
 
@@ -117,6 +118,8 @@ A/C: completed - Success [0]
 ```
 
 The integration follows the command while it is running and refreshes vehicle data after a successful command.
+
+Set **Climate run time** before turning on the A/C to choose how long the remote climate command runs. The value can be 5 to 30 minutes in one-minute steps and applies to the next A/C command. Changing the run time alone saves the setting; it does not start or stop the A/C.
 
 > **Australia/New Zealand:** Login, verification, vehicle discovery, and status polling have been validated against a live ANZ vehicle. Lock, climate, and close-window commands remain enabled behind the existing explicit opt-in and security PIN, but are currently experimental and have not yet been confirmed on the ANZ backend. Test them only while the vehicle is parked, safe, and in view. Do not rely on AU/NZ remote-command automations until your vehicle has been tested successfully; please report results in [issue #1](https://github.com/moryoav/ha-gwm_ora/issues/1).
 

@@ -67,6 +67,8 @@ Login, verification, vehicle discovery, and status polling have been validated a
 
 The **Open Web UI** button uses Home Assistant Ingress and shows add-on health plus the latest cached vehicle summary. Remote controls are exposed by the native Home Assistant integration rather than the add-on web page.
 
+The integration includes a **Climate run time** number entity. Set it from 5 to 30 minutes in one-minute steps before starting the A/C. Changing the number saves the duration for the next A/C command and does not start or stop the A/C by itself.
+
 ## Security
 
 The add-on does not publish a LAN port, does not use host networking, does not request Docker API access, and does not use `full_access`. The internal API requires a generated bearer token, Ingress pages are restricted to Home Assistant's ingress proxy, and the container ships with a custom AppArmor profile.

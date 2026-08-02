@@ -4,6 +4,19 @@ namespace GwmOra.Addon.RemoteCommands;
 
 public static class RemoteCommandFactory
 {
+    public static ModifyVecicleRemoteCtl CreateClimateDefaults(
+        string vin,
+        int temperature,
+        int operationTimeMinutes)
+    {
+        return new ModifyVecicleRemoteCtl
+        {
+            AirConditionerTemperature = temperature.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            AirConditionerTime = (operationTimeMinutes * 60).ToString(System.Globalization.CultureInfo.InvariantCulture),
+            Vin = vin
+        };
+    }
+
     public static SendCmd CreateClimateCommand(
         string vin,
         string securityPassword,

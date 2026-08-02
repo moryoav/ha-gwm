@@ -90,6 +90,7 @@ public sealed class ClimateSnapshot
     public string Mode { get; init; } = "off";
     public string Action { get; init; } = "off";
     public int TargetTemperatureC { get; init; } = 22;
+    public int OperationTimeMinutes { get; init; } = 15;
     public double? CurrentTemperatureC { get; init; }
     public int MinTemperatureC { get; init; } = 16;
     public int MaxTemperatureC { get; init; } = 32;

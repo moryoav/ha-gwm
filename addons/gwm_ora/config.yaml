@@ -1,5 +1,5 @@
 name: GWM ORA
-version: "0.3.0"
+version: "0.4.0"
 slug: gwm_ora
 description: Native Home Assistant add-on for GWM ORA vehicles
 url: https://github.com/moryoav/ha-gwm_ora
@@ -41,4 +41,4 @@ schema:
   log_level: "list(trace|debug|info|warning|error)"
 environment:
   ASPNETCORE_HTTP_PORTS: "8099"
-  GWM_ORA_ADDON_VERSION: "0.3.0"
+  GWM_ORA_ADDON_VERSION: "0.4.0"

@@ -6,6 +6,11 @@ namespace GwmOra.Addon.Gwm;
 
 public static class VehicleSnapshotMapper
 {
+    public const int MinimumOperationTimeMinutes = 5;
+    public const int MaximumOperationTimeMinutes = 30;
+    public const int OperationTimeStepMinutes = 1;
+    public const int DefaultOperationTimeMinutes = 15;
+
     public static VehicleSnapshot Map(
         Vehicle vehicle,
         VehicleStatus status,
@@ -43,6 +48,9 @@ public static class VehicleSnapshotMapper
 
         var acOn = values.AcActive == true;
         var targetTemperature = NormalizeTemperature(basics.Config?.AirConditionerTemperature, 22);
+        var operationTimeMinutes = NormalizeOperationTime(
+            basics.Config?.AirConditionerStatusTime,
+            DefaultOperationTimeMinutes);
 
         return new VehicleSnapshot
         {
@@ -70,6 +78,7 @@ public static class VehicleSnapshotMapper
                 Mode = acOn ? "cool" : "off",
                 Action = acOn ? "cooling" : "off",
                 TargetTemperatureC = targetTemperature,
+                OperationTimeMinutes = operationTimeMinutes,
                 CurrentTemperatureC = values.InteriorTemperatureC
             },
             CommandStatus = commandStatus,
@@ -84,11 +93,45 @@ public static class VehicleSnapshotMapper
             : fallback;
     }
 
-    public static int NormalizeOperationTime(int? value, int fallback)
+    public static bool TryGetValidTemperature(string? value, out int temperature)
     {
-        return value.HasValue && value.Value > 0
-            ? value.Value
-            : fallback;
+        if (Int32.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsed)
+            && parsed is >= 16 and <= 32)
+        {
+            temperature = parsed;
+            return true;
+        }
+
+        temperature = default;
+        return false;
+    }
+
+    public static int NormalizeOperationTime(string? value, int fallback)
+    {
+        if (!Int32.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var storedValue))
+        {
+            return fallback;
+        }
+
+        // Releases before 0.4.0 wrote minutes directly into this seconds-based field.
+        if (IsValidOperationTime(storedValue))
+        {
+            return storedValue;
+        }
+
+        if (storedValue % 60 != 0)
+        {
+            return fallback;
+        }
+
+        var minutes = storedValue / 60;
+        return IsValidOperationTime(minutes) ? minutes : fallback;
+    }
+
+    public static bool IsValidOperationTime(int minutes)
+    {
+        return minutes is >= MinimumOperationTimeMinutes and <= MaximumOperationTimeMinutes
+               && minutes % OperationTimeStepMinutes == 0;
     }
 
     private static double? Number(VehicleStatus status, string code)
