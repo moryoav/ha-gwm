@@ -19,11 +19,22 @@ public class EuV2AuthDtoTests
             ValidCodeMode = "1"
         };
 
-        var json = JsonSerializer.Serialize(request);
+        using var json = JsonDocument.Parse(JsonSerializer.Serialize(request));
+        var root = json.RootElement;
 
-        Assert.Equal(
-            "{\"account\":\"owner@example.com\",\"accountType\":\"2\",\"countryCode\":\"+972\",\"agreement\":[1,2],\"password\":\"secret\",\"deviceId\":\"0123456789abcdef\",\"appType\":\"0\",\"pushToken\":\"\",\"country\":\"IL\",\"verifyCode\":\"4873\",\"validCodeMode\":\"1\"}",
-            json);
+        Assert.Equal("owner@example.com", root.GetProperty("account").GetString());
+        Assert.Equal("2", root.GetProperty("accountType").GetString());
+        Assert.Equal("+972", root.GetProperty("countryCode").GetString());
+        Assert.Equal([1, 2], root.GetProperty("agreement").EnumerateArray()
+            .Select(value => value.GetInt32())
+            .ToArray());
+        Assert.Equal("secret", root.GetProperty("password").GetString());
+        Assert.Equal("0123456789abcdef", root.GetProperty("deviceId").GetString());
+        Assert.Equal("0", root.GetProperty("appType").GetString());
+        Assert.Equal(String.Empty, root.GetProperty("pushToken").GetString());
+        Assert.Equal("IL", root.GetProperty("country").GetString());
+        Assert.Equal("4873", root.GetProperty("verifyCode").GetString());
+        Assert.Equal("1", root.GetProperty("validCodeMode").GetString());
     }
 
     [Fact]
@@ -38,9 +49,9 @@ public class EuV2AuthDtoTests
             Country = "DE"
         };
 
-        var json = JsonSerializer.Serialize(request);
+        using var json = JsonDocument.Parse(JsonSerializer.Serialize(request));
 
-        Assert.DoesNotContain("verifyCode", json);
-        Assert.DoesNotContain("validCodeMode", json);
+        Assert.False(json.RootElement.TryGetProperty("verifyCode", out _));
+        Assert.False(json.RootElement.TryGetProperty("validCodeMode", out _));
     }
 }
