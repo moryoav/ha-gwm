@@ -7,6 +7,11 @@ namespace libgwmapi;
 /// <summary>
 /// Adds the bt-auth signature used by the current European GWM app for
 /// authenticated H5, certificate-enrollment, and vehicle API calls.
+///
+/// Unlike the AU/NZ signer, the EU app keeps empty query parameters in both
+/// the outgoing URL and the signed payload. Query tokens are sorted in their
+/// original encoded form, then names and values are URL-decoded for signing;
+/// names are lowercased and key=value pairs are concatenated without separators.
 /// </summary>
 public sealed class EuBtAuthSigningHandler : DelegatingHandler
 {
@@ -71,25 +76,23 @@ public sealed class EuBtAuthSigningHandler : DelegatingHandler
             return String.IsNullOrEmpty(body) ? String.Empty : "json=" + body;
         }
 
-        var kept = new List<(string Key, string Value, string Token)>();
         var query = uri.Query.StartsWith('?') ? uri.Query[1..] : uri.Query;
-        foreach (var token in query.Split('&', StringSplitOptions.RemoveEmptyEntries))
+        var tokens = query
+            .Split('&', StringSplitOptions.RemoveEmptyEntries)
+            .OrderBy(token => token, StringComparer.Ordinal);
+
+        var result = new StringBuilder();
+        foreach (var token in tokens)
         {
             var separator = token.IndexOf('=');
-            var key = separator < 0 ? token : token[..separator];
-            var value = separator < 0 ? String.Empty : token[(separator + 1)..];
-            if (!String.IsNullOrEmpty(value))
-            {
-                kept.Add((key, value, $"{key}={value}"));
-            }
+            var encodedKey = separator < 0 ? token : token[..separator];
+            var encodedValue = separator < 0 ? String.Empty : token[(separator + 1)..];
+            var key = Uri.UnescapeDataString(encodedKey).ToLowerInvariant();
+            var value = Uri.UnescapeDataString(encodedValue);
+            result.Append(key).Append('=').Append(value);
         }
 
-        kept.Sort((left, right) => StringComparer.Ordinal.Compare(left.Token, right.Token));
-        var outgoingQuery = String.Join("&", kept.Select(item => item.Token));
-        request.RequestUri = new Uri(
-            uri.GetLeftPart(UriPartial.Path) +
-            (kept.Count > 0 ? "?" + outgoingQuery : String.Empty));
-        return String.Concat(kept.Select(item => $"{item.Key.ToLowerInvariant()}={item.Value}"));
+        return result.ToString();
     }
 
     private static void SetHeader(HttpRequestMessage request, string name, string value)
