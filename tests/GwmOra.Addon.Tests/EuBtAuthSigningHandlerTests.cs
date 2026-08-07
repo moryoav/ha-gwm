@@ -126,7 +126,7 @@ public class EuBtAuthSigningHandlerTests
             body);
 
         Assert.Equal(
-            "20ab93e421bea31c209071172c73220c48caf8e7b11172426ee7ef7a23d06703",
+            "67ce44d071cac2ee24d3e3a3b9eeb3ebd24149e461078fa420412b4d83db4971",
             sent.Headers.GetValues("bt-auth-sign").Single());
     }
 }
