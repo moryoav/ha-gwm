@@ -20,24 +20,32 @@ public class EuBtAuthSigningHandlerTests
         }
     }
 
+    private static async Task<HttpRequestMessage> SendAsync(
+        HttpMethod method,
+        string url,
+        EuBtAuthSigningHandler signingHandler,
+        HttpContent? content = null)
+    {
+        var capture = new CapturingHandler();
+        signingHandler.InnerHandler = capture;
+        using var invoker = new HttpMessageInvoker(signingHandler);
+        using var request = new HttpRequestMessage(method, url) { Content = content };
+        await invoker.SendAsync(request, CancellationToken.None);
+        return capture.Captured!;
+    }
+
     [Fact]
     public async Task CapturedAcquireVehiclesVectorMatchesCurrentGwmApp()
     {
-        var capture = new CapturingHandler();
         var signer = new EuBtAuthSigningHandler(
             () => "1786119081976",
-            () => "810FF2B7B31516FD")
-        {
-            InnerHandler = capture
-        };
-        using var invoker = new HttpMessageInvoker(signer);
-        using var request = new HttpRequestMessage(
+            () => "810FF2B7B31516FD");
+
+        using var sent = await SendAsync(
             HttpMethod.Get,
-            "https://eu-app-gateway.gwmcloud.com/app-api/api/v1.0/globalapp/vehicle/acquireVehicles");
+            "https://eu-app-gateway.gwmcloud.com/app-api/api/v1.0/globalapp/vehicle/acquireVehicles",
+            signer);
 
-        await invoker.SendAsync(request, CancellationToken.None);
-
-        var sent = capture.Captured!;
         Assert.Equal("1874226830", sent.Headers.GetValues("bt-auth-appkey").Single());
         Assert.Equal("810FF2B7B31516FD", sent.Headers.GetValues("bt-auth-nonce").Single());
         Assert.Equal(
@@ -46,22 +54,79 @@ public class EuBtAuthSigningHandlerTests
     }
 
     [Fact]
-    public async Task EmptyQueryParametersAreRemovedBeforeSigning()
+    public async Task CapturedGetLastStatusVectorKeepsAndSignsEmptyParameters()
     {
-        var capture = new CapturingHandler();
+        const string vin =
+            "364b543434447861582f66744a743231636d64577035716b727a346863424a5344475458585045314343733d";
         var signer = new EuBtAuthSigningHandler(
-            () => "1786119083388",
-            () => "AFFA92EB363A983E")
-        {
-            InnerHandler = capture
-        };
-        using var invoker = new HttpMessageInvoker(signer);
-        using var request = new HttpRequestMessage(
+            () => "1786119094170",
+            () => "38AA045BAECB0A9B");
+        var url =
+            $"https://eu-app-gateway.gwmcloud.com/app-api/api/v1.0/vehicle/getLastStatus" +
+            $"?vin={vin}&seqNo=&modelId=";
+
+        using var sent = await SendAsync(HttpMethod.Get, url, signer);
+
+        Assert.Equal($"?vin={vin}&seqNo=&modelId=", sent.RequestUri!.Query);
+        Assert.Equal(
+            "3a96df99215e51f70218b6e8a0004d26174a5f727715d371d225615d50e7b081",
+            sent.Headers.GetValues("bt-auth-sign").Single());
+    }
+
+    [Fact]
+    public async Task CapturedMultiParameterVectorSortsAndLowercasesKeys()
+    {
+        var signer = new EuBtAuthSigningHandler(
+            () => "1786109619155",
+            () => "311FD65FFE955342");
+
+        using var sent = await SendAsync(
             HttpMethod.Get,
-            "https://eu-app-gateway.gwmcloud.com/app-api/api/v1.0/vehicle/getLastStatus?vin=ABC&seqNo=&modelId=");
+            "https://eu-h5-gateway.gwmcloud.com/app-api/api/v1.0/complaintsComments/findLastVersion" +
+            "?type=Android&versionNum=1.3.0",
+            signer);
 
-        await invoker.SendAsync(request, CancellationToken.None);
+        Assert.Equal("?type=Android&versionNum=1.3.0", sent.RequestUri!.Query);
+        Assert.Equal(
+            "32eb4ab7b917c478867c128a327dc6d690690307decd1219406fcd9738e2847f",
+            sent.Headers.GetValues("bt-auth-sign").Single());
+    }
 
-        Assert.Equal("?vin=ABC", capture.Captured!.RequestUri!.Query);
+    [Fact]
+    public async Task QueryValuesAreUrlDecodedForSigningWithoutChangingTheUrl()
+    {
+        var signer = new EuBtAuthSigningHandler(
+            () => "1721462400123",
+            () => "0123456789ABCDEF");
+        const string query = "?z=hello%20world&empty=&A=One%2FTwo";
+
+        using var sent = await SendAsync(
+            HttpMethod.Get,
+            "https://eu-app-gateway.gwmcloud.com/app-api/api/v1.0/vehicle/test" + query,
+            signer);
+
+        Assert.Equal(query, sent.RequestUri!.Query);
+        Assert.Equal(
+            "d43ac09bf68b7ad87be78a756c43b96616b0aa4cb0d7a1fffd65c768d8834f76",
+            sent.Headers.GetValues("bt-auth-sign").Single());
+    }
+
+    [Fact]
+    public async Task PostSignsTheExactJsonBody()
+    {
+        var signer = new EuBtAuthSigningHandler(
+            () => "1721462400123",
+            () => "0123456789ABCDEF");
+        using var body = new StringContent("{\"csr\":\"ABC\",\"phone\":\"123\"}");
+
+        using var sent = await SendAsync(
+            HttpMethod.Post,
+            "https://eu-app-gateway-common.gwmcloud.com/app-api/api/v1.0/appAuth/applyCertificate",
+            signer,
+            body);
+
+        Assert.Equal(
+            "20ab93e421bea31c209071172c73220c48caf8e7b11172426ee7ef7a23d06703",
+            sent.Headers.GetValues("bt-auth-sign").Single());
     }
 }
