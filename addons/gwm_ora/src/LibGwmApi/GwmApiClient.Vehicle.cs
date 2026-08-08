@@ -56,8 +56,19 @@ public partial class GwmApiClient
         return PostAppAsync("vehicle/T5/sendCmd", request, cancellationToken);
     }
 
-    public Task<RemoteCtrlResultT5[]> GetRemoteCtrlResultAsync(string seqNo, CancellationToken cancellationToken)
+    public Task<RemoteCtrlResultT5[]> GetRemoteCtrlResultAsync(string seqNo, string vin, CancellationToken cancellationToken)
     {
-        return GetAppAsync<RemoteCtrlResultT5[]>($"vehicle/getRemoteCtrlResultT5?seqNo={seqNo}", cancellationToken);
+        // AU/NZ requires the VIN as a request header on this endpoint. Without it the gateway
+        // rejects the poll with "002 Missing request header 'vin'", so a command that actually
+        // succeeded gets reported as failed. The VIN is a header (not a signed query parameter),
+        // so it does not affect the bt-auth signature. EU does not send it.
+        var extraHeaders = _region == "aus"
+            ? new[] { ("vin", vin) }
+            : null;
+
+        return GetAppAsync<RemoteCtrlResultT5[]>(
+            $"vehicle/getRemoteCtrlResultT5?seqNo={seqNo}",
+            extraHeaders,
+            cancellationToken);
     }
 }
