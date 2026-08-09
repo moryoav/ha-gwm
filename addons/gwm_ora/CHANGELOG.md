@@ -6,6 +6,16 @@ This project follows semantic versioning. HACS uses the latest GitHub release ta
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-08-09
+
+### Added
+
+- Added a translated **Charging status** sensor with disconnected, connected, charging, waiting, and error states, including evcc setup documentation.
+
+### Fixed
+
+- Keep the **Charging active** binary sensor available and off for known GWM waiting and error states.
+
 ## [0.5.0] - 2026-08-09
 
 ### Changed

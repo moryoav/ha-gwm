@@ -32,6 +32,9 @@
       }
     },
     "sensor": {
+      "charging_status": {
+        "default": "mdi:ev-plug-type2"
+      },
       "command_status": {
         "default": "mdi:progress-clock"
       },
