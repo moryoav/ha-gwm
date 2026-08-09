@@ -103,4 +103,53 @@ public class GwmApiClientRegionTests
 
         Assert.Equal("607099", error.Code);
     }
+
+    private sealed class CapturingHandler(string json) : HttpMessageHandler
+    {
+        public HttpRequestMessage? LastRequest { get; private set; }
+
+        protected override Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request,
+            CancellationToken cancellationToken)
+        {
+            LastRequest = request;
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(json, Encoding.UTF8, "application/json")
+            });
+        }
+    }
+
+    private const string EmptyResultArray = """
+    {"code":"000000","description":"success","data":[]}
+    """;
+
+    [Fact]
+    public async Task AusSendsVinHeaderOnRemoteCtrlResult()
+    {
+        var handler = new CapturingHandler(EmptyResultArray);
+        using var h5 = new HttpClient(new JsonResponseHandler(EmptyResultArray));
+        using var app = new HttpClient(handler);
+        var client = new GwmApiClient(h5, app, NullLoggerFactory.Instance, "aus");
+
+        await client.GetRemoteCtrlResultAsync("SEQ123", "ENCODED-VIN", CancellationToken.None);
+
+        Assert.NotNull(handler.LastRequest);
+        Assert.True(handler.LastRequest!.Headers.TryGetValues("vin", out var values));
+        Assert.Equal("ENCODED-VIN", values!.Single());
+    }
+
+    [Fact]
+    public async Task EuDoesNotSendVinHeaderOnRemoteCtrlResult()
+    {
+        var handler = new CapturingHandler(EmptyResultArray);
+        using var h5 = new HttpClient(new JsonResponseHandler(EmptyResultArray));
+        using var app = new HttpClient(handler);
+        var client = new GwmApiClient(h5, app, NullLoggerFactory.Instance, "eu");
+
+        await client.GetRemoteCtrlResultAsync("SEQ123", "ENCODED-VIN", CancellationToken.None);
+
+        Assert.NotNull(handler.LastRequest);
+        Assert.False(handler.LastRequest!.Headers.Contains("vin"));
+    }
 }

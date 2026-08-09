@@ -239,7 +239,7 @@ public sealed class RemoteCommandService
         for (var attempt = 1; attempt <= MaxResultPolls; attempt++)
         {
             await Task.Delay(ResultPollInterval, cancellationToken);
-            var results = await client.GetRemoteCtrlResultAsync(request.SeqNo, cancellationToken);
+            var results = await client.GetRemoteCtrlResultAsync(request.SeqNo, request.Vin, cancellationToken);
             var result = results.FirstOrDefault(x => String.Equals(x.HwCommandId, request.SeqNo, StringComparison.OrdinalIgnoreCase))
                          ?? results.FirstOrDefault();
 

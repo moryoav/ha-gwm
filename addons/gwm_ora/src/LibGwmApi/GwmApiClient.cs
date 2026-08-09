@@ -293,6 +293,24 @@ public partial class GwmApiClient
         return await GetResponseAsync<T>(response, cancellationToken);
     }
 
+    private async Task<T> GetAppAsync<T>(
+        string url,
+        IEnumerable<(string Name, string Value)> extraHeaders,
+        CancellationToken cancellationToken)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Get, url);
+        if (extraHeaders is not null)
+        {
+            foreach (var (name, value) in extraHeaders)
+            {
+                request.Headers.TryAddWithoutValidation(name, value);
+            }
+        }
+
+        var response = await _appClient.SendAsync(request, cancellationToken);
+        return await GetResponseAsync<T>(response, cancellationToken);
+    }
+
     private async Task CheckResponseAsync(
         HttpResponseMessage response,
         CancellationToken cancellationToken)
