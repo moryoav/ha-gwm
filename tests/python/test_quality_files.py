@@ -65,8 +65,8 @@ def test_addon_metadata_declares_internal_api_and_discovery() -> None:
     assert "ingress_port: 8099" in config
     assert "8099/tcp: null" in config
     assert "ASPNETCORE_HTTP_PORTS: \"8099\"" in config
-    assert "version: \"0.4.0\"" in config
-    assert "GWM_ORA_ADDON_VERSION: \"0.4.0\"" in config
+    assert "version: \"0.5.0\"" in config
+    assert "GWM_ORA_ADDON_VERSION: \"0.5.0\"" in config
     assert "ASPNETCORE_URLS" not in config
     assert "ENV ASPNETCORE_HTTP_PORTS=8099" in dockerfile
     assert "ENV GWM_ORA_ADDON_VERSION=${BUILD_VERSION}" in dockerfile
