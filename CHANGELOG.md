@@ -6,6 +6,8 @@ This project follows semantic versioning. HACS uses the latest GitHub release ta
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-08-09
+
 ### Fixed
 
 - AU/NZ: send the required `vin` request header when polling remote-command results (`getRemoteCtrlResultT5`). Without it the ANZ gateway rejected the poll with `002 Missing request header 'vin'`, so a command that actually succeeded on the vehicle was reported as failed in Home Assistant. Verified end-to-end on an ANZ ORA 5. EU is unaffected.
