@@ -300,13 +300,13 @@ public sealed class RemoteCommandService
         _logger.LogError(exception, "Remote command {CommandId} failed", id);
     }
 
-    private static string FormatRemoteCommandResult(string commandName, RemoteCtrlResultT5 result, int attempt)
+    internal static string FormatRemoteCommandResult(string commandName, RemoteCtrlResultT5 result, int attempt)
     {
         var resultCode = String.IsNullOrWhiteSpace(result.ResultCode) ? "unknown" : result.ResultCode;
         var resultMsg = String.IsNullOrWhiteSpace(result.ResultMsg) ? "no message" : result.ResultMsg;
         if (PendingResultCode.Equals(result.ResultCode, StringComparison.Ordinal))
         {
-            return $"{commandName}: in progress ({attempt}/{MaxResultPolls}) - {resultMsg} [{resultCode}]";
+            return $"{commandName}: in progress ({attempt}/{MaxResultPolls}) - waiting for vehicle result [{resultCode}]";
         }
 
         var status = IsSuccessfulRemoteCommandResult(result) ? "completed" : "failed";

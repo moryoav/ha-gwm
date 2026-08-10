@@ -6,6 +6,12 @@ This project follows semantic versioning. HACS uses the latest GitHub release ta
 
 ## [Unreleased]
 
+## [0.6.1] - 2026-08-10
+
+### Fixed
+
+- Show neutral polling progress for GWM result code `2000` instead of the backend's misleading failure and retry message while the add-on automatically waits for the vehicle result.
+
 ## [0.6.0] - 2026-08-09
 
 ### Fixed
