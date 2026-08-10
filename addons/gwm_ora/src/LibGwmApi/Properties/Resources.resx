@@ -121,10 +121,19 @@
   <data name="cert" type="System.Resources.ResXFileRef, System.Windows.Forms">
     <value>..\Resources\gwm_general.cer;System.Byte[], mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
   </data>
+  <data name="cert_rus" type="System.Resources.ResXFileRef, System.Windows.Forms">
+    <value>..\Resources\gwm_general_rus.cer;System.Byte[], mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </data>
   <data name="chain" type="System.Resources.ResXFileRef, System.Windows.Forms">
     <value>..\Resources\gwm_root.pem;System.Byte[], mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
   </data>
+  <data name="chain_rus" type="System.Resources.ResXFileRef, System.Windows.Forms">
+    <value>..\Resources\gwm_root_rus.pem;System.Byte[], mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </data>
   <data name="key" type="System.Resources.ResXFileRef, System.Windows.Forms">
     <value>..\Resources\gwm_general.key;System.Byte[], mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </data>
+  <data name="key_rus" type="System.Resources.ResXFileRef, System.Windows.Forms">
+    <value>..\Resources\gwm_general_rus.key;System.Byte[], mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
   </data>
 </root>

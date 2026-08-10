@@ -53,6 +53,27 @@ public class AddonOptionsLoaderTests
     }
 
     [Fact]
+    public void LoadAcceptsRusRegion()
+    {
+        var path = Path.GetTempFileName();
+        File.WriteAllText(path, """
+        {
+          "country": "RU",
+          "region": "rus",
+          "username": "owner@example.com",
+          "password": "secret",
+          "poll_interval_seconds": 60,
+          "log_level": "info"
+        }
+        """);
+
+        var options = AddonOptionsLoader.Load(path);
+
+        Assert.Equal("RU", options.Country);
+        Assert.Equal("rus", options.Region);
+    }
+
+    [Fact]
     public void LoadRejectsUnsupportedRegion()
     {
         var path = Path.GetTempFileName();
@@ -69,7 +90,7 @@ public class AddonOptionsLoaderTests
 
         var error = Assert.Throws<InvalidOperationException>(() => AddonOptionsLoader.Load(path));
 
-        Assert.Contains("'eu' or 'aus'", error.Message);
+        Assert.Contains("'eu', 'aus', or 'rus'", error.Message);
     }
 
     [Fact]

@@ -76,9 +76,9 @@ public static class AddonOptionsLoader
         }
 
         var region = (options.Region ?? "eu").Trim().ToLowerInvariant();
-        if (region is not ("eu" or "aus"))
+        if (region is not ("eu" or "aus" or "rus"))
         {
-            throw new InvalidOperationException("Option 'region' must be 'eu' or 'aus'.");
+            throw new InvalidOperationException("Option 'region' must be 'eu', 'aus', or 'rus'.");
         }
 
         if (String.IsNullOrWhiteSpace(options.Username))

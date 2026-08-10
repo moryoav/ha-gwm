@@ -85,6 +85,17 @@
       "range": { "name": "Range" },
       "odometer": { "name": "Odometer" },
       "remaining_charging_time": { "name": "Remaining charging time" },
+      "charging_status": {
+        "name": "Charging status",
+        "state": {
+          "disconnected": "Disconnected",
+          "connected": "Connected",
+          "charging": "Charging",
+          "awaiting_charging": "Awaiting charging",
+          "waiting_for_power": "Waiting for power",
+          "error": "Error"
+        }
+      },
       "soce": { "name": "SOCE" },
       "interior_temperature": { "name": "Interior temperature" },
       "tire_pressure_front_left": { "name": "Tire pressure front left" },

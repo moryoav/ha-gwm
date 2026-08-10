@@ -1,3 +1,4 @@
+using System.Net;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography.X509Certificates;
 using GwmOra.Addon.Configuration;
@@ -20,46 +21,125 @@ public sealed class GwmApiClientFactory
 
         if (String.Equals(options.Region, "aus", StringComparison.OrdinalIgnoreCase))
         {
-            // AU/NZ: no mutual-TLS client certificate; bt-auth request signing instead.
-            var h5 = new HttpClient(new BtAuthSigningHandler { InnerHandler = new HttpClientHandler() });
-            var app = new HttpClient(new BtAuthSigningHandler { InnerHandler = new HttpClientHandler() });
+            var h5 = new HttpClient(new BtAuthSigningHandler
+            {
+                InnerHandler = CreatePlainHandler()
+            });
+            var app = new HttpClient(new BtAuthSigningHandler
+            {
+                InnerHandler = CreatePlainHandler()
+            });
+
             client = new GwmApiClient(h5, app, _loggerFactory, "aus")
             {
                 Country = options.Country,
-                DeviceId = AusDeviceId(state.DeviceId)
+                DeviceId = ApiDeviceId(state.DeviceId)
             };
+        }
+        else if (String.Equals(options.Region, "rus", StringComparison.OrdinalIgnoreCase))
+        {
+            // Russia (GWM.apk): mutual-TLS on the app gateway PLUS gwm-auth request signing on
+            // every call (OverseasRequestHeaderInterceptor). Login hits rus-h5-gateway without a
+            // client cert but still requires the signature — without it the gateway returns
+            // "Значение подписи пустое".
+            var certificateHandler = new CertificateHandler("rus");
+            using var rusCertificate = certificateHandler.CertificateWithPrivateKey;
+            var h5 = new HttpClient(new BtAuthSigningHandler(BtAuthSigningHandler.Profiles.Rus)
+            {
+                InnerHandler = CreatePlainHandler()
+            });
+            var app = new HttpClient(new BtAuthSigningHandler(BtAuthSigningHandler.Profiles.Rus)
+            {
+                InnerHandler = CreateTlsHandler(rusCertificate)
+            });
+            client = new GwmApiClient(h5, app, _loggerFactory, "rus")
+            {
+                Country = options.Country,
+                DeviceId = state.DeviceId
+            };
+
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+            {
+                using var store = new X509Store(
+                    StoreName.CertificateAuthority,
+                    StoreLocation.CurrentUser);
+                store.Open(OpenFlags.ReadWrite);
+                foreach (var certificate in certificateHandler.Chain)
+                {
+                    if (certificate.Issuer != certificate.Subject)
+                    {
+                        store.Add(certificate);
+                    }
+                }
+            }
         }
         else
         {
-            var certHandler = new CertificateHandler();
-            var httpHandler = new HttpClientHandler
-            {
-                ClientCertificateOptions = ClientCertificateOption.Manual
-            };
+            var certificateHandler = new CertificateHandler();
+            using var generalCertificate = certificateHandler.CertificateWithPrivateKey;
 
-            using (var cert = certHandler.CertificateWithPrivateKey)
+            var h5 = new HttpClient(new EuBtAuthSigningHandler
             {
-                var pkcs12 = new X509Certificate2(cert.Export(X509ContentType.Pkcs12));
-                httpHandler.ClientCertificates.Add(pkcs12);
+                InnerHandler = CreatePlainHandler()
+            });
+            var auth = new HttpClient(new GwmAuthSigningHandler
+            {
+                InnerHandler = CreatePlainHandler()
+            });
+
+            var commonTlsHandler = CreateTlsHandler(generalCertificate);
+            var certificateClient = new HttpClient(new EuBtAuthSigningHandler
+            {
+                InnerHandler = commonTlsHandler
+            });
+
+            X509Certificate2? initialVehicleCertificate = null;
+            if (ClientCertificateEnrollment.IsUsable(
+                    state.ClientCertificate,
+                    state.ClientPrivateKey))
+            {
+                initialVehicleCertificate = ClientCertificateEnrollment.LoadWithPrivateKey(
+                    state.ClientCertificate!,
+                    state.ClientPrivateKey!);
+            }
+
+            using (initialVehicleCertificate)
+            {
+                var appTlsHandler = CreateTlsHandler(
+                    initialVehicleCertificate ?? generalCertificate);
+                var app = new HttpClient(new EuBtAuthSigningHandler
+                {
+                    InnerHandler = appTlsHandler
+                });
+
+                client = new GwmApiClient(
+                    h5,
+                    auth,
+                    app,
+                    certificateClient,
+                    _loggerFactory,
+                    options.Region,
+                    certificate => ReplaceClientCertificate(appTlsHandler, certificate))
+                {
+                    Country = options.Country,
+                    DeviceId = ApiDeviceId(state.DeviceId)
+                };
             }
 
             if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
             {
-                using var store = new X509Store(StoreName.CertificateAuthority, StoreLocation.CurrentUser);
+                using var store = new X509Store(
+                    StoreName.CertificateAuthority,
+                    StoreLocation.CurrentUser);
                 store.Open(OpenFlags.ReadWrite);
-                foreach (var cert in certHandler.Chain)
+                foreach (var certificate in certificateHandler.Chain)
                 {
-                    if (cert.Issuer != cert.Subject)
+                    if (certificate.Issuer != certificate.Subject)
                     {
-                        store.Add(cert);
+                        store.Add(certificate);
                     }
                 }
             }
-
-            client = new GwmApiClient(new HttpClient(), new HttpClient(httpHandler), _loggerFactory, options.Region)
-            {
-                Country = options.Country
-            };
         }
 
         if (!String.IsNullOrWhiteSpace(state.AccessToken))
@@ -70,10 +150,52 @@ public sealed class GwmApiClientFactory
         return client;
     }
 
-    // AU expects a 16-hex (iccid-like) device id; state.DeviceId is a 32-hex GUID, so take 16.
-    private static string AusDeviceId(string deviceId)
+    private static HttpClientHandler CreatePlainHandler()
     {
-        var d = (deviceId ?? String.Empty).Replace("-", String.Empty);
-        return d.Length >= 16 ? d.Substring(0, 16) : d.PadRight(16, '0');
+        return new HttpClientHandler
+        {
+            AutomaticDecompression = DecompressionMethods.All
+        };
+    }
+
+    private static HttpClientHandler CreateTlsHandler(X509Certificate2 certificate)
+    {
+        var handler = CreatePlainHandler();
+        handler.ClientCertificateOptions = ClientCertificateOption.Manual;
+        handler.ClientCertificates.Add(CloneCertificate(certificate));
+        return handler;
+    }
+
+    private static void ReplaceClientCertificate(
+        HttpClientHandler handler,
+        X509Certificate2 certificate)
+    {
+        var existingCertificates = handler.ClientCertificates
+            .Cast<X509Certificate2>()
+            .ToArray();
+        handler.ClientCertificates.Clear();
+        foreach (var existing in existingCertificates)
+        {
+            existing.Dispose();
+        }
+
+        handler.ClientCertificates.Add(CloneCertificate(certificate));
+    }
+
+    private static X509Certificate2 CloneCertificate(X509Certificate2 certificate)
+    {
+        return X509CertificateLoader.LoadPkcs12(
+            certificate.Export(X509ContentType.Pkcs12),
+            null,
+            X509KeyStorageFlags.EphemeralKeySet |
+            X509KeyStorageFlags.Exportable);
+    }
+
+    internal static string ApiDeviceId(string deviceId)
+    {
+        var normalized = (deviceId ?? String.Empty).Replace("-", String.Empty);
+        return normalized.Length >= 16
+            ? normalized[..16]
+            : normalized.PadRight(16, '0');
     }
 }

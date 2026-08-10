@@ -34,7 +34,8 @@ public static class VehicleSnapshotMapper
             TireTemperatureRearRightC = Number(status, "2101008"),
             OdometerKm = Number(status, "2103010"),
             InteriorTemperatureC = Number(status, "2201001") / 10.0,
-            ChargingActive = Bool(status, "2041142"),
+            ChargingStatus = ChargingStatus(status),
+            ChargingActive = ChargingActive(status),
             ChargePlugConnected = Bool(status, "2042082"),
             AcActive = Bool(status, "2202001"),
             Locked = LockClosed(status),
@@ -149,6 +150,30 @@ public static class VehicleSnapshotMapper
             "1" => true,
             "0" => false,
             null => null,
+            _ => null
+        };
+    }
+
+    private static string? ChargingStatus(VehicleStatus status)
+    {
+        return Value(status, "2041142") switch
+        {
+            "0" when Bool(status, "2042082") == false => "disconnected",
+            "0" when Bool(status, "2042082") == true => "connected",
+            "1" => "charging",
+            "2" => "awaiting_charging",
+            "5" => "waiting_for_power",
+            "6" => "error",
+            _ => null
+        };
+    }
+
+    private static bool? ChargingActive(VehicleStatus status)
+    {
+        return Value(status, "2041142") switch
+        {
+            "1" => true,
+            "0" or "2" or "5" or "6" => false,
             _ => null
         };
     }

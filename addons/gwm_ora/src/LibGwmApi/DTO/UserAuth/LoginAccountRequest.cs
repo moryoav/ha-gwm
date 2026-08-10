@@ -16,6 +16,13 @@ public class LoginAccountRequest
     [JsonPropertyName("country")]
     public string Country { get; set; }
 
+    // Optional. For Russia e-mail login this must be omitted: sending countryCode="RU"
+    // makes rus-h5-gateway validate account as a phone ("Телефон в 8-32 номерах").
+    // When present in APK responses it is the dialing code (e.g. "7"), not ISO2.
+    [JsonPropertyName("countryCode")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string CountryCode { get; set; }
+
     [JsonPropertyName("deviceId")]
     public string DeviceId { get; set; }
 

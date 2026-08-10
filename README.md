@@ -1,5 +1,7 @@
 # GWM ORA for Home Assistant
-[![HACS][hacs-badge]][hacs-url] [![release][release-badge]][release-url] ![downloads][downloads-badge] [![license][license-badge]][license-url]
+[![HACS][hacs-badge]][hacs-url] [![release][release-badge]][release-url] [![license][license-badge]][license-url]
+
+[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/Y5B124NZ2L)
 
 ![GWM ORA][banner]
 
@@ -47,8 +49,8 @@ poll_interval_seconds: 60
 log_level: info
 ```
 
-- `region`: Cloud gateway for the account. Use `eu` for Europe/Israel or `aus` for Australia/New Zealand.
-- `country`: Two-letter country where the GWM account was registered, such as `DE`, `GB`, `AU`, or `NZ`. It must match the account registration country.
+- `region`: Cloud gateway for the account. Use `eu` for Europe/Israel, `aus` for Australia/New Zealand, or `rus` for Russia.
+- `country`: Two-letter country where the GWM account was registered, such as `DE`, `GB`, `AU`, `NZ`, or `RU`. It must match the account registration country.
 - `username`: E-mail address for your GWM account.
 - `password`: Password for your GWM account.
 - `enable_remote_commands`: Enables A/C, lock, unlock, and close-window controls. Use `false` for read-only entities. AU/NZ command support is currently experimental and unconfirmed.
@@ -96,7 +98,7 @@ You do not enter your GWM username or password in the integration.
 
 ## Entities
 
-- Sensors: SOC, range, odometer, remaining charging time, SOCE, tire pressures, tire temperatures, interior temperature, acquisition/update timestamps, remote command status.
+- Sensors: SOC, range, odometer, charging status, remaining charging time, SOCE, tire pressures, tire temperatures, interior temperature, acquisition/update timestamps, remote command status.
 - Binary sensors: charging active, charge plug, A/C active, lock open, windows open, air circulation, front defroster.
 - Device tracker: vehicle GPS location when available.
 - Climate: A/C mode `off`/`cool`, target temperature, current cabin temperature.
@@ -105,6 +107,23 @@ You do not enter your GWM username or password in the integration.
 - Button: close all windows.
 
 Remote command entities are unavailable until remote commands are enabled and a security PIN is configured in the add-on.
+
+### Use the charging status with evcc
+
+The **Charging status** sensor reports `disconnected`, `connected`, `charging`, `awaiting_charging`, `waiting_for_power`, or `error`. When you use this sensor as the vehicle status in evcc, add the two GWM waiting states to evcc's status B mapping:
+
+```yaml
+vehicles:
+  - name: ora
+    type: template
+    template: homeassistant
+    uri: http://homeassistant.local:8123
+    soc: sensor.ora_soc
+    status: sensor.ora_charging_status
+    statusB: awaiting_charging, waiting_for_power
+```
+
+Replace the example entity IDs with the IDs from your Home Assistant installation. In the evcc user interface, the same setting is available as the advanced **States for status B** field.
 
 ## Remote Commands
 
@@ -129,7 +148,7 @@ This project is designed for GWM ORA vehicles that use the same GWM cloud behavi
 
 Regional GWM services and vehicle firmware can differ, so some entities may be unavailable on some cars.
 
-> **Regional availability:** This integration supports accounts on the European GWM cloud (`region: eu`), including EU countries and Israel, and accounts on the Australia/New Zealand cloud (`region: aus`). AU/NZ login and vehicle data are live-tested; remote commands are experimental as described above. It is not expected to work in Russia, the United States, China, or other regions that use different GWM servers and authentication flows.
+> **Regional availability:** This integration supports accounts on the European GWM cloud (`region: eu`), including EU countries and Israel; the Australia/New Zealand cloud (`region: aus`); and the Russia cloud (`region: rus`) using the Russian GWM app gateways and PKI. AU/NZ login and vehicle data are live-tested; remote commands remain experimental for `aus`. Russia support follows the EU mutual-TLS model with RU certificates from the official APK.
 
 ### Australia/New Zealand account sessions
 
