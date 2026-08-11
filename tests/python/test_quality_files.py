@@ -65,8 +65,8 @@ def test_addon_metadata_declares_internal_api_and_discovery() -> None:
     assert "ingress_port: 8099" in config
     assert "8099/tcp: null" in config
     assert "ASPNETCORE_HTTP_PORTS: \"8099\"" in config
-    assert "version: \"0.4.0\"" in config
-    assert "GWM_ORA_ADDON_VERSION: \"0.4.0\"" in config
+    assert "version: \"0.6.1\"" in config
+    assert "GWM_ORA_ADDON_VERSION: \"0.6.1\"" in config
     assert "ASPNETCORE_URLS" not in config
     assert "ENV ASPNETCORE_HTTP_PORTS=8099" in dockerfile
     assert "ENV GWM_ORA_ADDON_VERSION=${BUILD_VERSION}" in dockerfile
@@ -113,7 +113,7 @@ def test_hacs_default_repository_readiness_files_exist() -> None:
     assert manifest["documentation"] == "https://github.com/moryoav/ha-gwm_ora"
     assert manifest["issue_tracker"] == "https://github.com/moryoav/ha-gwm_ora/issues"
     assert manifest["codeowners"] == ["@moryoav"]
-    assert manifest["version"] == "0.4.0"
+    assert manifest["version"] == "0.6.1"
 
     custom_components = [path.name for path in (ROOT / "custom_components").iterdir() if path.is_dir()]
     assert custom_components == ["gwm_ora"]

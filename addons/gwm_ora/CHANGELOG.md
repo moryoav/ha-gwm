@@ -6,6 +6,34 @@ This project follows semantic versioning. HACS uses the latest GitHub release ta
 
 ## [Unreleased]
 
+## [0.6.1] - 2026-08-10
+
+### Fixed
+
+- Show neutral polling progress for GWM result code `2000` instead of the backend's misleading failure and retry message while the add-on automatically waits for the vehicle result.
+
+## [0.6.0] - 2026-08-09
+
+### Fixed
+
+- AU/NZ: send the required `vin` request header when polling remote-command results (`getRemoteCtrlResultT5`). Without it the ANZ gateway rejected the poll with `002 Missing request header 'vin'`, so a command that actually succeeded on the vehicle was reported as failed in Home Assistant. Verified end-to-end on an ANZ ORA 5. EU is unaffected.
+
+## [0.5.1] - 2026-08-09
+
+### Added
+
+- Added a translated **Charging status** sensor with disconnected, connected, charging, waiting, and error states, including evcc setup documentation.
+
+### Fixed
+
+- Keep the **Charging active** binary sensor available and off for known GWM waiting and error states.
+
+## [0.5.0] - 2026-08-09
+
+### Changed
+
+- New v2 Authentication code for EU region.
+
 ## [0.4.0] - 2026-08-02
 
 ### Added

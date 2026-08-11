@@ -21,6 +21,12 @@ public sealed class AddonState
     [JsonPropertyName("bean_id")]
     public string? BeanId { get; set; }
 
+    [JsonPropertyName("client_certificate")]
+    public string? ClientCertificate { get; set; }
+
+    [JsonPropertyName("client_private_key")]
+    public string? ClientPrivateKey { get; set; }
+
     [JsonPropertyName("api_token")]
     public string ApiToken { get; set; } = String.Empty;
 
@@ -79,7 +85,9 @@ public sealed class AddonStateStore
         AddonState state;
         if (File.Exists(path))
         {
-            state = JsonSerializer.Deserialize<AddonState>(File.ReadAllText(path), SerializerOptions) ?? new AddonState();
+            state = JsonSerializer.Deserialize<AddonState>(
+                File.ReadAllText(path),
+                SerializerOptions) ?? new AddonState();
         }
         else
         {
@@ -95,7 +103,9 @@ public sealed class AddonStateStore
         return store;
     }
 
-    public async Task UpdateAsync(Action<AddonState> update, CancellationToken cancellationToken)
+    public async Task UpdateAsync(
+        Action<AddonState> update,
+        CancellationToken cancellationToken)
     {
         await _gate.WaitAsync(cancellationToken);
         try
@@ -133,7 +143,11 @@ public sealed class AddonStateStore
         var tempPath = _path + ".tmp";
         await using (var stream = File.Create(tempPath))
         {
-            await JsonSerializer.SerializeAsync(stream, State, SerializerOptions, cancellationToken);
+            await JsonSerializer.SerializeAsync(
+                stream,
+                State,
+                SerializerOptions,
+                cancellationToken);
             await stream.FlushAsync(cancellationToken);
         }
 

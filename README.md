@@ -1,5 +1,7 @@
 # GWM ORA for Home Assistant
-[![HACS][hacs-badge]][hacs-url] [![release][release-badge]][release-url] ![downloads][downloads-badge] [![license][license-badge]][license-url]
+[![HACS][hacs-badge]][hacs-url] [![release][release-badge]][release-url] [![license][license-badge]][license-url]
+
+[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/Y5B124NZ2L)
 
 ![GWM ORA][banner]
 
@@ -96,7 +98,7 @@ You do not enter your GWM username or password in the integration.
 
 ## Entities
 
-- Sensors: SOC, range, odometer, remaining charging time, SOCE, tire pressures, tire temperatures, interior temperature, acquisition/update timestamps, remote command status.
+- Sensors: SOC, range, odometer, charging status, remaining charging time, SOCE, tire pressures, tire temperatures, interior temperature, acquisition/update timestamps, remote command status.
 - Binary sensors: charging active, charge plug, A/C active, lock open, windows open, air circulation, front defroster.
 - Device tracker: vehicle GPS location when available.
 - Climate: A/C mode `off`/`cool`, target temperature, current cabin temperature.
@@ -105,6 +107,23 @@ You do not enter your GWM username or password in the integration.
 - Button: close all windows.
 
 Remote command entities are unavailable until remote commands are enabled and a security PIN is configured in the add-on.
+
+### Use the charging status with evcc
+
+The **Charging status** sensor reports `disconnected`, `connected`, `charging`, `awaiting_charging`, `waiting_for_power`, or `error`. When you use this sensor as the vehicle status in evcc, add the two GWM waiting states to evcc's status B mapping:
+
+```yaml
+vehicles:
+  - name: ora
+    type: template
+    template: homeassistant
+    uri: http://homeassistant.local:8123
+    soc: sensor.ora_soc
+    status: sensor.ora_charging_status
+    statusB: awaiting_charging, waiting_for_power
+```
+
+Replace the example entity IDs with the IDs from your Home Assistant installation. In the evcc user interface, the same setting is available as the advanced **States for status B** field.
 
 ## Remote Commands
 

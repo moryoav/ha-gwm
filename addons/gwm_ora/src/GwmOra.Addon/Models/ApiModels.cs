@@ -75,6 +75,7 @@ public sealed class VehicleValues
     public double? TireTemperatureRearRightC { get; init; }
     public double? OdometerKm { get; init; }
     public double? InteriorTemperatureC { get; init; }
+    public string? ChargingStatus { get; init; }
     public bool? ChargingActive { get; init; }
     public bool? ChargePlugConnected { get; init; }
     public bool? AcActive { get; init; }

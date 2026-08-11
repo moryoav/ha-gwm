@@ -5,6 +5,7 @@ import pytest
 
 def test_sensor_description_keys_cover_v1_contract() -> None:
     pytest.importorskip("homeassistant")
+    from homeassistant.components.sensor import SensorDeviceClass
     from homeassistant.helpers.entity import EntityCategory
 
     from custom_components.gwm_ora.sensor import SENSORS
@@ -18,6 +19,7 @@ def test_sensor_description_keys_cover_v1_contract() -> None:
         "fuel_range_km",
         "odometer_km",
         "remaining_charging_time_min",
+        "charging_status",
         "soce",
         "interior_temperature_c",
         "tire_pressure_state_front_left",
@@ -34,6 +36,15 @@ def test_sensor_description_keys_cover_v1_contract() -> None:
     assert descriptions["acquisition_time"].entity_registry_enabled_default is False
     assert descriptions["update_time"].entity_registry_enabled_default is False
     assert descriptions["command_status"].entity_registry_enabled_default is not False
+    assert descriptions["charging_status"].device_class is SensorDeviceClass.ENUM
+    assert descriptions["charging_status"].options == [
+        "disconnected",
+        "connected",
+        "charging",
+        "awaiting_charging",
+        "waiting_for_power",
+        "error",
+    ]
 
 
 def test_binary_sensor_description_keys_cover_v1_contract() -> None:

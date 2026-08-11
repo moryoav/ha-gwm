@@ -19,6 +19,15 @@ from .entity import GwmOraEntity, setup_vehicle_entities, vehicle_value
 
 PARALLEL_UPDATES = 0
 
+CHARGING_STATUS_OPTIONS = [
+    "disconnected",
+    "connected",
+    "charging",
+    "awaiting_charging",
+    "waiting_for_power",
+    "error",
+]
+
 
 @dataclass(frozen=True, kw_only=True)
 class GwmOraSensorEntityDescription(SensorEntityDescription):
@@ -89,6 +98,13 @@ SENSORS: tuple[GwmOraSensorEntityDescription, ...] = (
         native_unit_of_measurement=UnitOfTime.MINUTES,
         state_class=SensorStateClass.MEASUREMENT,
         value_fn=_value("remaining_charging_time_min"),
+    ),
+    GwmOraSensorEntityDescription(
+        key="charging_status",
+        translation_key="charging_status",
+        device_class=SensorDeviceClass.ENUM,
+        options=CHARGING_STATUS_OPTIONS,
+        value_fn=_value("charging_status"),
     ),
     GwmOraSensorEntityDescription(
         key="soce",

@@ -33,6 +33,7 @@ public class VehicleSnapshotMapperTests
                 Item("2202001", 1, null),
                 Item("2208001", 0, null),
                 Item("2210001", 1, null),
+                Item("2041142", 1, null),
                 Item("2206001", 0, null),
                 Item("2206002", 1, null),
                 Item("2206003", 0, null),
@@ -67,6 +68,8 @@ public class VehicleSnapshotMapperTests
         Assert.Equal(23.4, snapshot.Values.InteriorTemperatureC);
         Assert.True(snapshot.Values.AcActive);
         Assert.True(snapshot.Values.Locked);
+        Assert.Equal("charging", snapshot.Values.ChargingStatus);
+        Assert.True(snapshot.Values.ChargingActive);
         Assert.False(snapshot.Values.WindowFrontLeftOpen);
         Assert.False(snapshot.Values.TrunkOpen);
         Assert.True(snapshot.Values.DoorFrontRightOpen);
@@ -86,6 +89,40 @@ public class VehicleSnapshotMapperTests
         Assert.NotNull(snapshot.Location);
         Assert.True(snapshot.Capabilities.RemoteCommands);
         Assert.Equal("80", snapshot.RawItems["2013021"].Value);
+    }
+
+    [Theory]
+    [InlineData(0, 0, "disconnected", false)]
+    [InlineData(0, 1, "connected", false)]
+    [InlineData(1, 1, "charging", true)]
+    [InlineData(2, 1, "awaiting_charging", false)]
+    [InlineData(5, 1, "waiting_for_power", false)]
+    [InlineData(6, 1, "error", false)]
+    [InlineData(7, 1, null, null)]
+    public void MapConvertsChargeStatusCodes(
+        int chargeStatus,
+        int plugStatus,
+        string? expectedStatus,
+        bool? expectedChargingActive)
+    {
+        var status = new VehicleStatus
+        {
+            Items =
+            [
+                Item("2041142", chargeStatus, null),
+                Item("2042082", plugStatus, null)
+            ]
+        };
+
+        var snapshot = VehicleSnapshotMapper.Map(
+            new Vehicle { Vin = "VIN123" },
+            status,
+            new VehicleBasicsInfo(),
+            false,
+            "idle");
+
+        Assert.Equal(expectedStatus, snapshot.Values.ChargingStatus);
+        Assert.Equal(expectedChargingActive, snapshot.Values.ChargingActive);
     }
 
     [Theory]
