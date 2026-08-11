@@ -26,11 +26,24 @@ public class VehicleSnapshotMapperTests
             [
                 Item("2013021", 80, "%"),
                 Item("2011501", 210, "km"),
+                Item("2017002", 45, "L"),
+                Item("2011007", 418, "km"),
                 Item("2103010", 12345, "km"),
                 Item("2201001", 234, "C"),
                 Item("2202001", 1, null),
                 Item("2208001", 0, null),
                 Item("2210001", 1, null),
+                Item("2206001", 0, null),
+                Item("2206002", 1, null),
+                Item("2206003", 0, null),
+                Item("2206004", 0, null),
+                Item("2206005", 1, null),
+                Item("2210005", 3, null),
+                Item("2210032", 1, null),
+                Item("2310001", 1, null),
+                Item("2102002", 0, null),
+                Item("2210010", 1, null),
+                Item("2060016", 0, null),
                 Item("2042082", 1, null)
             ]
         };
@@ -48,11 +61,24 @@ public class VehicleSnapshotMapperTests
         Assert.Equal("VIN123", snapshot.Vin);
         Assert.Equal(80, snapshot.Values.Soc);
         Assert.Equal(210, snapshot.Values.RangeKm);
+        Assert.Equal(45, snapshot.Values.FuelLevelL);
+        Assert.Equal(418, snapshot.Values.FuelRangeKm);
         Assert.Equal(12345, snapshot.Values.OdometerKm);
         Assert.Equal(23.4, snapshot.Values.InteriorTemperatureC);
         Assert.True(snapshot.Values.AcActive);
         Assert.True(snapshot.Values.Locked);
         Assert.False(snapshot.Values.WindowFrontLeftOpen);
+        Assert.False(snapshot.Values.TrunkOpen);
+        Assert.True(snapshot.Values.DoorFrontRightOpen);
+        Assert.False(snapshot.Values.DoorRearRightOpen);
+        Assert.False(snapshot.Values.DoorFrontLeftOpen);
+        Assert.True(snapshot.Values.DoorRearLeftOpen);
+        Assert.Equal(3, snapshot.Values.Roof);
+        Assert.True(snapshot.Values.RearDefroster);
+        Assert.True(snapshot.Values.GpsAuthorized);
+        Assert.Equal(0, snapshot.Values.TirePressureStateFrontRight);
+        Assert.Equal(1, snapshot.Values.WindowLearnFrontRight);
+        Assert.Equal(0, snapshot.Values.SteeringWheelHeater);
         Assert.True(snapshot.Values.ChargePlugConnected);
         Assert.Equal("cool", snapshot.Climate.Mode);
         Assert.Equal(23, snapshot.Climate.TargetTemperatureC);

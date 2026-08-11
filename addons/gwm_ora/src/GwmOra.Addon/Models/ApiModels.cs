@@ -61,6 +61,8 @@ public sealed class VehicleValues
 {
     public double? Soc { get; init; }
     public double? RangeKm { get; init; }
+    public double? FuelLevelL { get; init; }
+    public double? FuelRangeKm { get; init; }
     public double? RemainingChargingTimeMin { get; init; }
     public double? Soce { get; init; }
     public double? TirePressureFrontLeftKpa { get; init; }
@@ -81,8 +83,35 @@ public sealed class VehicleValues
     public bool? WindowFrontRightOpen { get; init; }
     public bool? WindowRearLeftOpen { get; init; }
     public bool? WindowRearRightOpen { get; init; }
+    public bool? DoorFrontLeftOpen { get; init; }
+    public bool? DoorFrontRightOpen { get; init; }
+    public bool? DoorRearLeftOpen { get; init; }
+    public bool? DoorRearRightOpen { get; init; }
+    public bool? TrunkOpen { get; init; }
+    public double? Roof { get; init; }
     public bool? AirCirculation { get; init; }
     public bool? FrontDefroster { get; init; }
+    public bool? RearDefroster { get; init; }
+    public bool? GpsAuthorized { get; init; }
+    public double? TirePressureStateFrontLeft { get; init; }
+    public double? TirePressureStateFrontRight { get; init; }
+    public double? TirePressureStateRearLeft { get; init; }
+    public double? TirePressureStateRearRight { get; init; }
+    public double? TireTemperatureStateFrontLeft { get; init; }
+    public double? TireTemperatureStateFrontRight { get; init; }
+    public double? TireTemperatureStateRearLeft { get; init; }
+    public double? TireTemperatureStateRearRight { get; init; }
+    public double? WindowLearnFrontLeft { get; init; }
+    public double? WindowLearnFrontRight { get; init; }
+    public double? WindowLearnRearLeft { get; init; }
+    public double? WindowLearnRearRight { get; init; }
+    public double? SteeringWheelHeater { get; init; }
+    public double? RearLeftSeatHeaterLevel { get; init; }
+    public double? RearRightSeatHeaterLevel { get; init; }
+    public double? FrontWindscreenHeater { get; init; }
+    public double? EngineState { get; init; }
+    public double? FrontDriverSeatHeaterLevel { get; init; }
+    public double? FrontPassengerSeatHeaterLevel { get; init; }
 }
 
 public sealed class ClimateSnapshot

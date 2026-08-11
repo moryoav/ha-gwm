@@ -14,10 +14,16 @@ def test_sensor_description_keys_cover_v1_contract() -> None:
     assert {
         "soc",
         "range_km",
+        "fuel_level_l",
+        "fuel_range_km",
         "odometer_km",
         "remaining_charging_time_min",
         "soce",
         "interior_temperature_c",
+        "tire_pressure_state_front_left",
+        "window_learn_front_left",
+        "steering_wheel_heater",
+        "roof",
         "command_status",
     } <= keys
 
@@ -45,6 +51,13 @@ def test_binary_sensor_description_keys_cover_v1_contract() -> None:
         "window_front_right_open",
         "window_rear_left_open",
         "window_rear_right_open",
+        "door_front_left_open",
+        "door_front_right_open",
+        "door_rear_left_open",
+        "door_rear_right_open",
+        "trunk_open",
+        "rear_defroster",
+        "gps_authorized",
     } <= keys
 
 

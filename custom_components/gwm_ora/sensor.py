@@ -8,7 +8,7 @@ from datetime import datetime
 from typing import Any
 
 from homeassistant.components.sensor import SensorDeviceClass, SensorEntity, SensorEntityDescription, SensorStateClass
-from homeassistant.const import PERCENTAGE, UnitOfLength, UnitOfPressure, UnitOfTemperature, UnitOfTime
+from homeassistant.const import PERCENTAGE, UnitOfLength, UnitOfPressure, UnitOfTemperature, UnitOfTime, UnitOfVolume
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -57,6 +57,22 @@ SENSORS: tuple[GwmOraSensorEntityDescription, ...] = (
         native_unit_of_measurement=UnitOfLength.KILOMETERS,
         state_class=SensorStateClass.MEASUREMENT,
         value_fn=_value("range_km"),
+    ),
+    GwmOraSensorEntityDescription(
+        key="fuel_level_l",
+        translation_key="fuel_level",
+        device_class=SensorDeviceClass.VOLUME,
+        native_unit_of_measurement=UnitOfVolume.LITERS,
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=_value("fuel_level_l"),
+    ),
+    GwmOraSensorEntityDescription(
+        key="fuel_range_km",
+        translation_key="fuel_range",
+        device_class=SensorDeviceClass.DISTANCE,
+        native_unit_of_measurement=UnitOfLength.KILOMETERS,
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=_value("fuel_range_km"),
     ),
     GwmOraSensorEntityDescription(
         key="odometer_km",
@@ -152,6 +168,146 @@ SENSORS: tuple[GwmOraSensorEntityDescription, ...] = (
         native_unit_of_measurement=UnitOfTemperature.CELSIUS,
         state_class=SensorStateClass.MEASUREMENT,
         value_fn=_value("tire_temperature_rear_right_c"),
+    ),
+    GwmOraSensorEntityDescription(
+        key="tire_pressure_state_front_left",
+        translation_key="tire_pressure_state_front_left",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+        value_fn=_value("tire_pressure_state_front_left"),
+    ),
+    GwmOraSensorEntityDescription(
+        key="tire_pressure_state_front_right",
+        translation_key="tire_pressure_state_front_right",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+        value_fn=_value("tire_pressure_state_front_right"),
+    ),
+    GwmOraSensorEntityDescription(
+        key="tire_pressure_state_rear_left",
+        translation_key="tire_pressure_state_rear_left",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+        value_fn=_value("tire_pressure_state_rear_left"),
+    ),
+    GwmOraSensorEntityDescription(
+        key="tire_pressure_state_rear_right",
+        translation_key="tire_pressure_state_rear_right",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+        value_fn=_value("tire_pressure_state_rear_right"),
+    ),
+    GwmOraSensorEntityDescription(
+        key="tire_temperature_state_front_left",
+        translation_key="tire_temperature_state_front_left",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+        value_fn=_value("tire_temperature_state_front_left"),
+    ),
+    GwmOraSensorEntityDescription(
+        key="tire_temperature_state_front_right",
+        translation_key="tire_temperature_state_front_right",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+        value_fn=_value("tire_temperature_state_front_right"),
+    ),
+    GwmOraSensorEntityDescription(
+        key="tire_temperature_state_rear_left",
+        translation_key="tire_temperature_state_rear_left",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+        value_fn=_value("tire_temperature_state_rear_left"),
+    ),
+    GwmOraSensorEntityDescription(
+        key="tire_temperature_state_rear_right",
+        translation_key="tire_temperature_state_rear_right",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+        value_fn=_value("tire_temperature_state_rear_right"),
+    ),
+    GwmOraSensorEntityDescription(
+        key="window_learn_front_left",
+        translation_key="window_learn_front_left",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+        value_fn=_value("window_learn_front_left"),
+    ),
+    GwmOraSensorEntityDescription(
+        key="window_learn_front_right",
+        translation_key="window_learn_front_right",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+        value_fn=_value("window_learn_front_right"),
+    ),
+    GwmOraSensorEntityDescription(
+        key="window_learn_rear_left",
+        translation_key="window_learn_rear_left",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+        value_fn=_value("window_learn_rear_left"),
+    ),
+    GwmOraSensorEntityDescription(
+        key="window_learn_rear_right",
+        translation_key="window_learn_rear_right",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+        value_fn=_value("window_learn_rear_right"),
+    ),
+    GwmOraSensorEntityDescription(
+        key="steering_wheel_heater",
+        translation_key="steering_wheel_heater",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+        value_fn=_value("steering_wheel_heater"),
+    ),
+    GwmOraSensorEntityDescription(
+        key="rear_left_seat_heater_level",
+        translation_key="rear_left_seat_heater_level",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+        value_fn=_value("rear_left_seat_heater_level"),
+    ),
+    GwmOraSensorEntityDescription(
+        key="rear_right_seat_heater_level",
+        translation_key="rear_right_seat_heater_level",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+        value_fn=_value("rear_right_seat_heater_level"),
+    ),
+    GwmOraSensorEntityDescription(
+        key="front_windscreen_heater",
+        translation_key="front_windscreen_heater",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+        value_fn=_value("front_windscreen_heater"),
+    ),
+    GwmOraSensorEntityDescription(
+        key="engine_state",
+        translation_key="engine_state",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+        value_fn=_value("engine_state"),
+    ),
+    GwmOraSensorEntityDescription(
+        key="front_driver_seat_heater_level",
+        translation_key="front_driver_seat_heater_level",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+        value_fn=_value("front_driver_seat_heater_level"),
+    ),
+    GwmOraSensorEntityDescription(
+        key="front_passenger_seat_heater_level",
+        translation_key="front_passenger_seat_heater_level",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+        value_fn=_value("front_passenger_seat_heater_level"),
+    ),
+    GwmOraSensorEntityDescription(
+        key="roof",
+        translation_key="roof",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+        value_fn=_value("roof"),
     ),
     GwmOraSensorEntityDescription(
         key="acquisition_time",

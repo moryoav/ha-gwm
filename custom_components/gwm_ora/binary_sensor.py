@@ -12,6 +12,7 @@ from homeassistant.components.binary_sensor import (
     BinarySensorEntityDescription,
 )
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from . import GwmOraConfigEntry
@@ -82,6 +83,36 @@ BINARY_SENSORS: tuple[GwmOraBinarySensorEntityDescription, ...] = (
         value_fn=_bool_value("window_rear_right_open"),
     ),
     GwmOraBinarySensorEntityDescription(
+        key="door_front_left_open",
+        translation_key="door_front_left",
+        device_class=BinarySensorDeviceClass.DOOR,
+        value_fn=_bool_value("door_front_left_open"),
+    ),
+    GwmOraBinarySensorEntityDescription(
+        key="door_front_right_open",
+        translation_key="door_front_right",
+        device_class=BinarySensorDeviceClass.DOOR,
+        value_fn=_bool_value("door_front_right_open"),
+    ),
+    GwmOraBinarySensorEntityDescription(
+        key="door_rear_left_open",
+        translation_key="door_rear_left",
+        device_class=BinarySensorDeviceClass.DOOR,
+        value_fn=_bool_value("door_rear_left_open"),
+    ),
+    GwmOraBinarySensorEntityDescription(
+        key="door_rear_right_open",
+        translation_key="door_rear_right",
+        device_class=BinarySensorDeviceClass.DOOR,
+        value_fn=_bool_value("door_rear_right_open"),
+    ),
+    GwmOraBinarySensorEntityDescription(
+        key="trunk_open",
+        translation_key="trunk",
+        device_class=BinarySensorDeviceClass.DOOR,
+        value_fn=_bool_value("trunk_open"),
+    ),
+    GwmOraBinarySensorEntityDescription(
         key="air_circulation",
         translation_key="air_circulation",
         value_fn=_bool_value("air_circulation"),
@@ -90,6 +121,17 @@ BINARY_SENSORS: tuple[GwmOraBinarySensorEntityDescription, ...] = (
         key="front_defroster",
         translation_key="front_defroster",
         value_fn=_bool_value("front_defroster"),
+    ),
+    GwmOraBinarySensorEntityDescription(
+        key="rear_defroster",
+        translation_key="rear_defroster",
+        value_fn=_bool_value("rear_defroster"),
+    ),
+    GwmOraBinarySensorEntityDescription(
+        key="gps_authorized",
+        translation_key="gps_authorized",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=_bool_value("gps_authorized"),
     ),
 )
 

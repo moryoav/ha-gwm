@@ -22,6 +22,8 @@ public static class VehicleSnapshotMapper
         {
             Soc = Number(status, "2013021"),
             RangeKm = Number(status, "2011501"),
+            FuelLevelL = Number(status, "2017002"),
+            FuelRangeKm = Number(status, "2011007"),
             RemainingChargingTimeMin = Number(status, "2013022"),
             Soce = Number(status, "2041301"),
             TirePressureFrontLeftKpa = Number(status, "2101001"),
@@ -42,8 +44,36 @@ public static class VehicleSnapshotMapper
             WindowFrontRightOpen = WindowOpen(status, "2210002"),
             WindowRearLeftOpen = WindowOpen(status, "2210003"),
             WindowRearRightOpen = WindowOpen(status, "2210004"),
+            DoorFrontLeftOpen = Bool(status, "2206004"),
+            DoorFrontRightOpen = Bool(status, "2206002"),
+            DoorRearLeftOpen = Bool(status, "2206005"),
+            DoorRearRightOpen = Bool(status, "2206003"),
+            TrunkOpen = Bool(status, "2206001"),
+            Roof = Number(status, "2210005"),
             AirCirculation = Bool(status, "2078020"),
-            FrontDefroster = Bool(status, "2222001")
+            FrontDefroster = Bool(status, "2222001"),
+            RearDefroster = Bool(status, "2210032"),
+            GpsAuthorized = Bool(status, "2310001"),
+            TirePressureStateFrontLeft = Number(status, "2102001"),
+            TirePressureStateFrontRight = Number(status, "2102002"),
+            TirePressureStateRearLeft = Number(status, "2102003"),
+            TirePressureStateRearRight = Number(status, "2102004"),
+            TireTemperatureStateFrontLeft = Number(status, "2102007"),
+            TireTemperatureStateFrontRight = Number(status, "2102008"),
+            TireTemperatureStateRearLeft = Number(status, "2102009"),
+            TireTemperatureStateRearRight = Number(status, "2102010"),
+            // Community Haval table: 2210011 FL, 2210010 FR, 2210013 RL, 2210012 RR.
+            WindowLearnFrontLeft = Number(status, "2210011"),
+            WindowLearnFrontRight = Number(status, "2210010"),
+            WindowLearnRearLeft = Number(status, "2210013"),
+            WindowLearnRearRight = Number(status, "2210012"),
+            SteeringWheelHeater = Number(status, "2060016"),
+            RearLeftSeatHeaterLevel = Number(status, "2424001"),
+            RearRightSeatHeaterLevel = Number(status, "2424002"),
+            FrontWindscreenHeater = Number(status, "2202111"),
+            EngineState = Number(status, "2016001"),
+            FrontDriverSeatHeaterLevel = Number(status, "2220001"),
+            FrontPassengerSeatHeaterLevel = Number(status, "2220002")
         };
 
         var acOn = values.AcActive == true;
