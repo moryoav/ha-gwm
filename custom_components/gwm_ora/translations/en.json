@@ -127,6 +127,8 @@
       "engine_state": { "name": "Engine state" },
       "front_driver_seat_heater_level": { "name": "Front driver seat heater level" },
       "front_passenger_seat_heater_level": { "name": "Front passenger seat heater level" },
+      "front_driver_seat_vent_level": { "name": "Front driver seat ventilation level" },
+      "front_passenger_seat_vent_level": { "name": "Front passenger seat ventilation level" },
       "roof": { "name": "Roof" },
       "acquisition_time": { "name": "Acquisition time" },
       "update_time": { "name": "Update time" },

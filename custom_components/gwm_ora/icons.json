@@ -86,6 +86,12 @@
       "front_passenger_seat_heater_level": {
         "default": "mdi:car-seat-heater"
       },
+      "front_driver_seat_vent_level": {
+        "default": "mdi:car-seat-cooler"
+      },
+      "front_passenger_seat_vent_level": {
+        "default": "mdi:car-seat-cooler"
+      },
       "front_windscreen_heater": {
         "default": "mdi:car-defrost-front"
       },
