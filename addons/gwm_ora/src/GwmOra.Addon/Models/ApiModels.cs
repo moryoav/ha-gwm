@@ -113,6 +113,8 @@ public sealed class VehicleValues
     public double? EngineState { get; init; }
     public double? FrontDriverSeatHeaterLevel { get; init; }
     public double? FrontPassengerSeatHeaterLevel { get; init; }
+    public double? FrontDriverSeatVentLevel { get; init; }
+    public double? FrontPassengerSeatVentLevel { get; init; }
 }
 
 public sealed class ClimateSnapshot

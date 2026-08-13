@@ -319,6 +319,20 @@ SENSORS: tuple[GwmOraSensorEntityDescription, ...] = (
         value_fn=_value("front_passenger_seat_heater_level"),
     ),
     GwmOraSensorEntityDescription(
+        key="front_driver_seat_vent_level",
+        translation_key="front_driver_seat_vent_level",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+        value_fn=_value("front_driver_seat_vent_level"),
+    ),
+    GwmOraSensorEntityDescription(
+        key="front_passenger_seat_vent_level",
+        translation_key="front_passenger_seat_vent_level",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+        value_fn=_value("front_passenger_seat_vent_level"),
+    ),
+    GwmOraSensorEntityDescription(
         key="roof",
         translation_key="roof",
         entity_category=EntityCategory.DIAGNOSTIC,

@@ -74,7 +74,9 @@ public static class VehicleSnapshotMapper
             FrontWindscreenHeater = Number(status, "2202111"),
             EngineState = Number(status, "2016001"),
             FrontDriverSeatHeaterLevel = Number(status, "2220001"),
-            FrontPassengerSeatHeaterLevel = Number(status, "2220002")
+            FrontPassengerSeatHeaterLevel = Number(status, "2220002"),
+            FrontDriverSeatVentLevel = Number(status, "2220003"),
+            FrontPassengerSeatVentLevel = Number(status, "2220004")
         };
 
         var acOn = values.AcActive == true;
