@@ -52,6 +52,22 @@ class GwmOraDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         """Return one vehicle snapshot by VIN."""
         return next((vehicle for vehicle in self.vehicles if vehicle.get("vin") == vin), None)
 
+    def resolve_vehicle(self, identifier: str) -> dict[str, Any] | None:
+        """Return one vehicle snapshot by internal VIN or display serial number.
+
+        Users supply the human-readable VIN (the device serial number, GWM's
+        ``showedVin``), while the add-on keys vehicles by the encoded ``vin``.
+        Accept either so service calls can use the VIN shown on the device.
+        """
+        return next(
+            (
+                vehicle
+                for vehicle in self.vehicles
+                if identifier in (vehicle.get("vin"), vehicle.get("serial_number"))
+            ),
+            None,
+        )
+
     def async_track_command(self, command: dict[str, Any]) -> None:
         """Track a queued remote command and push status updates into HA."""
         self._apply_command_status(command)

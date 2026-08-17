@@ -130,6 +130,35 @@ api.MapPost("/vehicles/{vin}/commands/windows/close", (string vin, RemoteCommand
     }
 });
 
+api.MapGet("/vehicles/{vin}/charging/plan", async (string vin, RemoteCommandService commands, CancellationToken cancellationToken) =>
+{
+    try
+    {
+        return Results.Ok(await commands.GetChargingPlanAsync(vin, cancellationToken));
+    }
+    catch (Exception ex)
+    {
+        return Results.Problem(ex.Message, statusCode: StatusCodes.Status502BadGateway);
+    }
+});
+
+api.MapPost("/vehicles/{vin}/charging/plan", async (string vin, ChargingPlanRequest request, RemoteCommandService commands, CancellationToken cancellationToken) =>
+{
+    try
+    {
+        await commands.SetChargingPlanAsync(vin, request, cancellationToken);
+        return Results.Accepted(value: new { status = "ok" });
+    }
+    catch (RemoteCommandUnavailableException ex)
+    {
+        return Results.Problem(ex.Message, statusCode: StatusCodes.Status403Forbidden);
+    }
+    catch (Exception ex)
+    {
+        return Results.Problem(ex.Message, statusCode: StatusCodes.Status502BadGateway);
+    }
+});
+
 app.MapGet("/", (GwmVehicleService vehicles) => IngressPage.Render(vehicles));
 
 await app.RunAsync();

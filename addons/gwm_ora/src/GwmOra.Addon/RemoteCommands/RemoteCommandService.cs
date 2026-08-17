@@ -233,6 +233,63 @@ public sealed class RemoteCommandService
         }
     }
 
+    // AU/NZ charging schedule. Uses the same authenticated client as remote commands, but needs
+    // NO security PIN. A plan window gates charging start/stop; clearing it reverts to charge-on-plug.
+    public async Task<ChargingInfos> GetChargingPlanAsync(string vin, CancellationToken cancellationToken)
+    {
+        var client = await AuthenticatedClientAsync(cancellationToken);
+        return await client.GetChargingInfosAsync(vin, cancellationToken);
+    }
+
+    public async Task SetChargingPlanAsync(string vin, ChargingPlanRequest request, CancellationToken cancellationToken)
+    {
+        EnsureChargingControlAvailable();
+        var client = await AuthenticatedClientAsync(cancellationToken);
+        var plan = new SetChargingPlan { Enable = request.Enable, Vin = vin };
+        if (request.Enable)
+        {
+            plan.PlanType = request.PlanType ?? 0;
+            plan.StartTime = request.StartTime?.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            plan.EndTime = request.EndTime?.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            plan.Weeks = request.Weeks ?? String.Empty;
+        }
+
+        await client.SetChargingPlanAsync(plan, cancellationToken);
+        await _stateStore.UpdateAsync(s => s.ChargingPlanSetByAddon = request.Enable, cancellationToken);
+    }
+
+    // Safety: if charging control is turned OFF but the add-on had set a plan, clear it on
+    // startup so a leftover add-on window can't silently block charging. Guarded by the tracked
+    // ChargingPlanSetByAddon flag, so a plan the user set in the app is never touched.
+    public async Task ClearAddonChargingPlanIfDisabledAsync(IEnumerable<string> vins, CancellationToken cancellationToken)
+    {
+        if (_options.EnableChargingControl || !_stateStore.State.ChargingPlanSetByAddon)
+        {
+            return;
+        }
+
+        var client = await AuthenticatedClientAsync(cancellationToken);
+        foreach (var vin in vins)
+        {
+            if (String.IsNullOrWhiteSpace(vin))
+            {
+                continue;
+            }
+
+            try
+            {
+                await client.SetChargingPlanAsync(new SetChargingPlan { Enable = false, Vin = vin }, cancellationToken);
+                _logger.LogInformation("Cleared a leftover add-on charging plan because charging control is now disabled");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Could not clear a leftover charging plan");
+            }
+        }
+
+        await _stateStore.UpdateAsync(s => s.ChargingPlanSetByAddon = false, cancellationToken);
+    }
+
     private async Task<GwmApiClient> AuthenticatedClientAsync(CancellationToken cancellationToken)
     {
         var client = _clientFactory.Create(_options, _stateStore.State);
@@ -326,6 +383,15 @@ public sealed class RemoteCommandService
         if (String.IsNullOrWhiteSpace(_options.SecurityPin))
         {
             throw new RemoteCommandUnavailableException("Remote commands require security_pin in the add-on configuration.");
+        }
+    }
+
+    // Charging control is a separate, explicit opt-in from remote commands, and needs no PIN.
+    private void EnsureChargingControlAvailable()
+    {
+        if (!_options.EnableChargingControl)
+        {
+            throw new RemoteCommandUnavailableException("Charging control is disabled. Set enable_charging_control in the add-on configuration.");
         }
     }
 

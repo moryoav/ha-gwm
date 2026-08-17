@@ -6,6 +6,10 @@ This project follows semantic versioning. HACS uses the latest GitHub release ta
 
 ## [Unreleased]
 
+### Added
+
+- Optional charging-schedule control for all regions, behind a new `enable_charging_control` opt-in (default off, separate from remote commands, no security PIN). Adds a **Scheduled charging** switch and `gwm_ora.set_charging_plan` / `gwm_ora.clear_charging_plan` services that set or clear a charging window (`vehicleCharge/setChargingPlan`) — a car-side lever for solar-excess charging. The services accept the VIN shown on the device, and a plan whose window starts in the future pauses charging until then; turning the switch off clears the plan so the car returns to charging whenever it is plugged in. When the opt-in is off the write is rejected (403), and any leftover plan the add-on itself set is cleared on startup so it can't silently block charging (a plan set in the GWM app is never touched). Verified end-to-end on an ANZ ORA 5; EU uses the same code path (ANZ additionally sends the required `vin` request header) but is not yet independently tested.
+
 ## [0.8.0] - 2026-08-21
 
 ### Added

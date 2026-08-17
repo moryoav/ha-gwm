@@ -36,6 +36,12 @@ public sealed class AddonState
     [JsonPropertyName("verification_code_requested_at")]
     public DateTimeOffset? VerificationCodeRequestedAt { get; set; }
 
+    // True while the add-on has an active charging plan it set itself. Lets us clear a
+    // leftover add-on plan if charging control is later disabled, without touching a plan
+    // the user set in the app.
+    [JsonPropertyName("charging_plan_set_by_addon")]
+    public bool ChargingPlanSetByAddon { get; set; }
+
     public bool EnsureGenerated()
     {
         var changed = false;

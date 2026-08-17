@@ -2,6 +2,7 @@ using System.Net;
 using System.Text;
 using System.Text.Json;
 using libgwmapi;
+using libgwmapi.DTO.Vehicle;
 using Microsoft.Extensions.Logging.Abstractions;
 
 namespace GwmOra.Addon.Tests;
@@ -289,5 +290,42 @@ public class GwmApiClientRegionTests
 
         Assert.NotNull(handler.LastRequest);
         Assert.False(handler.LastRequest!.Headers.Contains("vin"));
+    }
+
+    private const string ChargingInfosJson =
+        """{"code":"000000","description":"ok","data":{"chargePlanList":[{"planId":1,"planType":"0","startTime":123,"endTime":456,"weeks":""}]}}""";
+
+    private const string SuccessJson = """{"code":"000000","description":"ok","data":"SUCCESS"}""";
+
+    [Fact]
+    public async Task AusSendsVinHeaderOnGetChargingInfos()
+    {
+        var handler = new CapturingHandler(ChargingInfosJson);
+        using var h5 = new HttpClient(new JsonResponseHandler(ChargingInfosJson));
+        using var app = new HttpClient(handler);
+        var client = new GwmApiClient(h5, app, NullLoggerFactory.Instance, "aus");
+
+        var infos = await client.GetChargingInfosAsync("ENCODED-VIN", CancellationToken.None);
+
+        Assert.Single(infos.ChargePlanList);
+        Assert.NotNull(handler.LastRequest);
+        Assert.True(handler.LastRequest!.Headers.TryGetValues("vin", out var values));
+        Assert.Equal("ENCODED-VIN", values!.Single());
+    }
+
+    [Fact]
+    public async Task AusSendsVinHeaderOnSetChargingPlan()
+    {
+        var handler = new CapturingHandler(SuccessJson);
+        using var h5 = new HttpClient(new JsonResponseHandler(SuccessJson));
+        using var app = new HttpClient(handler);
+        var client = new GwmApiClient(h5, app, NullLoggerFactory.Instance, "aus");
+
+        await client.SetChargingPlanAsync(
+            new SetChargingPlan { Enable = false, Vin = "ENCODED-VIN" }, CancellationToken.None);
+
+        Assert.NotNull(handler.LastRequest);
+        Assert.True(handler.LastRequest!.Headers.TryGetValues("vin", out var values));
+        Assert.Equal("ENCODED-VIN", values!.Single());
     }
 }

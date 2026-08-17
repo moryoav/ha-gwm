@@ -54,6 +54,7 @@ log_level: info
 - `username`: E-mail address for your GWM account.
 - `password`: Password for your GWM account.
 - `enable_remote_commands`: Enables A/C, lock, unlock, and close-window controls. Use `false` for read-only entities.
+- `enable_charging_control`: Enables the **Scheduled charging** switch and the `set_charging_plan` / `clear_charging_plan` services, which set or clear a charging window on the vehicle. Default `false`, independent of `enable_remote_commands`, and needs no security PIN. Validated on an ANZ vehicle; the same code path serves all regions.
 - `security_pin`: The remote-control PIN configured in the official GWM app. Setting up that PIN in the official app is a prerequisite for remote commands.
 - `poll_interval_seconds`: How often the add-on refreshes vehicle data from GWM.
 - `log_level`: Add-on logging verbosity.

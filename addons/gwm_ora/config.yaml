@@ -27,6 +27,7 @@ options:
   username: ""
   password: ""
   enable_remote_commands: false
+  enable_charging_control: false
   poll_interval_seconds: 60
   log_level: info
 schema:
@@ -37,6 +38,7 @@ schema:
   verification_code: password?
   security_pin: password?
   enable_remote_commands: bool
+  enable_charging_control: bool
   poll_interval_seconds: "int(30,3600)"
   log_level: "list(trace|debug|info|warning|error)"
 environment:

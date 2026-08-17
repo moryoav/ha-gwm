@@ -56,6 +56,11 @@ class GwmOraEntity(CoordinatorEntity[GwmOraDataUpdateCoordinator]):
         capabilities = vehicle.get("capabilities") or {}
         return bool(capabilities.get("remote_commands"))
 
+    @property
+    def charging_control_available(self) -> bool:
+        """Return whether AU/NZ charging control is enabled in the add-on."""
+        return bool((self.coordinator.data or {}).get("charging_control_enabled"))
+
 
 def vehicle_value(vehicle: dict[str, Any] | None, key: str) -> Any:
     """Return a value from a vehicle snapshot."""

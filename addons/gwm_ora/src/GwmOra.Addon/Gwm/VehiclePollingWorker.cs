@@ -1,4 +1,6 @@
+using System.Linq;
 using GwmOra.Addon.Configuration;
+using GwmOra.Addon.RemoteCommands;
 
 namespace GwmOra.Addon.Gwm;
 
@@ -6,22 +8,26 @@ public sealed class VehiclePollingWorker : BackgroundService
 {
     private readonly AddonOptions _options;
     private readonly GwmVehicleService _vehicleService;
+    private readonly RemoteCommandService _commands;
     private readonly ILogger<VehiclePollingWorker> _logger;
     private string? _lastFailureKey;
 
     public VehiclePollingWorker(
         AddonOptions options,
         GwmVehicleService vehicleService,
+        RemoteCommandService commands,
         ILogger<VehiclePollingWorker> logger)
     {
         _options = options;
         _vehicleService = vehicleService;
+        _commands = commands;
         _logger = logger;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         await RefreshIgnoringFailuresAsync(stoppingToken);
+        await ClearLeftoverChargingPlanAsync(stoppingToken);
 
         using var timer = new PeriodicTimer(TimeSpan.FromSeconds(_options.PollIntervalSeconds));
         while (!stoppingToken.IsCancellationRequested)
@@ -36,6 +42,21 @@ public sealed class VehiclePollingWorker : BackgroundService
             }
 
             await RefreshIgnoringFailuresAsync(stoppingToken);
+        }
+    }
+
+    private async Task ClearLeftoverChargingPlanAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            var vins = _vehicleService.GetVehicles().Vehicles
+                .Select(v => v.Vin)
+                .Where(v => !String.IsNullOrWhiteSpace(v));
+            await _commands.ClearAddonChargingPlanIfDisabledAsync(vins, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "Charging-plan cleanup skipped");
         }
     }
 

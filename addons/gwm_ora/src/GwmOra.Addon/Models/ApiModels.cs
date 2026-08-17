@@ -9,6 +9,7 @@ public sealed class HealthResponse
     public int VehicleCount { get; init; }
     public bool RemoteCommandsEnabled { get; init; }
     public bool SecurityPinConfigured { get; init; }
+    public bool ChargingControlEnabled { get; init; }
     public int PollIntervalSeconds { get; init; }
     public DateTimeOffset? LastRefresh { get; init; }
     public string? LastError { get; init; }
@@ -20,6 +21,7 @@ public sealed class VehiclesResponse
     public DateTimeOffset GeneratedAt { get; init; } = DateTimeOffset.UtcNow;
     public bool RemoteCommandsEnabled { get; init; }
     public bool SecurityPinConfigured { get; init; }
+    public bool ChargingControlEnabled { get; init; }
     public IReadOnlyList<VehicleSnapshot> Vehicles { get; init; } = Array.Empty<VehicleSnapshot>();
 }
 
@@ -149,4 +151,16 @@ public sealed class ClimateCommandRequest
 public sealed class LockCommandRequest
 {
     public string Action { get; init; } = String.Empty;
+}
+
+// AU/NZ charging schedule (vehicleCharge/setChargingPlan). Times are epoch milliseconds.
+// Enable + a [start,end] window makes the car charge only within it; disable (enable=false)
+// clears the plan (car charges on plug-in). No security PIN required.
+public sealed class ChargingPlanRequest
+{
+    public bool Enable { get; init; }
+    public long? StartTime { get; init; }
+    public long? EndTime { get; init; }
+    public int? PlanType { get; init; }
+    public string? Weeks { get; init; }
 }

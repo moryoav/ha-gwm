@@ -167,6 +167,28 @@
     },
     "button": {
       "close_windows": { "name": "Close windows" }
+    },
+    "switch": {
+      "charging_schedule": { "name": "Scheduled charging" }
+    }
+  },
+  "services": {
+    "set_charging_plan": {
+      "name": "Set charging plan",
+      "description": "Set or clear the vehicle's charging schedule. The car charges only inside the window; a window that starts in the future pauses charging until then. Requires enable_charging_control in the add-on.",
+      "fields": {
+        "vin": { "name": "VIN", "description": "The vehicle VIN as shown on the device (the readable serial, e.g. LGWEEUA57TR603334)." },
+        "enable": { "name": "Enable", "description": "On sets a charging window; off clears the plan so the car returns to charging whenever it is plugged in (this is not a hard stop while the cable stays connected)." },
+        "start_time": { "name": "Start time", "description": "When charging may start. Defaults to now when enabling; set a future time to pause charging until then." },
+        "end_time": { "name": "End time", "description": "When charging stops." }
+      }
+    },
+    "clear_charging_plan": {
+      "name": "Clear charging plan",
+      "description": "Clear the vehicle's charging schedule so the car charges whenever it is plugged in.",
+      "fields": {
+        "vin": { "name": "VIN", "description": "The vehicle VIN, as shown on the device." }
+      }
     }
   }
 }

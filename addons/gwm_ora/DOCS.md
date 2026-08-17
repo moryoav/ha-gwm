@@ -20,6 +20,7 @@
 | `verification_code` | no | One-time SMS/e-mail verification code sent by GWM during first login or when this add-on device must be trusted. Fill it only after GWM sends a code. |
 | `security_pin` | no | Vehicle remote control PIN from the official app. |
 | `enable_remote_commands` | yes | Enables A/C, lock, unlock, and close-window commands. |
+| `enable_charging_control` | yes | Enables the **Scheduled charging** switch and the `set_charging_plan` / `clear_charging_plan` services, which set or clear a charging window on the vehicle (`vehicleCharge/setChargingPlan`). Default `false`. Independent of `enable_remote_commands` and needs no security PIN. Validated on an ANZ vehicle; the same code path is used for all regions. |
 | `poll_interval_seconds` | yes | GWM cloud polling interval from 30 to 3600 seconds. |
 | `log_level` | yes | One of `trace`, `debug`, `info`, `warning`, or `error`. |
 
