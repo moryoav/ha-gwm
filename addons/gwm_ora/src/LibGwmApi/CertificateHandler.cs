@@ -20,7 +20,7 @@ namespace libgwmapi
             _chainBytes = isRus ? Properties.Resources.chain_rus : Properties.Resources.chain;
         }
 
-        public X509Certificate2 Certificate => new(_certBytes);
+        public X509Certificate2 Certificate => X509CertificateLoader.LoadCertificate(_certBytes);
 
         public X509Certificate2 CertificateWithPrivateKey
         {

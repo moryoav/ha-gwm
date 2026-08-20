@@ -22,7 +22,8 @@ public static class RemoteCommandFactory
         string securityPassword,
         string switchOrder,
         int temperature,
-        int operationTimeMinutes)
+        int operationTimeMinutes,
+        bool useRussianProtocol = false)
     {
         return new SendCmd
         {
@@ -40,12 +41,16 @@ public static class RemoteCommandFactory
             },
             RemoteType = "0",
             SecurityPassword = securityPassword,
-            Type = 2,
+            Type = useRussianProtocol ? 3 : 2,
             Vin = vin
         };
     }
 
-    public static SendCmd CreateLockCommand(string vin, string securityPassword, bool lockVehicle)
+    public static SendCmd CreateLockCommand(
+        string vin,
+        string securityPassword,
+        bool lockVehicle,
+        bool useRussianProtocol = false)
     {
         return new SendCmd
         {
@@ -59,12 +64,15 @@ public static class RemoteCommandFactory
             },
             RemoteType = "0",
             SecurityPassword = securityPassword,
-            Type = 2,
+            Type = useRussianProtocol ? 3 : 2,
             Vin = vin
         };
     }
 
-    public static SendCmd CreateWindowCloseCommand(string vin, string securityPassword)
+    public static SendCmd CreateWindowCloseCommand(
+        string vin,
+        string securityPassword,
+        bool useRussianProtocol = false)
     {
         return new SendCmd
         {
@@ -72,20 +80,20 @@ public static class RemoteCommandFactory
             {
                 X08 = new Instruction0x08
                 {
-                    SwitchOrder = "0",
+                    SwitchOrder = useRussianProtocol ? "2" : "0",
                     Window = new WindowInstruction
                     {
                         LeftFront = "0",
                         LeftBack = "0",
                         RightFront = "0",
                         RightBack = "0",
-                        SkyLight = String.Empty
+                        SkyLight = useRussianProtocol ? null : String.Empty
                     }
                 }
             },
             RemoteType = "0",
             SecurityPassword = securityPassword,
-            Type = 2,
+            Type = useRussianProtocol ? 3 : 2,
             Vin = vin
         };
     }

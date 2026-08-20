@@ -19,7 +19,7 @@
 | `password` | yes | GWM account password. |
 | `verification_code` | no | One-time SMS/e-mail verification code sent by GWM during first login or when this add-on device must be trusted. Fill it only after GWM sends a code. |
 | `security_pin` | no | Vehicle remote control PIN from the official app. |
-| `enable_remote_commands` | yes | Enables A/C, lock, unlock, and close-window commands. AU/NZ command support is currently experimental and unconfirmed. |
+| `enable_remote_commands` | yes | Enables A/C, lock, unlock, and close-window commands. AU/NZ and Russia command support is awaiting live confirmation. |
 | `poll_interval_seconds` | yes | GWM cloud polling interval from 30 to 3600 seconds. |
 | `log_level` | yes | One of `trace`, `debug`, `info`, `warning`, or `error`. |
 
@@ -70,7 +70,9 @@ For GWM Russia accounts (the Russian *GWM* Android app), set:
 - `region`: `rus`
 - `country`: `RU`
 
-Russia uses the same mutual-TLS client-certificate model as Europe, but with the Russian PKI materials (`LGWGWM-AD-RU-GENERAL`) and gateways (`rus-h5-gateway` / `rus-app-gateway`) from the official APK. First-login SMS/e-mail verification works the same way as for `eu`.
+Russia uses its own GWM request signing, gateways, and bundled client certificate from the official Russian app. First-login SMS/e-mail verification follows the same add-on setup as the other regions.
+
+Vehicle discovery and status polling have been validated with a live Russia account. Lock, climate, and close-window commands are available when explicitly enabled with a security PIN, but still need live confirmation. Test one command at a time only while the vehicle is parked, safe, and in view.
 
 ## Web UI
 

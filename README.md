@@ -36,7 +36,7 @@ https://github.com/moryoav/ha-gwm_ora
 
 ### 2. Install and Configure the Add-on
 
-Install **GWM ORA**, then fill in the add-on options. Select the cloud region that serves the account. Remote commands are confirmed for `eu`; they remain available but experimental for `aus` while live testing is completed.
+Install **GWM ORA**, then fill in the add-on options. Select the cloud region that serves the account. Remote commands are confirmed for `eu`; they remain available but await live confirmation for `aus` and `rus`.
 
 ```yaml
 region: eu
@@ -53,7 +53,7 @@ log_level: info
 - `country`: Two-letter country where the GWM account was registered, such as `DE`, `GB`, `AU`, `NZ`, or `RU`. It must match the account registration country.
 - `username`: E-mail address for your GWM account.
 - `password`: Password for your GWM account.
-- `enable_remote_commands`: Enables A/C, lock, unlock, and close-window controls. Use `false` for read-only entities. AU/NZ command support is currently experimental and unconfirmed.
+- `enable_remote_commands`: Enables A/C, lock, unlock, and close-window controls. Use `false` for read-only entities. AU/NZ and Russia command support is currently awaiting live confirmation.
 - `security_pin`: The remote-control PIN configured in the official GWM app. Setting up that PIN in the official app is a prerequisite for remote commands.
 - `poll_interval_seconds`: How often the add-on refreshes vehicle data from GWM.
 - `log_level`: Add-on logging verbosity.
@@ -148,7 +148,7 @@ This project is designed for GWM ORA vehicles that use the same GWM cloud behavi
 
 Regional GWM services and vehicle firmware can differ, so some entities may be unavailable on some cars.
 
-> **Regional availability:** This integration supports accounts on the European GWM cloud (`region: eu`), including EU countries and Israel; the Australia/New Zealand cloud (`region: aus`); and the Russia cloud (`region: rus`) using the Russian GWM app gateways and PKI. AU/NZ login and vehicle data are live-tested; remote commands remain experimental for `aus`. Russia support follows the EU mutual-TLS model with RU certificates from the official APK.
+> **Regional availability:** This integration supports accounts on the European GWM cloud (`region: eu`), including EU countries and Israel; the Australia/New Zealand cloud (`region: aus`); and the Russia cloud (`region: rus`). AU/NZ and Russia login and vehicle data are live-tested. Remote commands are implemented for both regions but still need live confirmation.
 
 ### Australia/New Zealand account sessions
 

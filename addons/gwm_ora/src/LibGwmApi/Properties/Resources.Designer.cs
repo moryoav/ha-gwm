@@ -69,7 +69,7 @@ namespace libgwmapi.Properties {
                 return ((byte[])(obj));
             }
         }
-        
+
         /// <summary>
         ///   Looks up a localized resource of type System.Byte[].
         /// </summary>
@@ -79,7 +79,7 @@ namespace libgwmapi.Properties {
                 return ((byte[])(obj));
             }
         }
-        
+
         /// <summary>
         ///   Looks up a localized resource of type System.Byte[].
         /// </summary>
@@ -89,7 +89,7 @@ namespace libgwmapi.Properties {
                 return ((byte[])(obj));
             }
         }
-        
+
         /// <summary>
         ///   Looks up a localized resource of type System.Byte[].
         /// </summary>
@@ -99,7 +99,7 @@ namespace libgwmapi.Properties {
                 return ((byte[])(obj));
             }
         }
-        
+
         /// <summary>
         ///   Looks up a localized resource of type System.Byte[].
         /// </summary>
@@ -109,7 +109,7 @@ namespace libgwmapi.Properties {
                 return ((byte[])(obj));
             }
         }
-        
+
         /// <summary>
         ///   Looks up a localized resource of type System.Byte[].
         /// </summary>

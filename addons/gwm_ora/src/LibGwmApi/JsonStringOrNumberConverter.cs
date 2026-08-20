@@ -8,7 +8,7 @@ namespace libgwmapi;
 /// Reads JSON string properties that overseas gateways sometimes emit as numbers
 /// (e.g. Russia acquireVehicles vehicleId).
 /// </summary>
-public sealed class JsonStringOrNumberConverter : JsonConverter<string>
+internal sealed class JsonStringOrNumberConverter : JsonConverter<string>
 {
     public override string Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
     {
@@ -17,8 +17,6 @@ public sealed class JsonStringOrNumberConverter : JsonConverter<string>
             JsonTokenType.String => reader.GetString(),
             // Keep the exact decimal digits from the payload (IDs can exceed Int64).
             JsonTokenType.Number => Encoding.UTF8.GetString(reader.ValueSpan),
-            JsonTokenType.True => "true",
-            JsonTokenType.False => "false",
             JsonTokenType.Null => null,
             _ => throw new JsonException($"Unexpected token {reader.TokenType} when reading a string.")
         };

@@ -53,6 +53,7 @@ def test_addon_schema_avoids_supervisor_string_range_validators() -> None:
     assert "country: \"match(^[A-Za-z]{2}$)\"" in config
     assert "region: eu" in config
     assert "region: \"list(eu|aus|rus)\"" in config
+    assert "username: email" in config
     assert not re.search(r":\s*[\"']?(?:str|password)\(", config)
 
 
@@ -70,7 +71,16 @@ def test_addon_metadata_declares_internal_api_and_discovery() -> None:
     assert "ASPNETCORE_URLS" not in config
     assert "ENV ASPNETCORE_HTTP_PORTS=8099" in dockerfile
     assert "ENV GWM_ORA_ADDON_VERSION=${BUILD_VERSION}" in dockerfile
+    assert "gwm_root_rus.pem" in dockerfile
+    assert "dotnet publish" in dockerfile and "--no-restore" in dockerfile
     assert "ASPNETCORE_URLS" not in dockerfile
+
+    dockerignore = (ROOT / "addons/gwm_ora/.dockerignore").read_text(encoding="utf-8")
+    assert "**/bin/" in dockerignore
+    assert "**/obj/" in dockerignore
+
+    addon_build = (ROOT / ".github/workflows/addon-build.yml").read_text(encoding="utf-8")
+    assert "pull_request:\n    branches: [main]" in addon_build
 
 
 def test_addon_presentation_assets_exist() -> None:

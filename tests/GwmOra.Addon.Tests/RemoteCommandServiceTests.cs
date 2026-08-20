@@ -21,6 +21,85 @@ public class RemoteCommandServiceTests
     }
 
     [Fact]
+    public void RussianResultCodeOneThousandRemainsPending()
+    {
+        var result = new RemoteCtrlResultT5
+        {
+            ResultCode = "1000",
+            ResultMsg = "Processing"
+        };
+
+        var message = RemoteCommandService.FormatRemoteCommandResult(
+            "Door lock",
+            result,
+            1,
+            isRussianRegion: true,
+            maxResultPolls: 60);
+
+        Assert.True(RemoteCommandService.IsPendingRemoteCommandResult(result, isRussianRegion: true));
+        Assert.False(RemoteCommandService.IsPendingRemoteCommandResult(result, isRussianRegion: false));
+        Assert.Equal("Door lock: in progress (1/60) - waiting for vehicle result [1000]", message);
+    }
+
+    [Fact]
+    public void RussianResultSelectionUsesExpectedRemoteTypeAndPrioritizesSuccess()
+    {
+        var request = RemoteCommandFactory.CreateLockCommand(
+            "VIN123",
+            "hash",
+            lockVehicle: true,
+            useRussianProtocol: true);
+        var unrelatedSuccess = new RemoteCtrlResultT5
+        {
+            RemoteType = "0x04",
+            ResultCode = "0"
+        };
+        var matchingFailure = new RemoteCtrlResultT5
+        {
+            RemoteType = "0x05",
+            ResultCode = "11"
+        };
+        var matchingSuccess = new RemoteCtrlResultT5
+        {
+            RemoteType = "0x05",
+            ResultCode = "6"
+        };
+
+        var selected = RemoteCommandService.SelectRemoteCommandResult(
+            new[] { unrelatedSuccess, matchingFailure, matchingSuccess },
+            request,
+            isRussianRegion: true);
+
+        Assert.Same(matchingSuccess, selected);
+    }
+
+    [Fact]
+    public void RussianResultSelectionRetriesCodeElevenBeforeHardFailure()
+    {
+        var request = RemoteCommandFactory.CreateWindowCloseCommand(
+            "VIN123",
+            "hash",
+            useRussianProtocol: true);
+        var hardFailure = new RemoteCtrlResultT5
+        {
+            RemoteType = "0x08",
+            ResultCode = "9"
+        };
+        var intermediate = new RemoteCtrlResultT5
+        {
+            RemoteType = "0x08",
+            ResultCode = "11"
+        };
+
+        var selected = RemoteCommandService.SelectRemoteCommandResult(
+            new[] { hardFailure, intermediate },
+            request,
+            isRussianRegion: true);
+
+        Assert.Same(intermediate, selected);
+    }
+
+    [Fact]
     public void ClimateValidationAcceptsRunTimeOnly()
     {
         RemoteCommandService.ValidateClimateRequest(new ClimateCommandRequest

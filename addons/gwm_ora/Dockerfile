@@ -9,8 +9,7 @@ RUN dotnet restore src/GwmOra.Addon/GwmOra.Addon.csproj
 
 COPY src/LibGwmApi/ src/LibGwmApi/
 COPY src/GwmOra.Addon/ src/GwmOra.Addon/
-# Avoid --no-restore: host bin/obj can overwrite restore assets without .dockerignore.
-RUN dotnet publish src/GwmOra.Addon/GwmOra.Addon.csproj -c Release -o /app/publish
+RUN dotnet publish src/GwmOra.Addon/GwmOra.Addon.csproj -c Release -o /app/publish --no-restore
 
 FROM mcr.microsoft.com/dotnet/aspnet:10.0-alpine
 ARG BUILD_VERSION=dev

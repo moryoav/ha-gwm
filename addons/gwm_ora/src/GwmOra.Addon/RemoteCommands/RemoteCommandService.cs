@@ -10,7 +10,10 @@ namespace GwmOra.Addon.RemoteCommands;
 public sealed class RemoteCommandService
 {
     private const string PendingResultCode = "2000";
-    private const int MaxResultPolls = 18;
+    private const string RussianPendingResultCode = "1000";
+    private const string RussianIntermediateResultCode = "11";
+    private const int DefaultMaxResultPolls = 18;
+    private const int RussianMaxResultPolls = 60;
     private static readonly TimeSpan ResultPollInterval = TimeSpan.FromSeconds(5);
 
     private readonly AddonOptions _options;
@@ -183,7 +186,8 @@ public sealed class RemoteCommandService
                 SecurityPassword,
                 switchOrder,
                 temperature,
-                operationTime);
+                operationTime,
+                IsRussianRegion);
             await SendAndPollAsync(client, id, sendCommand, cancellationToken);
         }
         catch (Exception ex)
@@ -198,7 +202,11 @@ public sealed class RemoteCommandService
         try
         {
             var client = await AuthenticatedClientAsync(cancellationToken);
-            var request = RemoteCommandFactory.CreateLockCommand(command.Vin, SecurityPassword, lockVehicle);
+            var request = RemoteCommandFactory.CreateLockCommand(
+                command.Vin,
+                SecurityPassword,
+                lockVehicle,
+                IsRussianRegion);
             await SendAndPollAsync(client, id, request, cancellationToken);
         }
         catch (Exception ex)
@@ -213,7 +221,10 @@ public sealed class RemoteCommandService
         try
         {
             var client = await AuthenticatedClientAsync(cancellationToken);
-            var request = RemoteCommandFactory.CreateWindowCloseCommand(command.Vin, SecurityPassword);
+            var request = RemoteCommandFactory.CreateWindowCloseCommand(
+                command.Vin,
+                SecurityPassword,
+                IsRussianRegion);
             await SendAndPollAsync(client, id, request, cancellationToken);
         }
         catch (Exception ex)
@@ -236,44 +247,73 @@ public sealed class RemoteCommandService
         await client.SendCmdAsync(request, cancellationToken);
         _store.Update(id, "in_progress", $"{command.Name}: accepted by GWM, waiting for vehicle result", request.SeqNo);
 
-        for (var attempt = 1; attempt <= MaxResultPolls; attempt++)
+        var maxResultPolls = IsRussianRegion ? RussianMaxResultPolls : DefaultMaxResultPolls;
+        RemoteCtrlResultT5? lastRussianIntermediateResult = null;
+        for (var attempt = 1; attempt <= maxResultPolls; attempt++)
         {
             await Task.Delay(ResultPollInterval, cancellationToken);
             var results = await client.GetRemoteCtrlResultAsync(request.SeqNo, request.Vin, cancellationToken);
-            var result = results.FirstOrDefault(x => String.Equals(x.HwCommandId, request.SeqNo, StringComparison.OrdinalIgnoreCase))
-                         ?? results.FirstOrDefault();
+            var result = SelectRemoteCommandResult(results, request, IsRussianRegion);
 
             if (result is null)
             {
                 _store.Update(
                     id,
                     "in_progress",
-                    $"{command.Name}: waiting for vehicle result ({attempt}/{MaxResultPolls})",
+                    $"{command.Name}: waiting for vehicle result ({attempt}/{maxResultPolls})",
                     request.SeqNo);
                 continue;
             }
 
-            var state = PendingResultCode.Equals(result.ResultCode, StringComparison.Ordinal) ? "in_progress" :
-                IsSuccessfulRemoteCommandResult(result) ? "completed" : "failed";
+            var isPending = IsPendingRemoteCommandResult(result, IsRussianRegion);
+            var isRussianIntermediate = IsRussianRegion && RussianIntermediateResultCode.Equals(
+                result.ResultCode,
+                StringComparison.Ordinal);
+            if (isRussianIntermediate)
+            {
+                lastRussianIntermediateResult = result;
+            }
+
+            var state = isPending || isRussianIntermediate
+                ? "in_progress"
+                : IsSuccessfulRemoteCommandResult(result) ? "completed" : "failed";
+            var status = isRussianIntermediate
+                ? $"{command.Name}: waiting for final vehicle result ({attempt}/{maxResultPolls}) " +
+                  $"[{result.ResultCode}]"
+                : FormatRemoteCommandResult(
+                    command.Name,
+                    result,
+                    attempt,
+                    IsRussianRegion,
+                    maxResultPolls);
             _store.Update(
                 id,
                 state,
-                FormatRemoteCommandResult(command.Name, result, attempt),
+                status,
                 request.SeqNo,
                 result.ResultCode,
                 result.ResultMsg);
 
-            if (!PendingResultCode.Equals(result.ResultCode, StringComparison.Ordinal))
+            if (!isPending && !isRussianIntermediate)
             {
                 return;
             }
         }
 
+        var finalResultMessage = String.IsNullOrWhiteSpace(lastRussianIntermediateResult?.ResultMsg)
+            ? "no message"
+            : lastRussianIntermediateResult.ResultMsg;
+        var finalDetails = lastRussianIntermediateResult is null
+            ? String.Empty
+            : $" Last GWM result: {finalResultMessage} [{lastRussianIntermediateResult.ResultCode}].";
         _store.Update(
             id,
             "timeout",
-            $"{command.Name}: timed out waiting for vehicle result after {MaxResultPolls * ResultPollInterval.TotalSeconds:0} seconds",
-            request.SeqNo);
+            $"{command.Name}: timed out waiting for vehicle result after " +
+            $"{maxResultPolls * ResultPollInterval.TotalSeconds:0} seconds.{finalDetails}",
+            request.SeqNo,
+            lastRussianIntermediateResult?.ResultCode,
+            lastRussianIntermediateResult?.ResultMsg);
     }
 
     private void EnsureRemoteCommandsAvailable()
@@ -291,6 +331,9 @@ public sealed class RemoteCommandService
 
     private string SecurityPassword => new CheckSecurityPassword(_options.SecurityPin!).Md5Hash;
 
+    private bool IsRussianRegion =>
+        String.Equals(_options.Region, "rus", StringComparison.OrdinalIgnoreCase);
+
     private void FailCommand(string id, string commandName, Exception exception)
     {
         var message = exception is GwmApiException gwmException
@@ -300,17 +343,93 @@ public sealed class RemoteCommandService
         _logger.LogError(exception, "Remote command {CommandId} failed", id);
     }
 
-    internal static string FormatRemoteCommandResult(string commandName, RemoteCtrlResultT5 result, int attempt)
+    internal static string FormatRemoteCommandResult(
+        string commandName,
+        RemoteCtrlResultT5 result,
+        int attempt,
+        bool isRussianRegion = false,
+        int maxResultPolls = DefaultMaxResultPolls)
     {
         var resultCode = String.IsNullOrWhiteSpace(result.ResultCode) ? "unknown" : result.ResultCode;
         var resultMsg = String.IsNullOrWhiteSpace(result.ResultMsg) ? "no message" : result.ResultMsg;
-        if (PendingResultCode.Equals(result.ResultCode, StringComparison.Ordinal))
+        if (IsPendingRemoteCommandResult(result, isRussianRegion))
         {
-            return $"{commandName}: in progress ({attempt}/{MaxResultPolls}) - waiting for vehicle result [{resultCode}]";
+            return $"{commandName}: in progress ({attempt}/{maxResultPolls}) - waiting for vehicle result [{resultCode}]";
         }
 
         var status = IsSuccessfulRemoteCommandResult(result) ? "completed" : "failed";
         return $"{commandName}: {status} - {resultMsg} [{resultCode}]";
+    }
+
+    internal static RemoteCtrlResultT5? SelectRemoteCommandResult(
+        IReadOnlyCollection<RemoteCtrlResultT5> results,
+        SendCmd request,
+        bool isRussianRegion)
+    {
+        if (!isRussianRegion)
+        {
+            return results.FirstOrDefault(x => String.Equals(
+                       x.HwCommandId,
+                       request.SeqNo,
+                       StringComparison.OrdinalIgnoreCase))
+                   ?? results.FirstOrDefault();
+        }
+
+        var expectedRemoteType = ExpectedRemoteType(request);
+        var candidates = String.IsNullOrWhiteSpace(expectedRemoteType)
+            ? Array.Empty<RemoteCtrlResultT5>()
+            : results.Where(x => String.Equals(
+                    x.RemoteType,
+                    expectedRemoteType,
+                    StringComparison.OrdinalIgnoreCase))
+                .ToArray();
+        if (candidates.Length == 0)
+        {
+            candidates = results.Where(x => String.Equals(
+                    x.HwCommandId,
+                    request.SeqNo,
+                    StringComparison.OrdinalIgnoreCase))
+                .ToArray();
+        }
+        if (candidates.Length == 0)
+        {
+            candidates = results.ToArray();
+        }
+
+        return candidates.FirstOrDefault(IsSuccessfulRemoteCommandResult)
+               ?? candidates.FirstOrDefault(x => IsPendingRemoteCommandResult(x, isRussianRegion: true))
+               ?? candidates.FirstOrDefault(x => RussianIntermediateResultCode.Equals(
+                   x.ResultCode,
+                   StringComparison.Ordinal))
+               ?? candidates.FirstOrDefault();
+    }
+
+    internal static bool IsPendingRemoteCommandResult(
+        RemoteCtrlResultT5 result,
+        bool isRussianRegion)
+    {
+        return PendingResultCode.Equals(result.ResultCode, StringComparison.Ordinal)
+               || isRussianRegion && RussianPendingResultCode.Equals(
+                   result.ResultCode,
+                   StringComparison.Ordinal);
+    }
+
+    private static string? ExpectedRemoteType(SendCmd request)
+    {
+        if (request.Instructions?.X04 is not null)
+        {
+            return "0x04";
+        }
+        if (request.Instructions?.X05 is not null)
+        {
+            return "0x05";
+        }
+        if (request.Instructions?.X08 is not null)
+        {
+            return "0x08";
+        }
+
+        return null;
     }
 
     private static bool IsSuccessfulRemoteCommandResult(RemoteCtrlResultT5 result)

@@ -62,4 +62,61 @@ public class RemoteCommandFactoryTests
         Assert.Equal("0", window.GetProperty("rightFront").GetString());
         Assert.Equal("0", window.GetProperty("rightBack").GetString());
     }
+
+    [Fact]
+    public void RussianCommandsUseTypeThree()
+    {
+        var climate = RemoteCommandFactory.CreateClimateCommand(
+            "VIN123",
+            "hash",
+            "1",
+            22,
+            15,
+            useRussianProtocol: true);
+        var doorLock = RemoteCommandFactory.CreateLockCommand(
+            "VIN123",
+            "hash",
+            lockVehicle: true,
+            useRussianProtocol: true);
+        var windowClose = RemoteCommandFactory.CreateWindowCloseCommand(
+            "VIN123",
+            "hash",
+            useRussianProtocol: true);
+
+        Assert.Equal(3, climate.Type);
+        Assert.Equal(3, doorLock.Type);
+        Assert.Equal(3, windowClose.Type);
+    }
+
+    [Fact]
+    public void RussianWindowCloseUsesRussianSwitchOrderAndOmitsSunroof()
+    {
+        var command = RemoteCommandFactory.CreateWindowCloseCommand(
+            "VIN123",
+            "hash",
+            useRussianProtocol: true);
+
+        using var document = JsonDocument.Parse(JsonSerializer.Serialize(command));
+        var windowInstruction = document.RootElement
+            .GetProperty("instructions")
+            .GetProperty("0x08");
+
+        Assert.Equal("2", windowInstruction.GetProperty("switchOrder").GetString());
+        Assert.False(windowInstruction.GetProperty("window").TryGetProperty("skyLight", out _));
+    }
+
+    [Fact]
+    public void StandardWindowClosePayloadRemainsUnchanged()
+    {
+        var command = RemoteCommandFactory.CreateWindowCloseCommand("VIN123", "hash");
+
+        using var document = JsonDocument.Parse(JsonSerializer.Serialize(command));
+        var windowInstruction = document.RootElement
+            .GetProperty("instructions")
+            .GetProperty("0x08");
+
+        Assert.Equal(2, command.Type);
+        Assert.Equal("0", windowInstruction.GetProperty("switchOrder").GetString());
+        Assert.Equal(String.Empty, windowInstruction.GetProperty("window").GetProperty("skyLight").GetString());
+    }
 }

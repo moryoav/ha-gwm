@@ -1,4 +1,6 @@
 using System.Text.Json;
+using GwmOra.Addon.Configuration;
+using GwmOra.Addon.Gwm;
 using libgwmapi.DTO.UserAuth;
 
 namespace GwmOra.Addon.Tests;
@@ -10,17 +12,15 @@ public class GwmAuthenticationServiceTests
     [Fact]
     public void RusLoginAccountRequestSerializesEmailWithoutCountryCode()
     {
-        var request = new LoginAccountRequest
-        {
-            Account = "owner@example.com",
-            Password = "Abcd1234",
-            Country = "RU",
-            IsEncrypt = false,
-            DeviceId = "abcdef0123456789abcdef0123456789",
-            Model = "ha-gwm-ora",
-            PushToken = String.Empty,
-            Agreement = new[] { 1, 2, 18, 19 }
-        };
+        var request = GwmAuthenticationService.CreateRussianPasswordLoginRequest(
+            new AddonOptions
+            {
+                Username = "owner@example.com",
+                Password = "Abcd1234",
+                Country = "RU",
+                Region = "rus"
+            },
+            "abcdef0123456789abcdef0123456789");
 
         var json = JsonSerializer.Serialize(request);
 
@@ -29,6 +29,41 @@ public class GwmAuthenticationServiceTests
         Assert.Contains("\"country\":\"RU\"", json);
         Assert.DoesNotContain("countryCode", json);
         Assert.Contains("\"agreement\":[1,2,18,19]", json);
+    }
+
+    [Fact]
+    public void RusVerificationLoginUsesRussianAgreementsAndTrimmedCode()
+    {
+        var request = GwmAuthenticationService.CreateRussianVerificationLoginRequest(
+            new AddonOptions
+            {
+                Username = "owner@example.com",
+                Password = "Abcd1234",
+                VerificationCode = " 123456 ",
+                Country = "RU",
+                Region = "rus"
+            },
+            "abcdef0123456789abcdef0123456789");
+
+        var json = JsonSerializer.Serialize(request);
+
+        Assert.Contains("\"smsCode\":\"123456\"", json);
+        Assert.Contains("\"agreement\":[1,2,18,19]", json);
+    }
+
+    [Fact]
+    public void RusVerificationLoginRequiresCode()
+    {
+        var options = new AddonOptions
+        {
+            Username = "owner@example.com",
+            Password = "Abcd1234",
+            Country = "RU",
+            Region = "rus"
+        };
+
+        Assert.Throws<InvalidOperationException>(() =>
+            GwmAuthenticationService.CreateRussianVerificationLoginRequest(options, "device"));
     }
 
     [Fact]

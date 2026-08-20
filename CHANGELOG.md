@@ -8,7 +8,7 @@ This project follows semantic versioning. HACS uses the latest GitHub release ta
 
 ### Added
 
-- Russia support for the `rus` region: `rus-h5-gateway` / `rus-app-gateway` URLs and `LGWGWM-AD-RU-GENERAL` mutual-TLS certificates extracted from the Russian GWM Android app. Set `region: rus` and `country: RU`.
+- Russia support for the `rus` region, including authentication, vehicle discovery, status polling, and remote-command requests through the Russian GWM gateways. Set `region: rus` and `country: RU`. Monitoring has been tested with a live account; remote commands are implemented and awaiting live confirmation.
 
 ## [0.6.1] - 2026-08-10
 

@@ -19,7 +19,7 @@ configuration:
     description: Optional 6-digit vehicle remote control PIN from the official app. Required for A/C, lock, unlock, and close-window commands.
   enable_remote_commands:
     name: Enable remote commands
-    description: Allow Home Assistant to send vehicle remote commands through this add-on. Australia/New Zealand command support is experimental and unconfirmed.
+    description: Allow Home Assistant to send vehicle remote commands through this add-on. Australia/New Zealand and Russia command support is awaiting live confirmation.
   poll_interval_seconds:
     name: Poll interval
     description: Number of seconds between GWM cloud status polls.

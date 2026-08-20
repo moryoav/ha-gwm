@@ -32,7 +32,7 @@ options:
 schema:
   country: "match(^[A-Za-z]{2}$)"
   region: "list(eu|aus|rus)"
-  username: str
+  username: email
   password: password
   verification_code: password?
   security_pin: password?

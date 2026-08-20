@@ -37,7 +37,7 @@ public sealed class GwmAuthenticationService
             _options.Region,
             "aus",
             StringComparison.OrdinalIgnoreCase);
-        var needsEuClientCertificate = NeedsEuClientCertificate();
+        var requiresPerDeviceCertificate = RequiresPerDeviceClientCertificate();
 
         if (!String.IsNullOrWhiteSpace(_stateStore.State.AccessToken))
         {
@@ -71,7 +71,7 @@ public sealed class GwmAuthenticationService
 
             if (storedTokenAccepted)
             {
-                if (needsEuClientCertificate)
+                if (requiresPerDeviceCertificate)
                 {
                     await EnsureEuClientCertificateAsync(client, cancellationToken);
                 }
@@ -110,7 +110,7 @@ public sealed class GwmAuthenticationService
 
             if (refreshed)
             {
-                if (needsEuClientCertificate)
+                if (requiresPerDeviceCertificate)
                 {
                     await EnsureEuClientCertificateAsync(client, cancellationToken);
                 }
@@ -119,7 +119,7 @@ public sealed class GwmAuthenticationService
         }
 
         await LoginAsync(client, cancellationToken);
-        if (needsEuClientCertificate)
+        if (requiresPerDeviceCertificate)
         {
             await EnsureEuClientCertificateAsync(client, cancellationToken);
         }
@@ -268,17 +268,7 @@ public sealed class GwmAuthenticationService
             return;
         }
 
-        var request = new LoginAccountRequest
-        {
-            Country = _options.Country,
-            IsEncrypt = false,
-            DeviceId = client.DeviceId,
-            Model = "ha-gwm-ora",
-            PushToken = String.Empty,
-            Account = _options.Username,
-            Password = _options.Password,
-            Agreement = RusAgreements
-        };
+        var request = CreateRussianPasswordLoginRequest(_options, client.DeviceId);
 
         try
         {
@@ -299,15 +289,7 @@ public sealed class GwmAuthenticationService
         GwmApiClient client,
         CancellationToken cancellationToken)
     {
-        var request = new LoginWithSmsRequest
-        {
-            Email = _options.Username,
-            Country = _options.Country,
-            DeviceId = client.DeviceId,
-            Model = "ha-gwm-ora",
-            PushToken = String.Empty,
-            SmsCode = _options.VerificationCode!
-        };
+        var request = CreateRussianVerificationLoginRequest(_options, client.DeviceId);
 
         try
         {
@@ -358,6 +340,45 @@ public sealed class GwmAuthenticationService
                 $"GWM requires SMS/e-mail verification, but requesting a verification code failed: {ex.Message}",
                 ex);
         }
+    }
+
+    internal static LoginAccountRequest CreateRussianPasswordLoginRequest(
+        AddonOptions options,
+        string deviceId)
+    {
+        return new LoginAccountRequest
+        {
+            Country = options.Country,
+            IsEncrypt = false,
+            DeviceId = deviceId,
+            Model = "ha-gwm-ora",
+            PushToken = String.Empty,
+            Account = options.Username,
+            Password = options.Password,
+            Agreement = RusAgreements
+        };
+    }
+
+    internal static LoginWithSmsRequest CreateRussianVerificationLoginRequest(
+        AddonOptions options,
+        string deviceId)
+    {
+        if (String.IsNullOrWhiteSpace(options.VerificationCode))
+        {
+            throw new InvalidOperationException(
+                "A verification code is required for Russian verification login.");
+        }
+
+        return new LoginWithSmsRequest
+        {
+            Agreement = RusAgreements,
+            Email = options.Username,
+            Country = options.Country,
+            DeviceId = deviceId,
+            Model = "ha-gwm-ora",
+            PushToken = String.Empty,
+            SmsCode = options.VerificationCode.Trim()
+        };
     }
 
     private async Task RequestVerificationCodeEuV2Async(
@@ -617,7 +638,7 @@ public sealed class GwmAuthenticationService
         client.SetAccessToken(response.AccessToken);
     }
 
-    private bool NeedsEuClientCertificate()
+    private bool RequiresPerDeviceClientCertificate()
     {
         return !String.Equals(_options.Region, "aus", StringComparison.OrdinalIgnoreCase) &&
                !String.Equals(_options.Region, "rus", StringComparison.OrdinalIgnoreCase);
