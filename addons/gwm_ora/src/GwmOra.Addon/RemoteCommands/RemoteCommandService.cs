@@ -362,39 +362,60 @@ public sealed class RemoteCommandService
     }
 
     internal static RemoteCtrlResultT5? SelectRemoteCommandResult(
-        IReadOnlyCollection<RemoteCtrlResultT5> results,
+        IReadOnlyCollection<RemoteCtrlResultT5?>? results,
         SendCmd request,
         bool isRussianRegion)
     {
+        var usableResults = results?.Where(static result => result is not null).Cast<RemoteCtrlResultT5>().ToArray()
+                            ?? Array.Empty<RemoteCtrlResultT5>();
         if (!isRussianRegion)
         {
-            return results.FirstOrDefault(x => String.Equals(
+            return usableResults.FirstOrDefault(x => String.Equals(
                        x.HwCommandId,
                        request.SeqNo,
                        StringComparison.OrdinalIgnoreCase))
-                   ?? results.FirstOrDefault();
+                   ?? usableResults.FirstOrDefault();
         }
 
         var expectedRemoteType = ExpectedRemoteType(request);
-        var candidates = String.IsNullOrWhiteSpace(expectedRemoteType)
-            ? Array.Empty<RemoteCtrlResultT5>()
-            : results.Where(x => String.Equals(
+        var exactSequenceCandidates = usableResults.Where(x => String.Equals(
+                x.HwCommandId,
+                request.SeqNo,
+                StringComparison.OrdinalIgnoreCase))
+            .ToArray();
+        var exactCommandCandidates = String.IsNullOrWhiteSpace(expectedRemoteType)
+            ? exactSequenceCandidates
+            : exactSequenceCandidates.Where(x => String.Equals(
                     x.RemoteType,
                     expectedRemoteType,
                     StringComparison.OrdinalIgnoreCase))
                 .ToArray();
-        if (candidates.Length == 0)
-        {
-            candidates = results.Where(x => String.Equals(
-                    x.HwCommandId,
-                    request.SeqNo,
+        var missingSequenceCandidates = String.IsNullOrWhiteSpace(expectedRemoteType)
+            ? Array.Empty<RemoteCtrlResultT5>()
+            : usableResults.Where(x => String.IsNullOrWhiteSpace(x.HwCommandId)
+                                       && String.Equals(
+                                           x.RemoteType,
+                                           expectedRemoteType,
+                                           StringComparison.OrdinalIgnoreCase))
+                .ToArray();
+        var remoteTypeCandidates = String.IsNullOrWhiteSpace(expectedRemoteType)
+            ? Array.Empty<RemoteCtrlResultT5>()
+            : usableResults.Where(x => String.Equals(
+                    x.RemoteType,
+                    expectedRemoteType,
                     StringComparison.OrdinalIgnoreCase))
                 .ToArray();
-        }
-        if (candidates.Length == 0)
-        {
-            candidates = results.ToArray();
-        }
+        var candidates = exactCommandCandidates.Length > 0
+            ? exactCommandCandidates
+            : exactSequenceCandidates.Length > 0
+                ? exactSequenceCandidates
+                : missingSequenceCandidates.Length > 0
+                    ? missingSequenceCandidates
+                    : remoteTypeCandidates.Length > 0
+                        ? remoteTypeCandidates
+                        : String.IsNullOrWhiteSpace(expectedRemoteType)
+                            ? usableResults
+                            : Array.Empty<RemoteCtrlResultT5>();
 
         return candidates.FirstOrDefault(IsSuccessfulRemoteCommandResult)
                ?? candidates.FirstOrDefault(x => IsPendingRemoteCommandResult(x, isRussianRegion: true))

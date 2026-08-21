@@ -100,6 +100,170 @@ public class RemoteCommandServiceTests
     }
 
     [Fact]
+    public void RussianResultSelectionPrefersCurrentSequenceOverStaleSameTypeSuccess()
+    {
+        var request = RemoteCommandFactory.CreateLockCommand(
+            "VIN123",
+            "hash",
+            lockVehicle: true,
+            useRussianProtocol: true);
+        var staleSuccess = new RemoteCtrlResultT5
+        {
+            HwCommandId = "OLD-SEQUENCE",
+            RemoteType = "0x05",
+            ResultCode = "0"
+        };
+        var currentPending = new RemoteCtrlResultT5
+        {
+            HwCommandId = request.SeqNo,
+            RemoteType = "0x05",
+            ResultCode = "1000"
+        };
+
+        var selected = RemoteCommandService.SelectRemoteCommandResult(
+            new[] { staleSuccess, currentPending },
+            request,
+            isRussianRegion: true);
+
+        Assert.Same(currentPending, selected);
+    }
+
+    [Theory]
+    [InlineData("11")]
+    [InlineData("9")]
+    public void RussianResultSelectionKeepsCurrentSequenceResultOverStaleSuccess(string currentResultCode)
+    {
+        var request = RemoteCommandFactory.CreateLockCommand(
+            "VIN123",
+            "hash",
+            lockVehicle: true,
+            useRussianProtocol: true);
+        var staleSuccess = new RemoteCtrlResultT5
+        {
+            HwCommandId = "OLD-SEQUENCE",
+            RemoteType = "0x05",
+            ResultCode = "0"
+        };
+        var currentResult = new RemoteCtrlResultT5
+        {
+            HwCommandId = request.SeqNo,
+            RemoteType = "0x05",
+            ResultCode = currentResultCode
+        };
+
+        var selected = RemoteCommandService.SelectRemoteCommandResult(
+            new[] { staleSuccess, currentResult },
+            request,
+            isRussianRegion: true);
+
+        Assert.Same(currentResult, selected);
+    }
+
+    [Fact]
+    public void RussianResultSelectionPrefersMissingSequenceFallbackOverStaleSequence()
+    {
+        var request = RemoteCommandFactory.CreateLockCommand(
+            "VIN123",
+            "hash",
+            lockVehicle: true,
+            useRussianProtocol: true);
+        var staleSuccess = new RemoteCtrlResultT5
+        {
+            HwCommandId = "OLD-SEQUENCE",
+            RemoteType = "0x05",
+            ResultCode = "0"
+        };
+        var currentPendingWithoutSequence = new RemoteCtrlResultT5
+        {
+            HwCommandId = null!,
+            RemoteType = "0x05",
+            ResultCode = "1000"
+        };
+
+        var selected = RemoteCommandService.SelectRemoteCommandResult(
+            new[] { staleSuccess, currentPendingWithoutSequence },
+            request,
+            isRussianRegion: true);
+
+        Assert.Same(currentPendingWithoutSequence, selected);
+    }
+
+    [Fact]
+    public void RussianResultSelectionIgnoresOnlyUnrelatedRemoteTypes()
+    {
+        var request = RemoteCommandFactory.CreateWindowCloseCommand(
+            "VIN123",
+            "hash",
+            useRussianProtocol: true);
+        var unrelatedSuccess = new RemoteCtrlResultT5
+        {
+            RemoteType = "0x05",
+            ResultCode = "0"
+        };
+
+        var selected = RemoteCommandService.SelectRemoteCommandResult(
+            new[] { unrelatedSuccess },
+            request,
+            isRussianRegion: true);
+
+        Assert.Null(selected);
+    }
+
+    [Fact]
+    public void RemoteResultSelectionToleratesMissingResultsAndNullItems()
+    {
+        var request = RemoteCommandFactory.CreateWindowCloseCommand(
+            "VIN123",
+            "hash",
+            useRussianProtocol: true);
+        var currentResult = new RemoteCtrlResultT5
+        {
+            HwCommandId = request.SeqNo,
+            RemoteType = "0x08",
+            ResultCode = "6"
+        };
+
+        Assert.Null(RemoteCommandService.SelectRemoteCommandResult(null, request, isRussianRegion: true));
+        Assert.Null(RemoteCommandService.SelectRemoteCommandResult(
+            Array.Empty<RemoteCtrlResultT5?>(),
+            request,
+            isRussianRegion: true));
+        Assert.Null(RemoteCommandService.SelectRemoteCommandResult(
+            new RemoteCtrlResultT5?[] { null },
+            request,
+            isRussianRegion: true));
+        Assert.Same(
+            currentResult,
+            RemoteCommandService.SelectRemoteCommandResult(
+                new RemoteCtrlResultT5?[] { null, currentResult },
+                request,
+                isRussianRegion: true));
+    }
+
+    [Fact]
+    public void NonRussianResultSelectionKeepsExistingSequenceAndFallbackBehavior()
+    {
+        var request = RemoteCommandFactory.CreateWindowCloseCommand(
+            "VIN123",
+            "hash");
+        var firstResult = new RemoteCtrlResultT5 { HwCommandId = "OTHER", ResultCode = "0" };
+        var exactResult = new RemoteCtrlResultT5 { HwCommandId = request.SeqNo, ResultCode = "2000" };
+
+        Assert.Same(
+            exactResult,
+            RemoteCommandService.SelectRemoteCommandResult(
+                new[] { firstResult, exactResult },
+                request,
+                isRussianRegion: false));
+        Assert.Same(
+            firstResult,
+            RemoteCommandService.SelectRemoteCommandResult(
+                new[] { firstResult },
+                request,
+                isRussianRegion: false));
+    }
+
+    [Fact]
     public void ClimateValidationAcceptsRunTimeOnly()
     {
         RemoteCommandService.ValidateClimateRequest(new ClimateCommandRequest

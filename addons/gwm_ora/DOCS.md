@@ -19,7 +19,7 @@
 | `password` | yes | GWM account password. |
 | `verification_code` | no | One-time SMS/e-mail verification code sent by GWM during first login or when this add-on device must be trusted. Fill it only after GWM sends a code. |
 | `security_pin` | no | Vehicle remote control PIN from the official app. |
-| `enable_remote_commands` | yes | Enables A/C, lock, unlock, and close-window commands. AU/NZ and Russia command support is awaiting live confirmation. |
+| `enable_remote_commands` | yes | Enables A/C, lock, unlock, and close-window commands. |
 | `poll_interval_seconds` | yes | GWM cloud polling interval from 30 to 3600 seconds. |
 | `log_level` | yes | One of `trace`, `debug`, `info`, `warning`, or `error`. |
 
@@ -58,10 +58,8 @@ The authentication flow is similar to the EU setup: the first login on a new dev
 **One account, one session.** The ANZ backend allows only a single active session per account: whenever the account signs in on a new device, the previous session is logged out. If the add-on and the official phone app use the **same** account they will repeatedly evict each other. To avoid this, give the add-on its **own** account:
 
 1. Keep using your primary account in the phone app.
-2. Create a second GWM account and **share the car** with it, granting **control** permission (not view-only) if you want to test remote commands.
+2. Create a second GWM account and **share the car** with it, granting **control** permission (not view-only) if you want to use remote commands.
 3. Configure the add-on with that second account.
-
-Login, verification, vehicle discovery, and status polling have been validated against a live ANZ vehicle. Lock, climate, and close-window commands remain available when explicitly enabled with a security PIN, but they are currently **experimental and unconfirmed** on the ANZ backend. Test one command at a time only while the vehicle is parked, safe, and in view. Do not rely on AU/NZ remote-command automations until your vehicle has been tested successfully, and report the result in [issue #1](https://github.com/moryoav/ha-gwm_ora/issues/1).
 
 ## Russia (`rus` region)
 
@@ -72,7 +70,11 @@ For GWM Russia accounts (the Russian *GWM* Android app), set:
 
 Russia uses its own GWM request signing, gateways, and bundled client certificate from the official Russian app. First-login SMS/e-mail verification follows the same add-on setup as the other regions.
 
-Vehicle discovery and status polling have been validated with a live Russia account. Lock, climate, and close-window commands are available when explicitly enabled with a security PIN, but still need live confirmation. Test one command at a time only while the vehicle is parked, safe, and in view.
+## Model-specific vehicle data
+
+Different models and regions return different GWM status codes. Version 0.7.0 adds optional fuel, door, trunk, heater, seat heating and ventilation, tire-state, window-learning, engine-state, and sunroof-position data. Car-specific comfort and diagnostic entities are disabled by default where appropriate and can be enabled from the Home Assistant entity list.
+
+Missing or malformed optional values are returned as unknown and do not stop the vehicle refresh or affect supported entities. Front doors, windows, seat heating, and seat ventilation use driver/passenger naming so the labels remain correct for both left-hand-drive and right-hand-drive cars. Engine and sunroof values are intentionally exposed as disabled raw state codes until their meaning is confirmed on more vehicles.
 
 ## Web UI
 

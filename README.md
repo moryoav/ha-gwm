@@ -9,7 +9,7 @@ Control and monitor your GWM ORA from Home Assistant. The add-on connects to you
 
 ## What You Get
 
-- Battery SOC, range, odometer, charging, plug, cabin temperature, tire pressure, tire temperature, lock, window, A/C, and location entities.
+- Battery SOC, range, odometer, charging, plug, cabin temperature, tire, lock, window, door, trunk, A/C, and location entities, plus model-dependent fuel and comfort data.
 - Native Home Assistant controls for A/C mode, temperature, run time, door lock/unlock, and closing windows.
 - A remote command status sensor that shows progress while commands are being sent to the car.
 - Automatic discovery of the add-on by the integration.
@@ -36,7 +36,7 @@ https://github.com/moryoav/ha-gwm_ora
 
 ### 2. Install and Configure the Add-on
 
-Install **GWM ORA**, then fill in the add-on options. Select the cloud region that serves the account. Remote commands are confirmed for `eu`; they remain available but await live confirmation for `aus` and `rus`.
+Install **GWM ORA**, then fill in the add-on options. Select the cloud region that serves the account.
 
 ```yaml
 region: eu
@@ -53,7 +53,7 @@ log_level: info
 - `country`: Two-letter country where the GWM account was registered, such as `DE`, `GB`, `AU`, `NZ`, or `RU`. It must match the account registration country.
 - `username`: E-mail address for your GWM account.
 - `password`: Password for your GWM account.
-- `enable_remote_commands`: Enables A/C, lock, unlock, and close-window controls. Use `false` for read-only entities. AU/NZ and Russia command support is currently awaiting live confirmation.
+- `enable_remote_commands`: Enables A/C, lock, unlock, and close-window controls. Use `false` for read-only entities.
 - `security_pin`: The remote-control PIN configured in the official GWM app. Setting up that PIN in the official app is a prerequisite for remote commands.
 - `poll_interval_seconds`: How often the add-on refreshes vehicle data from GWM.
 - `log_level`: Add-on logging verbosity.
@@ -98,8 +98,9 @@ You do not enter your GWM username or password in the integration.
 
 ## Entities
 
-- Sensors: SOC, range, odometer, charging status, remaining charging time, SOCE, tire pressures, tire temperatures, interior temperature, acquisition/update timestamps, remote command status.
-- Binary sensors: charging active, charge plug, A/C active, lock open, windows open, air circulation, front defroster.
+- Sensors: SOC, range, odometer, charging status, remaining charging time, SOCE, tire pressures, tire temperatures, interior temperature, optional fuel level/range and seat heating/ventilation levels, acquisition/update timestamps, and remote command status.
+- Binary sensors: charging active, charge plug, A/C active, lock open, driver/passenger windows and doors, trunk, air circulation, defrosters, and optional steering-wheel and windscreen heater states.
+- Disabled diagnostic sensors: raw tire state, window-learning state, engine state code, sunroof position code, and GPS authorization data when supplied by the vehicle.
 - Device tracker: vehicle GPS location when available.
 - Climate: A/C mode `off`/`cool`, target temperature, current cabin temperature.
 - Number: climate run time from 5 to 30 minutes in one-minute steps.
@@ -107,6 +108,8 @@ You do not enter your GWM username or password in the integration.
 - Button: close all windows.
 
 Remote command entities are unavailable until remote commands are enabled and a security PIN is configured in the add-on.
+
+GWM models and regions do not all return the same status signals. Model-specific fuel, comfort, and diagnostic entities are disabled by default where appropriate and can be enabled from the Home Assistant entity list. If a car does not return a value, that entity remains unknown without affecting polling or the other entities. Front doors, windows, seat heating, and seat ventilation use driver/passenger naming so their labels stay correct on both left-hand-drive and right-hand-drive cars.
 
 ### Use the charging status with evcc
 
@@ -140,19 +143,17 @@ The integration follows the command while it is running and refreshes vehicle da
 
 Set **Climate run time** before turning on the A/C to choose how long the remote climate command runs. The value can be 5 to 30 minutes in one-minute steps and applies to the next A/C command. Changing the run time alone saves the setting; it does not start or stop the A/C.
 
-> **Australia/New Zealand:** Login, verification, vehicle discovery, and status polling have been validated against a live ANZ vehicle. Lock, climate, and close-window commands remain enabled behind the existing explicit opt-in and security PIN, but are currently experimental and have not yet been confirmed on the ANZ backend. Test them only while the vehicle is parked, safe, and in view. Do not rely on AU/NZ remote-command automations until your vehicle has been tested successfully; please report results in [issue #1](https://github.com/moryoav/ha-gwm_ora/issues/1).
-
 ## Supported Vehicles
 
 This project is designed for GWM ORA vehicles that use the same GWM cloud behavior as the original `ora2mqtt` project, including ORA 03/Funky Cat style models exposed by the GWM mobile app.
 
 Regional GWM services and vehicle firmware can differ, so some entities may be unavailable on some cars.
 
-> **Regional availability:** This integration supports accounts on the European GWM cloud (`region: eu`), including EU countries and Israel; the Australia/New Zealand cloud (`region: aus`); and the Russia cloud (`region: rus`). AU/NZ and Russia login and vehicle data are live-tested. Remote commands are implemented for both regions but still need live confirmation.
+This integration supports accounts on the European GWM cloud (`region: eu`), including EU countries and Israel; the Australia/New Zealand cloud (`region: aus`); and the Russia cloud (`region: rus`).
 
 ### Australia/New Zealand account sessions
 
-The ANZ backend permits one active session per account. Using the same account in the add-on and official phone app can cause them to repeatedly log each other out. A dedicated account shared to the vehicle is recommended. Grant control permission if you intend to test the experimental remote commands.
+The ANZ backend permits one active session per account. Using the same account in the add-on and official phone app can cause them to repeatedly log each other out. A dedicated account shared to the vehicle is recommended. Grant control permission if you intend to use remote commands.
 
 ## Troubleshooting
 
@@ -263,7 +264,9 @@ Use at your own risk. You are responsible for validating behavior, protecting cr
 
 Special thanks to [zivillian](https://github.com/zivillian) and the [zivillian/ora2mqtt](https://github.com/zivillian/ora2mqtt) project for blazing the trail. Their work uncovered many of the details behind ORA/GWM connectivity and helped inspire the current development of this integration.
 
-Deep thanks to [wilberforce](https://github.com/wilberforce) for reverse-engineering the ANZ authentication and signing flow, implementing AU/NZ support, and validating it against a live vehicle.
+Thanks to [AlexandrErohin](https://github.com/AlexandrErohin) for contributing the initial model-specific vehicle sensor set and Russia cloud support.
+
+Deep thanks to [wilberforce](https://github.com/wilberforce) for reverse-engineering the ANZ authentication and signing flow, implementing AU/NZ support, decoding vehicle status mappings, and validating authentication and comfort signals against a live vehicle.
 
 [banner]: https://raw.githubusercontent.com/moryoav/ha-gwm_ora/main/brand/banner.png
 [hacs-badge]: https://img.shields.io/badge/HACS-Default-41BDF5.svg?style=flat-square

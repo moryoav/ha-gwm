@@ -27,8 +27,8 @@ public partial class GwmApiClient
         catch (GwmApiException ex) when (_region == "aus" && ex.Code == "607099")
         {
             // The ANZ gateway may reject this optional endpoint. Keep status and
-            // experimental climate commands usable with their existing default
-            // temperature while allowing all other failures to surface.
+            // climate commands usable with their existing default temperature
+            // while allowing all other failures to surface.
             _logger.LogDebug(
                 "GWM (AU) vehicleBasicsInfo is unavailable: {Code} {Message}",
                 ex.Code,
