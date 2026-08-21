@@ -8,7 +8,19 @@ namespace libgwmapi
 {
     public class CertificateHandler
     {
-        public X509Certificate2 Certificate => new(Properties.Resources.cert);
+        private readonly byte[] _certBytes;
+        private readonly byte[] _keyBytes;
+        private readonly byte[] _chainBytes;
+
+        public CertificateHandler(string region = "eu")
+        {
+            var isRus = String.Equals(region, "rus", StringComparison.OrdinalIgnoreCase);
+            _certBytes = isRus ? Properties.Resources.cert_rus : Properties.Resources.cert;
+            _keyBytes = isRus ? Properties.Resources.key_rus : Properties.Resources.key;
+            _chainBytes = isRus ? Properties.Resources.chain_rus : Properties.Resources.chain;
+        }
+
+        public X509Certificate2 Certificate => X509CertificateLoader.LoadCertificate(_certBytes);
 
         public X509Certificate2 CertificateWithPrivateKey
         {
@@ -26,9 +38,8 @@ namespace libgwmapi
         {
             get
             {
-                var chain = Properties.Resources.chain;
                 var collection = new X509Certificate2Collection();
-                collection.ImportFromPem(Encoding.ASCII.GetString(chain));
+                collection.ImportFromPem(Encoding.ASCII.GetString(_chainBytes));
                 return collection;
             }
         }
@@ -37,7 +48,7 @@ namespace libgwmapi
         {
             get
             {
-                var base64 = Encoding.ASCII.GetString(Properties.Resources.key);
+                var base64 = Encoding.ASCII.GetString(_keyBytes);
                 var key = Convert.FromBase64String(base64);
                 AsnDecoder.ReadSequence(key, AsnEncodingRules.DER, out var contentOffset, out var contentLength, out var bytesConsumed, Asn1Tag.Sequence);
                 var data = key.AsSpan(contentOffset, contentLength);

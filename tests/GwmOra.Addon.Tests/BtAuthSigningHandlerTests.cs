@@ -147,4 +147,47 @@ public class BtAuthSigningHandlerTests
             "29245b8fa2a982d774f547775393019b7c351e0a75dd91a2fec0696268fc929b",
             sent.Headers.GetValues("bt-auth-sign").Single());
     }
+
+    [Fact]
+    public async Task RusAttachesGwmAuthHeadersWithApkCredentials()
+    {
+        var handler = new BtAuthSigningHandler(
+            BtAuthSigningHandler.Profiles.Rus,
+            () => "1721462400123",
+            () => "0123456789abcdef");
+        using var body = new StringContent("{\"account\":\"owner@example.com\",\"password\":\"secret\"}");
+
+        using var sent = await SendAsync(
+            HttpMethod.Post,
+            "https://rus-h5-gateway.gwmcloud.com/app-api/api/v1.0/userAuth/loginAccount",
+            body,
+            handler);
+
+        Assert.Equal("4694605273", sent.Headers.GetValues("gwm-auth-appkey").Single());
+        Assert.Equal("1721462400123", sent.Headers.GetValues("gwm-auth-timestamp").Single());
+        Assert.Equal("0123456789abcdef", sent.Headers.GetValues("gwm-auth-nonce").Single());
+        Assert.Equal(
+            "b2884756e4e1e7bd4137929a1bdd7243f360ce666822e9ac0d7d13fe67452e2b",
+            sent.Headers.GetValues("gwm-auth-sign").Single());
+        Assert.False(sent.Headers.Contains("bt-auth-sign"));
+    }
+
+    [Fact]
+    public async Task RusGetSignatureMatchesKnownVector()
+    {
+        var handler = new BtAuthSigningHandler(
+            BtAuthSigningHandler.Profiles.Rus,
+            () => "1721462400123",
+            () => "0123456789abcdef");
+
+        using var sent = await SendAsync(
+            HttpMethod.Get,
+            "https://rus-h5-gateway.gwmcloud.com/app-api/api/v1.0/vehicle/getLastStatus?vin=ABC&seqNo=",
+            signingHandler: handler);
+
+        Assert.Equal("?vin=ABC", sent.RequestUri!.Query);
+        Assert.Equal(
+            "20129a1e63495078ff01094752dd2dadcce144778e4fbb1358f25470d8934edd",
+            sent.Headers.GetValues("gwm-auth-sign").Single());
+    }
 }

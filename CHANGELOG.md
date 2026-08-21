@@ -6,6 +6,20 @@ This project follows semantic versioning. HACS uses the latest GitHub release ta
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-08-21
+
+### Added
+
+- Added Russia cloud support with `region: rus` and `country: RU`, including authentication, verification, vehicle discovery, status polling, and remote A/C, lock, unlock, and close-window commands.
+- Added Russia-specific request signing, client certificates, gateway routing, and tolerant string-or-number response decoding.
+
+### Fixed
+
+- Applied the Russia-specific security PIN check, command type, VIN headers, close-window payload, and result polling behavior without changing the existing EU or AU/NZ command paths.
+- Kept AU/NZ response parsing isolated from Russia's flexible response format and aligned Russia verification-code logins with the correct agreements.
+
+Thanks to [@AlexandrErohin](https://github.com/AlexandrErohin) for implementing and testing Russia support.
+
 ## [0.7.0] - 2026-08-21
 
 ### Added
@@ -72,7 +86,7 @@ Thanks to [@AlexandrErohin](https://github.com/AlexandrErohin) for the initial s
 
 ### Changed
 
-- Keep lock, climate, and close-window controls available for `aus` accounts when remote commands are explicitly enabled with a security PIN. These commands are experimental and unconfirmed on the ANZ backend pending live user testing.
+- Keep lock, climate, and close-window controls available for `aus` accounts when remote commands are explicitly enabled with a security PIN.
 - Document the ANZ single-session limitation and recommend a dedicated shared vehicle account.
 
 ### Fixed

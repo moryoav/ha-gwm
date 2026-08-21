@@ -96,5 +96,6 @@ public class WindowInstruction
     public string RightBack { get; set; }
 
     [JsonPropertyName("skyLight")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string SkyLight { get; set; }
 }

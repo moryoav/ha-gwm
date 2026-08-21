@@ -36,7 +36,7 @@ https://github.com/moryoav/ha-gwm_ora
 
 ### 2. Install and Configure the Add-on
 
-Install **GWM ORA**, then fill in the add-on options. Select the cloud region that serves the account. Remote commands are confirmed for `eu`; they remain available but experimental for `aus` while live testing is completed.
+Install **GWM ORA**, then fill in the add-on options. Select the cloud region that serves the account.
 
 ```yaml
 region: eu
@@ -49,11 +49,11 @@ poll_interval_seconds: 60
 log_level: info
 ```
 
-- `region`: Cloud gateway for the account. Use `eu` for Europe/Israel or `aus` for Australia/New Zealand.
-- `country`: Two-letter country where the GWM account was registered, such as `DE`, `GB`, `AU`, or `NZ`. It must match the account registration country.
+- `region`: Cloud gateway for the account. Use `eu` for Europe/Israel, `aus` for Australia/New Zealand, or `rus` for Russia.
+- `country`: Two-letter country where the GWM account was registered, such as `DE`, `GB`, `AU`, `NZ`, or `RU`. It must match the account registration country.
 - `username`: E-mail address for your GWM account.
 - `password`: Password for your GWM account.
-- `enable_remote_commands`: Enables A/C, lock, unlock, and close-window controls. Use `false` for read-only entities. AU/NZ command support is currently experimental and unconfirmed.
+- `enable_remote_commands`: Enables A/C, lock, unlock, and close-window controls. Use `false` for read-only entities.
 - `security_pin`: The remote-control PIN configured in the official GWM app. Setting up that PIN in the official app is a prerequisite for remote commands.
 - `poll_interval_seconds`: How often the add-on refreshes vehicle data from GWM.
 - `log_level`: Add-on logging verbosity.
@@ -143,19 +143,17 @@ The integration follows the command while it is running and refreshes vehicle da
 
 Set **Climate run time** before turning on the A/C to choose how long the remote climate command runs. The value can be 5 to 30 minutes in one-minute steps and applies to the next A/C command. Changing the run time alone saves the setting; it does not start or stop the A/C.
 
-> **Australia/New Zealand:** Login, verification, vehicle discovery, and status polling have been validated against a live ANZ vehicle. Lock, climate, and close-window commands remain enabled behind the existing explicit opt-in and security PIN, but are currently experimental and have not yet been confirmed on the ANZ backend. Test them only while the vehicle is parked, safe, and in view. Do not rely on AU/NZ remote-command automations until your vehicle has been tested successfully; please report results in [issue #1](https://github.com/moryoav/ha-gwm_ora/issues/1).
-
 ## Supported Vehicles
 
 This project is designed for GWM ORA vehicles that use the same GWM cloud behavior as the original `ora2mqtt` project, including ORA 03/Funky Cat style models exposed by the GWM mobile app.
 
 Regional GWM services and vehicle firmware can differ, so some entities may be unavailable on some cars.
 
-> **Regional availability:** This integration supports accounts on the European GWM cloud (`region: eu`), including EU countries and Israel, and accounts on the Australia/New Zealand cloud (`region: aus`). AU/NZ login and vehicle data are live-tested; remote commands are experimental as described above. It is not expected to work in Russia, the United States, China, or other regions that use different GWM servers and authentication flows.
+This integration supports accounts on the European GWM cloud (`region: eu`), including EU countries and Israel; the Australia/New Zealand cloud (`region: aus`); and the Russia cloud (`region: rus`).
 
 ### Australia/New Zealand account sessions
 
-The ANZ backend permits one active session per account. Using the same account in the add-on and official phone app can cause them to repeatedly log each other out. A dedicated account shared to the vehicle is recommended. Grant control permission if you intend to test the experimental remote commands.
+The ANZ backend permits one active session per account. Using the same account in the add-on and official phone app can cause them to repeatedly log each other out. A dedicated account shared to the vehicle is recommended. Grant control permission if you intend to use remote commands.
 
 ## Troubleshooting
 
@@ -266,7 +264,7 @@ Use at your own risk. You are responsible for validating behavior, protecting cr
 
 Special thanks to [zivillian](https://github.com/zivillian) and the [zivillian/ora2mqtt](https://github.com/zivillian/ora2mqtt) project for blazing the trail. Their work uncovered many of the details behind ORA/GWM connectivity and helped inspire the current development of this integration.
 
-Thanks to [AlexandrErohin](https://github.com/AlexandrErohin) for contributing the initial model-specific vehicle sensor set.
+Thanks to [AlexandrErohin](https://github.com/AlexandrErohin) for contributing the initial model-specific vehicle sensor set and Russia cloud support.
 
 Deep thanks to [wilberforce](https://github.com/wilberforce) for reverse-engineering the ANZ authentication and signing flow, implementing AU/NZ support, decoding vehicle status mappings, and validating authentication and comfort signals against a live vehicle.
 

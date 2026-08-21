@@ -1,4 +1,5 @@
 ﻿using libgwmapi.DTO.Vehicle;
+using libgwmapi.DTO.UserAuth;
 using Microsoft.Extensions.Logging;
 
 namespace libgwmapi;
@@ -26,8 +27,8 @@ public partial class GwmApiClient
         catch (GwmApiException ex) when (_region == "aus" && ex.Code == "607099")
         {
             // The ANZ gateway may reject this optional endpoint. Keep status and
-            // experimental climate commands usable with their existing default
-            // temperature while allowing all other failures to surface.
+            // climate commands usable with their existing default temperature
+            // while allowing all other failures to surface.
             _logger.LogDebug(
                 "GWM (AU) vehicleBasicsInfo is unavailable: {Code} {Message}",
                 ex.Code,
@@ -43,12 +44,34 @@ public partial class GwmApiClient
 
     public Task ModifyVehicleRemoteCtlInfoAsync(ModifyVecicleRemoteCtl request, CancellationToken cancellationToken)
     {
+        if (_region == "rus")
+        {
+            return PostH5Async(
+                "vehicle/modifyVehicleRemoteCtlInfo",
+                request,
+                new[] { ("vin", request.Vin) },
+                cancellationToken);
+        }
+
         return PostH5Async("vehicle/modifyVehicleRemoteCtlInfo", request, cancellationToken);
     }
 
-    public Task SendCmdAsync(SendCmd request, CancellationToken cancellationToken)
+    public async Task SendCmdAsync(SendCmd request, CancellationToken cancellationToken)
     {
-        return PostAppAsync("vehicle/T5/sendCmd", request, cancellationToken);
+        if (_region == "rus")
+        {
+            await CheckSecurityPasswordAsync(
+                CheckSecurityPassword.FromHash(request.SecurityPassword, "3"),
+                cancellationToken);
+            await PostAppAsync(
+                "vehicle/T5/sendCmd",
+                request,
+                new[] { ("vin", request.Vin) },
+                cancellationToken);
+            return;
+        }
+
+        await PostAppAsync("vehicle/T5/sendCmd", request, cancellationToken);
     }
 
     public Task SendRawCmdAsync<TRequest>(TRequest request, CancellationToken cancellationToken)
@@ -68,12 +91,10 @@ public partial class GwmApiClient
         string vin,
         CancellationToken cancellationToken)
     {
-        // AU/NZ requires the VIN as a request header on this endpoint. Without it the gateway
-        // rejects the poll with "002 Missing request header 'vin'", so a command that actually
-        // succeeded gets reported as failed. The VIN is a header (not a signed query parameter),
-        // so it does not affect the bt-auth signature. Keep every non-AUS region on the existing
-        // header-less request path.
-        if (_region != "aus")
+        // AU/NZ and Russia require the VIN as a request header on this endpoint. The VIN is a
+        // header rather than a signed query parameter, so it does not change the overseas
+        // request signature. Keep EU on its existing header-less request path.
+        if (_region is not ("aus" or "rus"))
         {
             return GetRemoteCtrlResultAsync(seqNo, cancellationToken);
         }

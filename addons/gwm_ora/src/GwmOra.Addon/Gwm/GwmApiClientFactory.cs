@@ -36,6 +36,43 @@ public sealed class GwmApiClientFactory
                 DeviceId = ApiDeviceId(state.DeviceId)
             };
         }
+        else if (String.Equals(options.Region, "rus", StringComparison.OrdinalIgnoreCase))
+        {
+            // Russia (GWM.apk): mutual-TLS on the app gateway PLUS gwm-auth request signing on
+            // every call (OverseasRequestHeaderInterceptor). Login hits rus-h5-gateway without a
+            // client cert but still requires the signature — without it the gateway returns
+            // "Значение подписи пустое".
+            var certificateHandler = new CertificateHandler("rus");
+            using var rusCertificate = certificateHandler.CertificateWithPrivateKey;
+            var h5 = new HttpClient(new BtAuthSigningHandler(BtAuthSigningHandler.Profiles.Rus)
+            {
+                InnerHandler = CreatePlainHandler()
+            });
+            var app = new HttpClient(new BtAuthSigningHandler(BtAuthSigningHandler.Profiles.Rus)
+            {
+                InnerHandler = CreateTlsHandler(rusCertificate)
+            });
+            client = new GwmApiClient(h5, app, _loggerFactory, "rus")
+            {
+                Country = options.Country,
+                DeviceId = state.DeviceId
+            };
+
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+            {
+                using var store = new X509Store(
+                    StoreName.CertificateAuthority,
+                    StoreLocation.CurrentUser);
+                store.Open(OpenFlags.ReadWrite);
+                foreach (var certificate in certificateHandler.Chain)
+                {
+                    if (certificate.Issuer != certificate.Subject)
+                    {
+                        store.Add(certificate);
+                    }
+                }
+            }
+        }
         else
         {
             var certificateHandler = new CertificateHandler();

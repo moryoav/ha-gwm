@@ -13,13 +13,13 @@
 
 | Option | Required | Description |
 | --- | --- | --- |
-| `region` | yes | GWM cloud gateway to use: `eu` for Europe/Israel accounts, `aus` for Australia/New Zealand accounts. Defaults to `eu`. |
-| `country` | yes | Two-letter GWM account country. It must match the country the account was **registered** in — e.g. `DE` or `GB` for `eu`, and `NZ` or `AU` for `aus`. A mismatch (for example `AU` for an account registered in New Zealand) fails login with *"Incorrect email or password"*. |
+| `region` | yes | GWM cloud gateway to use: `eu` for Europe/Israel accounts, `aus` for Australia/New Zealand accounts, or `rus` for Russia accounts. Defaults to `eu`. |
+| `country` | yes | Two-letter GWM account country. It must match the country the account was **registered** in — e.g. `DE` or `GB` for `eu`, `NZ` or `AU` for `aus`, and `RU` for `rus`. A mismatch (for example `AU` for an account registered in New Zealand) fails login with *"Incorrect email or password"*. |
 | `username` | yes | GWM account e-mail address. |
 | `password` | yes | GWM account password. |
 | `verification_code` | no | One-time SMS/e-mail verification code sent by GWM during first login or when this add-on device must be trusted. Fill it only after GWM sends a code. |
 | `security_pin` | no | Vehicle remote control PIN from the official app. |
-| `enable_remote_commands` | yes | Enables A/C, lock, unlock, and close-window commands. AU/NZ command support is currently experimental and unconfirmed. |
+| `enable_remote_commands` | yes | Enables A/C, lock, unlock, and close-window commands. |
 | `poll_interval_seconds` | yes | GWM cloud polling interval from 30 to 3600 seconds. |
 | `log_level` | yes | One of `trace`, `debug`, `info`, `warning`, or `error`. |
 
@@ -58,10 +58,17 @@ The authentication flow is similar to the EU setup: the first login on a new dev
 **One account, one session.** The ANZ backend allows only a single active session per account: whenever the account signs in on a new device, the previous session is logged out. If the add-on and the official phone app use the **same** account they will repeatedly evict each other. To avoid this, give the add-on its **own** account:
 
 1. Keep using your primary account in the phone app.
-2. Create a second GWM account and **share the car** with it, granting **control** permission (not view-only) if you want to test remote commands.
+2. Create a second GWM account and **share the car** with it, granting **control** permission (not view-only) if you want to use remote commands.
 3. Configure the add-on with that second account.
 
-Login, verification, vehicle discovery, and status polling have been validated against a live ANZ vehicle. Lock, climate, and close-window commands remain available when explicitly enabled with a security PIN, but they are currently **experimental and unconfirmed** on the ANZ backend. Test one command at a time only while the vehicle is parked, safe, and in view. Do not rely on AU/NZ remote-command automations until your vehicle has been tested successfully, and report the result in [issue #1](https://github.com/moryoav/ha-gwm_ora/issues/1).
+## Russia (`rus` region)
+
+For GWM Russia accounts (the Russian *GWM* Android app), set:
+
+- `region`: `rus`
+- `country`: `RU`
+
+Russia uses its own GWM request signing, gateways, and bundled client certificate from the official Russian app. First-login SMS/e-mail verification follows the same add-on setup as the other regions.
 
 ## Model-specific vehicle data
 

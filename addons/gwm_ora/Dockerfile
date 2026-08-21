@@ -23,6 +23,7 @@ LABEL \
 
 COPY openssl.cnf /app/openssl.cnf
 COPY --from=build /src/src/LibGwmApi/Resources/gwm_root.pem /etc/ssl/certs/gwm_root.pem
+COPY --from=build /src/src/LibGwmApi/Resources/gwm_root_rus.pem /etc/ssl/certs/gwm_root_rus.pem
 COPY --from=build /app/publish ./
 
 ENV ASPNETCORE_HTTP_PORTS=8099

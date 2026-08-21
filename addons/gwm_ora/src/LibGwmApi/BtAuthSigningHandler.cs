@@ -5,14 +5,14 @@ using System.Text;
 namespace libgwmapi;
 
 /// <summary>
-/// Adds GWM's "bt-auth" request signature required by the AU/NZ (aus) gateway.
-/// EU does not use this, so it is only attached for the aus region.
+/// Adds GWM overseas request signatures required by the AU/NZ and Russia gateways.
+/// EU does not use this; it relies on mutual TLS instead.
 ///
-/// The base signing flow was validated live against aus-h5-gateway on 2026-07-20;
-/// multi-parameter canonicalization follows the same GWM app-family algorithm:
+/// Validated against the official app family algorithm (AU live 2026-07-20; RU from GWM.apk
+/// <c>OverseasRequestHeaderInterceptor</c>):
 ///   ts     = unix milliseconds
 ///   nonce  = 16 hex chars
-///   auth   = "bt-auth-appkey:{APP_KEY}bt-auth-nonce:{nonce}bt-auth-timestamp:{ts}"
+///   auth   = "{prefix}-auth-appkey:{APP_KEY}{prefix}-auth-nonce:{nonce}{prefix}-auth-timestamp:{ts}"
 ///   params = POST : "json=" + rawBody
 ///            GET  : sorted NON-EMPTY "lowercase(key)=value" pairs concatenated without
 ///                   separators (empty params dropped)
@@ -21,24 +21,49 @@ namespace libgwmapi;
 /// For GET, empty-valued query params are also stripped from the outgoing URL (e.g.
 /// "getLastStatus?vin=X&seqNo=" -> "getLastStatus?vin=X"); sending/​signing the empty
 /// "seqNo=" is what the gateway rejects with 607099 "sign is inconformity".
+///
+/// Region credentials (from the official apps):
+///   aus — prefix "bt",  appKey 2186661209, appSec a9664fd3…
+///   rus — prefix "gwm", appKey 4694605273, appSec e4e478c0… (GWM.apk FeatureConfig / Env)
 /// </summary>
 public sealed class BtAuthSigningHandler : DelegatingHandler
 {
+    public readonly record struct Profile(string Prefix, string AppKey, string AppSec);
+
+    public static class Profiles
+    {
+        public static readonly Profile Aus = new("bt", "2186661209", "a9664fd3f97665e202e73880de03a0d8");
+        public static readonly Profile Rus = new("gwm", "4694605273", "e4e478c00f570e76a8993653a7b81d57");
+    }
+
+    /// <summary>AU/NZ app key (kept for callers that still reference it directly).</summary>
     public const string AppKey = "2186661209";
-    private const string AppSec = "a9664fd3f97665e202e73880de03a0d8";
-    private const string Prefix = "bt";
+
+    private readonly Profile _profile;
     private readonly Func<string> _timestampProvider;
     private readonly Func<string> _nonceProvider;
 
     public BtAuthSigningHandler()
+        : this(Profiles.Aus)
+    {
+    }
+
+    public BtAuthSigningHandler(Profile profile)
         : this(
+            profile,
             () => DateTimeOffset.UtcNow.ToUnixTimeMilliseconds().ToString(CultureInfo.InvariantCulture),
             () => Guid.NewGuid().ToString("N")[..16])
     {
     }
 
     internal BtAuthSigningHandler(Func<string> timestampProvider, Func<string> nonceProvider)
+        : this(Profiles.Aus, timestampProvider, nonceProvider)
     {
+    }
+
+    internal BtAuthSigningHandler(Profile profile, Func<string> timestampProvider, Func<string> nonceProvider)
+    {
+        _profile = profile;
         _timestampProvider = timestampProvider ?? throw new ArgumentNullException(nameof(timestampProvider));
         _nonceProvider = nonceProvider ?? throw new ArgumentNullException(nameof(nonceProvider));
     }
@@ -48,6 +73,7 @@ public sealed class BtAuthSigningHandler : DelegatingHandler
         var method = request.Method.Method;              // "POST" / "GET"
         var uri = request.RequestUri!;
         var path = uri.AbsolutePath;                     // "/app-api/api/v1.0/..."
+        var prefix = _profile.Prefix;
 
         string paramsPart;
         if (method == "POST")
@@ -90,14 +116,14 @@ public sealed class BtAuthSigningHandler : DelegatingHandler
 
         var ts = _timestampProvider();
         var nonce = _nonceProvider();
-        var auth = $"{Prefix}-auth-appkey:{AppKey}{Prefix}-auth-nonce:{nonce}{Prefix}-auth-timestamp:{ts}";
-        var raw = StripWhitespace(method + path + auth + paramsPart + AppSec);
+        var auth = $"{prefix}-auth-appkey:{_profile.AppKey}{prefix}-auth-nonce:{nonce}{prefix}-auth-timestamp:{ts}";
+        var raw = StripWhitespace(method + path + auth + paramsPart + _profile.AppSec);
         var sign = Sha256Hex(Uri.EscapeDataString(raw));
 
-        SetHeader(request, $"{Prefix}-auth-appkey", AppKey);
-        SetHeader(request, $"{Prefix}-auth-nonce", nonce);
-        SetHeader(request, $"{Prefix}-auth-timestamp", ts);
-        SetHeader(request, $"{Prefix}-auth-sign", sign);
+        SetHeader(request, $"{prefix}-auth-appkey", _profile.AppKey);
+        SetHeader(request, $"{prefix}-auth-nonce", nonce);
+        SetHeader(request, $"{prefix}-auth-timestamp", ts);
+        SetHeader(request, $"{prefix}-auth-sign", sign);
 
         return await base.SendAsync(request, cancellationToken);
     }

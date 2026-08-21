@@ -69,7 +69,17 @@ namespace libgwmapi.Properties {
                 return ((byte[])(obj));
             }
         }
-        
+
+        /// <summary>
+        ///   Looks up a localized resource of type System.Byte[].
+        /// </summary>
+        internal static byte[] cert_rus {
+            get {
+                object obj = ResourceManager.GetObject("cert_rus", resourceCulture);
+                return ((byte[])(obj));
+            }
+        }
+
         /// <summary>
         ///   Looks up a localized resource of type System.Byte[].
         /// </summary>
@@ -79,13 +89,33 @@ namespace libgwmapi.Properties {
                 return ((byte[])(obj));
             }
         }
-        
+
+        /// <summary>
+        ///   Looks up a localized resource of type System.Byte[].
+        /// </summary>
+        internal static byte[] chain_rus {
+            get {
+                object obj = ResourceManager.GetObject("chain_rus", resourceCulture);
+                return ((byte[])(obj));
+            }
+        }
+
         /// <summary>
         ///   Looks up a localized resource of type System.Byte[].
         /// </summary>
         internal static byte[] key {
             get {
                 object obj = ResourceManager.GetObject("key", resourceCulture);
+                return ((byte[])(obj));
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized resource of type System.Byte[].
+        /// </summary>
+        internal static byte[] key_rus {
+            get {
+                object obj = ResourceManager.GetObject("key_rus", resourceCulture);
                 return ((byte[])(obj));
             }
         }

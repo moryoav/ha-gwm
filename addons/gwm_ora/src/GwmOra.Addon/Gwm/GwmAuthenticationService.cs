@@ -10,6 +10,7 @@ public sealed class GwmAuthenticationService
 {
     private static readonly TimeSpan VerificationCodeRequestInterval =
         TimeSpan.FromMinutes(10);
+    private static readonly int[] RusAgreements = { 1, 2, 18, 19 };
 
     private readonly AddonOptions _options;
     private readonly AddonStateStore _stateStore;
@@ -36,6 +37,7 @@ public sealed class GwmAuthenticationService
             _options.Region,
             "aus",
             StringComparison.OrdinalIgnoreCase);
+        var requiresPerDeviceCertificate = RequiresPerDeviceClientCertificate();
 
         if (!String.IsNullOrWhiteSpace(_stateStore.State.AccessToken))
         {
@@ -69,7 +71,7 @@ public sealed class GwmAuthenticationService
 
             if (storedTokenAccepted)
             {
-                if (!isAus)
+                if (requiresPerDeviceCertificate)
                 {
                     await EnsureEuClientCertificateAsync(client, cancellationToken);
                 }
@@ -108,7 +110,7 @@ public sealed class GwmAuthenticationService
 
             if (refreshed)
             {
-                if (!isAus)
+                if (requiresPerDeviceCertificate)
                 {
                     await EnsureEuClientCertificateAsync(client, cancellationToken);
                 }
@@ -117,7 +119,7 @@ public sealed class GwmAuthenticationService
         }
 
         await LoginAsync(client, cancellationToken);
-        if (!isAus)
+        if (requiresPerDeviceCertificate)
         {
             await EnsureEuClientCertificateAsync(client, cancellationToken);
         }
@@ -164,6 +166,15 @@ public sealed class GwmAuthenticationService
                 StringComparison.OrdinalIgnoreCase))
         {
             await LoginAusAsync(client, cancellationToken);
+            return;
+        }
+
+        if (String.Equals(
+                _options.Region,
+                "rus",
+                StringComparison.OrdinalIgnoreCase))
+        {
+            await LoginRusAsync(client, cancellationToken);
             return;
         }
 
@@ -240,6 +251,134 @@ public sealed class GwmAuthenticationService
                 "enter it in the add-on option 'verification_code', save, and restart the add-on.",
                 ex);
         }
+    }
+
+    // Russia (rus-h5-gateway): loginAccount with plaintext password and NO countryCode.
+    // Live probe (2026-08-10): sending countryCode="RU" forces phone validation
+    // ("Телефон в 8-32 номерах") and rejects e-mail accounts; omitting countryCode
+    // lets e-mail + plaintext password succeed. Password is validated as 8-32 chars
+    // with upper/lower/digits (308100), so MD5/RSA ciphertext must not be used.
+    private async Task LoginRusAsync(
+        GwmApiClient client,
+        CancellationToken cancellationToken)
+    {
+        if (!String.IsNullOrWhiteSpace(_options.VerificationCode))
+        {
+            await LoginWithVerificationCodeRusAsync(client, cancellationToken);
+            return;
+        }
+
+        var request = CreateRussianPasswordLoginRequest(_options, client.DeviceId);
+
+        try
+        {
+            var response = await client.LoginAccountAsync(request, cancellationToken);
+            await StoreLoginResponseAsync(client, response, cancellationToken);
+        }
+        catch (GwmApiException ex) when (IsRusVerificationRequired(ex))
+        {
+            await RequestVerificationCodeRusAsync(client, cancellationToken);
+            throw new GwmVerificationRequiredException(
+                "GWM requires SMS/e-mail verification. A verification code was requested; " +
+                "enter it in the add-on option 'verification_code', save, and restart the add-on.",
+                ex);
+        }
+    }
+
+    private async Task LoginWithVerificationCodeRusAsync(
+        GwmApiClient client,
+        CancellationToken cancellationToken)
+    {
+        var request = CreateRussianVerificationLoginRequest(_options, client.DeviceId);
+
+        try
+        {
+            var response = await client.LoginWithSmsAsync(request, cancellationToken);
+            await StoreLoginResponseAsync(client, response, cancellationToken);
+            await _supervisorOptions.ClearVerificationCodeAsync(cancellationToken);
+            _logger.LogInformation("GWM (RU) verification code accepted and tokens stored");
+        }
+        catch (GwmApiException ex)
+        {
+            await _stateStore.UpdateAsync(
+                state => state.VerificationCodeRequestedAt = null,
+                cancellationToken);
+            throw new GwmVerificationRequiredException(
+                "GWM rejected the configured verification_code. Clear it, restart the add-on " +
+                "to request a fresh code, then enter the new code and restart again.",
+                ex);
+        }
+    }
+
+    private async Task RequestVerificationCodeRusAsync(
+        GwmApiClient client,
+        CancellationToken cancellationToken)
+    {
+        var now = DateTimeOffset.UtcNow;
+        var lastRequest = _stateStore.State.VerificationCodeRequestedAt;
+        if (lastRequest.HasValue &&
+            now - lastRequest.Value < VerificationCodeRequestInterval)
+        {
+            return;
+        }
+
+        try
+        {
+            await client.GetSmsCodeAsync(
+                new GetSmsCode { Email = _options.Username },
+                cancellationToken);
+            await _stateStore.UpdateAsync(
+                state => state.VerificationCodeRequestedAt = now,
+                cancellationToken);
+            _logger.LogWarning(
+                "GWM (RU) requested account verification; a verification code was sent to the " +
+                "account e-mail/SMS channel");
+        }
+        catch (GwmApiException ex)
+        {
+            throw new GwmVerificationRequiredException(
+                $"GWM requires SMS/e-mail verification, but requesting a verification code failed: {ex.Message}",
+                ex);
+        }
+    }
+
+    internal static LoginAccountRequest CreateRussianPasswordLoginRequest(
+        AddonOptions options,
+        string deviceId)
+    {
+        return new LoginAccountRequest
+        {
+            Country = options.Country,
+            IsEncrypt = false,
+            DeviceId = deviceId,
+            Model = "ha-gwm-ora",
+            PushToken = String.Empty,
+            Account = options.Username,
+            Password = options.Password,
+            Agreement = RusAgreements
+        };
+    }
+
+    internal static LoginWithSmsRequest CreateRussianVerificationLoginRequest(
+        AddonOptions options,
+        string deviceId)
+    {
+        if (String.IsNullOrWhiteSpace(options.VerificationCode))
+        {
+            throw new InvalidOperationException(
+                "A verification code is required for Russian verification login.");
+        }
+
+        return new LoginWithSmsRequest
+        {
+            Agreement = RusAgreements,
+            Email = options.Username,
+            Country = options.Country,
+            DeviceId = deviceId,
+            Model = "ha-gwm-ora",
+            PushToken = String.Empty,
+            SmsCode = options.VerificationCode.Trim()
+        };
     }
 
     private async Task RequestVerificationCodeEuV2Async(
@@ -499,6 +638,12 @@ public sealed class GwmAuthenticationService
         client.SetAccessToken(response.AccessToken);
     }
 
+    private bool RequiresPerDeviceClientCertificate()
+    {
+        return !String.Equals(_options.Region, "aus", StringComparison.OrdinalIgnoreCase) &&
+               !String.Equals(_options.Region, "rus", StringComparison.OrdinalIgnoreCase);
+    }
+
     private static string EnrollmentDeviceId(
         string stateDeviceId,
         DateTimeOffset now)
@@ -521,6 +666,14 @@ public sealed class GwmAuthenticationService
     private static bool IsAusVerificationRequired(GwmApiException ex)
     {
         return ex.Code is "309702" or "110641" ||
+               ex.Message.Contains(
+                   "verification code",
+                   StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsRusVerificationRequired(GwmApiException ex)
+    {
+        return ex.Code == "110641" ||
                ex.Message.Contains(
                    "verification code",
                    StringComparison.OrdinalIgnoreCase);

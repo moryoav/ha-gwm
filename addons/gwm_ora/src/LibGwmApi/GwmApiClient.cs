@@ -1,4 +1,4 @@
-using System.Net.Http.Json;
+﻿using System.Net.Http.Json;
 using System.Security.Cryptography.X509Certificates;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -20,9 +20,19 @@ public partial class GwmApiClient
     private readonly string _region;
     private string _deviceId = String.Empty;
 
-    private static readonly JsonSerializerOptions SerializerOptions = new()
+    // The AU gateway may return numbers as JSON strings (for example,
+    // "securityTime":"0"). Keep that compatibility isolated from EU.
+    private static readonly JsonSerializerOptions AusSerializerOptions = new()
     {
         NumberHandling = JsonNumberHandling.AllowReadingFromString
+    };
+
+    // Russia also returns numeric identifiers for string properties (for
+    // example, "vehicleId":123). Do not make AU or EU more permissive.
+    private static readonly JsonSerializerOptions RusSerializerOptions = new()
+    {
+        NumberHandling = JsonNumberHandling.AllowReadingFromString,
+        Converters = { new JsonStringOrNumberConverter() }
     };
 
     public GwmApiClient(IHttpClientFactory factory, ILoggerFactory loggerFactory)
@@ -80,6 +90,30 @@ public partial class GwmApiClient
                 ConfigureHeader(client, "systemType", "1");
                 ConfigureHeader(client, "language", "en_US");
             }
+        }
+        else if (_region == "rus")
+        {
+            // Russia: RU PKI (LGWGWM-AD-RU-GENERAL) on the app gateway, plus gwm-auth request
+            // signing (see BtAuthSigningHandler.Profiles.Rus) on both gateways — matching
+            // GWM.apk OverseasRequestHeaderInterceptor / FeatureConfig.
+            foreach (var client in UniqueClients())
+            {
+                ConfigureHeader(client, "rs", "2");
+                ConfigureHeader(client, "terminal", "GW_APP_Haval");
+                ConfigureHeader(client, "brand", "1");
+                ConfigureHeader(client, "enterpriseId", "CC01");
+                ConfigureHeader(client, "brandId", "CCZ001");
+                ConfigureHeader(client, "appId", "1");
+                ConfigureHeader(client, "channel", "APP");
+                ConfigureHeader(client, "systemType", "1");
+                ConfigureHeader(client, "cVer", "1.0.0");
+                ConfigureHeader(client, "communityBrand", "1");
+                ConfigureHeader(client, "language", "ru");
+                // FeatureConfig.secVersion in GWM.apk (Russia release).
+                ConfigureHeader(client, "secVersion", "2.0");
+            }
+            _h5Client.BaseAddress = new Uri("https://rus-h5-gateway.gwmcloud.com/app-api/api/v1.0/");
+            _appClient.BaseAddress = new Uri("https://rus-app-gateway.gwmcloud.com/app-api/api/v1.0/");
         }
         else
         {
@@ -153,6 +187,8 @@ public partial class GwmApiClient
         }
     }
 
+    // GWM endpoints use the device id (and matching iccid) as headers as well as in
+    // authentication request bodies. The factory selects each region's required ID length.
     public string DeviceId
     {
         get => _deviceId;
@@ -217,6 +253,21 @@ public partial class GwmApiClient
         await CheckResponseAsync(response, cancellationToken);
     }
 
+    private async Task PostH5Async<T>(
+        string url,
+        T body,
+        IEnumerable<(string Name, string Value)> extraHeaders,
+        CancellationToken cancellationToken)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Post, url)
+        {
+            Content = JsonContent.Create(body)
+        };
+        AddHeaders(request, extraHeaders);
+        using var response = await _h5Client.SendAsync(request, cancellationToken);
+        await CheckResponseAsync(response, cancellationToken);
+    }
+
     private async Task PostAuthAsync<T>(
         string url,
         T body,
@@ -265,6 +316,21 @@ public partial class GwmApiClient
         await CheckResponseAsync(response, cancellationToken);
     }
 
+    private async Task PostAppAsync<T>(
+        string url,
+        T body,
+        IEnumerable<(string Name, string Value)> extraHeaders,
+        CancellationToken cancellationToken)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Post, url)
+        {
+            Content = JsonContent.Create(body)
+        };
+        AddHeaders(request, extraHeaders);
+        using var response = await _appClient.SendAsync(request, cancellationToken);
+        await CheckResponseAsync(response, cancellationToken);
+    }
+
     private async Task<TOut> PostH5Async<TIn, TOut>(
         string url,
         TIn body,
@@ -299,16 +365,25 @@ public partial class GwmApiClient
         CancellationToken cancellationToken)
     {
         using var request = new HttpRequestMessage(HttpMethod.Get, url);
-        if (extraHeaders is not null)
-        {
-            foreach (var (name, value) in extraHeaders)
-            {
-                request.Headers.TryAddWithoutValidation(name, value);
-            }
-        }
+        AddHeaders(request, extraHeaders);
 
         var response = await _appClient.SendAsync(request, cancellationToken);
         return await GetResponseAsync<T>(response, cancellationToken);
+    }
+
+    private static void AddHeaders(
+        HttpRequestMessage request,
+        IEnumerable<(string Name, string Value)> extraHeaders)
+    {
+        if (extraHeaders is null)
+        {
+            return;
+        }
+
+        foreach (var (name, value) in extraHeaders)
+        {
+            request.Headers.TryAddWithoutValidation(name, value);
+        }
     }
 
     private async Task CheckResponseAsync(
@@ -342,9 +417,13 @@ public partial class GwmApiClient
         T result;
         try
         {
-            result = JsonSerializer.Deserialize<T>(
-                content,
-                _region == "aus" ? SerializerOptions : null);
+            var serializerOptions = _region switch
+            {
+                "aus" => AusSerializerOptions,
+                "rus" => RusSerializerOptions,
+                _ => null
+            };
+            result = JsonSerializer.Deserialize<T>(content, serializerOptions);
         }
         catch (JsonException) when (!response.IsSuccessStatusCode)
         {

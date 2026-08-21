@@ -104,6 +104,129 @@ public class GwmApiClientRegionTests
         Assert.Equal("607099", error.Code);
     }
 
+    [Fact]
+    public void RusUsesRussianGatewaysAndHavalHeaders()
+    {
+        using var h5 = new HttpClient();
+        using var app = new HttpClient();
+        var client = new GwmApiClient(h5, app, NullLoggerFactory.Instance, "rus")
+        {
+            Country = "RU",
+            DeviceId = "abcdef0123456789deadbeefcafebabe"
+        };
+
+        Assert.Equal(
+            new Uri("https://rus-h5-gateway.gwmcloud.com/app-api/api/v1.0/"),
+            h5.BaseAddress);
+        Assert.Equal(
+            new Uri("https://rus-app-gateway.gwmcloud.com/app-api/api/v1.0/"),
+            app.BaseAddress);
+        Assert.Equal("GW_APP_Haval", h5.DefaultRequestHeaders.GetValues("terminal").Single());
+        Assert.Equal("1", h5.DefaultRequestHeaders.GetValues("brand").Single());
+        Assert.Equal("1", h5.DefaultRequestHeaders.GetValues("appId").Single());
+        Assert.Equal("APP", h5.DefaultRequestHeaders.GetValues("channel").Single());
+        Assert.Equal("CCZ001", h5.DefaultRequestHeaders.GetValues("brandId").Single());
+        Assert.Equal("2.0", h5.DefaultRequestHeaders.GetValues("secVersion").Single());
+        Assert.Equal("ru", h5.DefaultRequestHeaders.GetValues("language").Single());
+        Assert.Equal("ru", app.DefaultRequestHeaders.GetValues("language").Single());
+        Assert.Equal("1", app.DefaultRequestHeaders.GetValues("communityBrand").Single());
+        Assert.Equal("1.0.0", app.DefaultRequestHeaders.GetValues("cVer").Single());
+        Assert.Equal("RU", h5.DefaultRequestHeaders.GetValues("regionCode").Single());
+        Assert.Equal(
+            "abcdef0123456789deadbeefcafebabe",
+            h5.DefaultRequestHeaders.GetValues("deviceId").Single());
+        Assert.Equal(
+            "abcdef0123456789deadbeefcafebabe",
+            h5.DefaultRequestHeaders.GetValues("iccid").Single());
+        Assert.Equal(client.DeviceId, h5.DefaultRequestHeaders.GetValues("deviceId").Single());
+    }
+
+    [Fact]
+    public async Task RusAcceptsNumericVehicleIdAsString()
+    {
+        const string response = """
+        {
+          "code": "000000",
+          "description": "SUCCESS",
+          "data": [
+            {
+              "vin": "TESTVIN1234567890",
+              "vehicleId": 9049777052258173853,
+              "modelName": "Jolion"
+            }
+          ]
+        }
+        """;
+        using var h5 = new HttpClient(new JsonResponseHandler(response));
+        using var app = new HttpClient(new JsonResponseHandler(response));
+        var client = new GwmApiClient(h5, app, NullLoggerFactory.Instance, "rus");
+
+        var vehicles = await client.AcquireVehiclesAsync(CancellationToken.None);
+
+        Assert.Single(vehicles);
+        Assert.Equal("TESTVIN1234567890", vehicles[0].Vin);
+        Assert.Equal("9049777052258173853", vehicles[0].VehicleId);
+    }
+
+    [Fact]
+    public async Task EuRejectsNumericVehicleIdForStringProperty()
+    {
+        const string response = """
+        {
+          "code": "000000",
+          "description": "SUCCESS",
+          "data": [
+            {
+              "vin": "TESTVIN1234567890",
+              "vehicleId": 12345
+            }
+          ]
+        }
+        """;
+        using var h5 = new HttpClient(new JsonResponseHandler(response));
+        using var app = new HttpClient(new JsonResponseHandler(response));
+        var client = new GwmApiClient(h5, app, NullLoggerFactory.Instance, "eu");
+
+        await Assert.ThrowsAsync<JsonException>(
+            () => client.AcquireVehiclesAsync(CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task AusRejectsNumericVehicleIdForStringProperty()
+    {
+        const string response = """
+        {
+          "code": "000000",
+          "description": "SUCCESS",
+          "data": [{"vin":"TESTVIN1234567890","vehicleId":12345}]
+        }
+        """;
+        using var h5 = new HttpClient(new JsonResponseHandler(response));
+        using var app = new HttpClient(new JsonResponseHandler(response));
+        var client = new GwmApiClient(h5, app, NullLoggerFactory.Instance, "aus");
+
+        await Assert.ThrowsAsync<JsonException>(
+            () => client.AcquireVehiclesAsync(CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task RusRejectsBooleanForStringProperty()
+    {
+        const string response = """
+        {
+          "code": "000000",
+          "description": "SUCCESS",
+          "data": [{"vin":"TESTVIN1234567890","vehicleId":true}]
+        }
+        """;
+        using var h5 = new HttpClient(new JsonResponseHandler(response));
+        using var app = new HttpClient(new JsonResponseHandler(response));
+        var client = new GwmApiClient(h5, app, NullLoggerFactory.Instance, "rus");
+
+        await Assert.ThrowsAsync<JsonException>(
+            () => client.AcquireVehiclesAsync(CancellationToken.None));
+    }
+
     private sealed class CapturingHandler(string json) : HttpMessageHandler
     {
         public HttpRequestMessage? LastRequest { get; private set; }
@@ -131,6 +254,21 @@ public class GwmApiClientRegionTests
         using var h5 = new HttpClient(new JsonResponseHandler(EmptyResultArray));
         using var app = new HttpClient(handler);
         var client = new GwmApiClient(h5, app, NullLoggerFactory.Instance, "aus");
+
+        await client.GetRemoteCtrlResultAsync("SEQ123", "ENCODED-VIN", CancellationToken.None);
+
+        Assert.NotNull(handler.LastRequest);
+        Assert.True(handler.LastRequest!.Headers.TryGetValues("vin", out var values));
+        Assert.Equal("ENCODED-VIN", values!.Single());
+    }
+
+    [Fact]
+    public async Task RusSendsVinHeaderOnRemoteCtrlResult()
+    {
+        var handler = new CapturingHandler(EmptyResultArray);
+        using var h5 = new HttpClient(new JsonResponseHandler(EmptyResultArray));
+        using var app = new HttpClient(handler);
+        var client = new GwmApiClient(h5, app, NullLoggerFactory.Instance, "rus");
 
         await client.GetRemoteCtrlResultAsync("SEQ123", "ENCODED-VIN", CancellationToken.None);
 
