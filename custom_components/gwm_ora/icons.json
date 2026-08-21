@@ -10,11 +10,17 @@
       "front_defroster": {
         "default": "mdi:car-defrost-front"
       },
+      "front_windscreen_heater": {
+        "default": "mdi:car-defrost-front"
+      },
       "gps_authorized": {
         "default": "mdi:crosshairs-gps"
       },
       "rear_defroster": {
         "default": "mdi:car-defrost-rear"
+      },
+      "steering_wheel_heater": {
+        "default": "mdi:steering"
       },
       "trunk": {
         "default": "mdi:car-back"
@@ -47,7 +53,7 @@
       "command_status": {
         "default": "mdi:progress-clock"
       },
-      "engine_state": {
+      "engine_state_code": {
         "default": "mdi:engine"
       },
       "fuel_level": {
@@ -59,14 +65,11 @@
       "odometer": {
         "default": "mdi:counter"
       },
-      "roof": {
+      "sunroof_position_code": {
         "default": "mdi:car-select"
       },
       "soce": {
         "default": "mdi:battery-heart-variant"
-      },
-      "steering_wheel_heater": {
-        "default": "mdi:steering"
       },
       "tire_pressure_front_left": {
         "default": "mdi:car-tire-alert"
@@ -91,9 +94,6 @@
       },
       "front_passenger_seat_vent_level": {
         "default": "mdi:car-seat-cooler"
-      },
-      "front_windscreen_heater": {
-        "default": "mdi:car-defrost-front"
       },
       "rear_left_seat_heater_level": {
         "default": "mdi:car-seat-heater"

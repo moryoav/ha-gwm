@@ -70,9 +70,10 @@ SENSORS: tuple[GwmOraSensorEntityDescription, ...] = (
     GwmOraSensorEntityDescription(
         key="fuel_level_l",
         translation_key="fuel_level",
-        device_class=SensorDeviceClass.VOLUME,
+        device_class=SensorDeviceClass.VOLUME_STORAGE,
         native_unit_of_measurement=UnitOfVolume.LITERS,
         state_class=SensorStateClass.MEASUREMENT,
+        entity_registry_enabled_default=False,
         value_fn=_value("fuel_level_l"),
     ),
     GwmOraSensorEntityDescription(
@@ -81,6 +82,7 @@ SENSORS: tuple[GwmOraSensorEntityDescription, ...] = (
         device_class=SensorDeviceClass.DISTANCE,
         native_unit_of_measurement=UnitOfLength.KILOMETERS,
         state_class=SensorStateClass.MEASUREMENT,
+        entity_registry_enabled_default=False,
         value_fn=_value("fuel_range_km"),
     ),
     GwmOraSensorEntityDescription(
@@ -270,74 +272,54 @@ SENSORS: tuple[GwmOraSensorEntityDescription, ...] = (
         value_fn=_value("window_learn_rear_right"),
     ),
     GwmOraSensorEntityDescription(
-        key="steering_wheel_heater",
-        translation_key="steering_wheel_heater",
-        entity_category=EntityCategory.DIAGNOSTIC,
-        entity_registry_enabled_default=False,
-        value_fn=_value("steering_wheel_heater"),
-    ),
-    GwmOraSensorEntityDescription(
         key="rear_left_seat_heater_level",
         translation_key="rear_left_seat_heater_level",
-        entity_category=EntityCategory.DIAGNOSTIC,
         entity_registry_enabled_default=False,
         value_fn=_value("rear_left_seat_heater_level"),
     ),
     GwmOraSensorEntityDescription(
         key="rear_right_seat_heater_level",
         translation_key="rear_right_seat_heater_level",
-        entity_category=EntityCategory.DIAGNOSTIC,
         entity_registry_enabled_default=False,
         value_fn=_value("rear_right_seat_heater_level"),
     ),
     GwmOraSensorEntityDescription(
-        key="front_windscreen_heater",
-        translation_key="front_windscreen_heater",
+        key="engine_state_code",
+        translation_key="engine_state_code",
         entity_category=EntityCategory.DIAGNOSTIC,
         entity_registry_enabled_default=False,
-        value_fn=_value("front_windscreen_heater"),
-    ),
-    GwmOraSensorEntityDescription(
-        key="engine_state",
-        translation_key="engine_state",
-        entity_category=EntityCategory.DIAGNOSTIC,
-        entity_registry_enabled_default=False,
-        value_fn=_value("engine_state"),
+        value_fn=_value("engine_state_code"),
     ),
     GwmOraSensorEntityDescription(
         key="front_driver_seat_heater_level",
         translation_key="front_driver_seat_heater_level",
-        entity_category=EntityCategory.DIAGNOSTIC,
         entity_registry_enabled_default=False,
         value_fn=_value("front_driver_seat_heater_level"),
     ),
     GwmOraSensorEntityDescription(
         key="front_passenger_seat_heater_level",
         translation_key="front_passenger_seat_heater_level",
-        entity_category=EntityCategory.DIAGNOSTIC,
         entity_registry_enabled_default=False,
         value_fn=_value("front_passenger_seat_heater_level"),
     ),
     GwmOraSensorEntityDescription(
         key="front_driver_seat_vent_level",
         translation_key="front_driver_seat_vent_level",
-        entity_category=EntityCategory.DIAGNOSTIC,
         entity_registry_enabled_default=False,
         value_fn=_value("front_driver_seat_vent_level"),
     ),
     GwmOraSensorEntityDescription(
         key="front_passenger_seat_vent_level",
         translation_key="front_passenger_seat_vent_level",
-        entity_category=EntityCategory.DIAGNOSTIC,
         entity_registry_enabled_default=False,
         value_fn=_value("front_passenger_seat_vent_level"),
     ),
     GwmOraSensorEntityDescription(
-        key="roof",
-        translation_key="roof",
+        key="sunroof_position_code",
+        translation_key="sunroof_position_code",
         entity_category=EntityCategory.DIAGNOSTIC,
         entity_registry_enabled_default=False,
-        value_fn=_value("roof"),
+        value_fn=_value("sunroof_position_code"),
     ),
     GwmOraSensorEntityDescription(
         key="acquisition_time",
@@ -374,8 +356,7 @@ async def async_setup_entry(
         entry,
         async_add_entities,
         lambda vehicle: (
-            GwmOraSensor(entry.runtime_data.coordinator, vehicle["vin"], description)
-            for description in SENSORS
+            GwmOraSensor(entry.runtime_data.coordinator, vehicle["vin"], description) for description in SENSORS
         ),
     )
 

@@ -84,37 +84,41 @@ public sealed class VehicleValues
     public bool? WindowFrontRightOpen { get; init; }
     public bool? WindowRearLeftOpen { get; init; }
     public bool? WindowRearRightOpen { get; init; }
-    public bool? DoorFrontLeftOpen { get; init; }
-    public bool? DoorFrontRightOpen { get; init; }
-    public bool? DoorRearLeftOpen { get; init; }
-    public bool? DoorRearRightOpen { get; init; }
+    public bool? WindowFrontDriverOpen { get; init; }
+    public bool? WindowFrontPassengerOpen { get; init; }
+    public bool? WindowRearDriverSideOpen { get; init; }
+    public bool? WindowRearPassengerSideOpen { get; init; }
+    public bool? DoorFrontDriverOpen { get; init; }
+    public bool? DoorFrontPassengerOpen { get; init; }
+    public bool? DoorRearDriverSideOpen { get; init; }
+    public bool? DoorRearPassengerSideOpen { get; init; }
     public bool? TrunkOpen { get; init; }
-    public double? Roof { get; init; }
+    public int? SunroofPositionCode { get; init; }
     public bool? AirCirculation { get; init; }
     public bool? FrontDefroster { get; init; }
     public bool? RearDefroster { get; init; }
     public bool? GpsAuthorized { get; init; }
-    public double? TirePressureStateFrontLeft { get; init; }
-    public double? TirePressureStateFrontRight { get; init; }
-    public double? TirePressureStateRearLeft { get; init; }
-    public double? TirePressureStateRearRight { get; init; }
-    public double? TireTemperatureStateFrontLeft { get; init; }
-    public double? TireTemperatureStateFrontRight { get; init; }
-    public double? TireTemperatureStateRearLeft { get; init; }
-    public double? TireTemperatureStateRearRight { get; init; }
-    public double? WindowLearnFrontLeft { get; init; }
-    public double? WindowLearnFrontRight { get; init; }
-    public double? WindowLearnRearLeft { get; init; }
-    public double? WindowLearnRearRight { get; init; }
-    public double? SteeringWheelHeater { get; init; }
-    public double? RearLeftSeatHeaterLevel { get; init; }
-    public double? RearRightSeatHeaterLevel { get; init; }
-    public double? FrontWindscreenHeater { get; init; }
-    public double? EngineState { get; init; }
-    public double? FrontDriverSeatHeaterLevel { get; init; }
-    public double? FrontPassengerSeatHeaterLevel { get; init; }
-    public double? FrontDriverSeatVentLevel { get; init; }
-    public double? FrontPassengerSeatVentLevel { get; init; }
+    public int? TirePressureStateFrontLeft { get; init; }
+    public int? TirePressureStateFrontRight { get; init; }
+    public int? TirePressureStateRearLeft { get; init; }
+    public int? TirePressureStateRearRight { get; init; }
+    public int? TireTemperatureStateFrontLeft { get; init; }
+    public int? TireTemperatureStateFrontRight { get; init; }
+    public int? TireTemperatureStateRearLeft { get; init; }
+    public int? TireTemperatureStateRearRight { get; init; }
+    public int? WindowLearnFrontLeft { get; init; }
+    public int? WindowLearnFrontRight { get; init; }
+    public int? WindowLearnRearLeft { get; init; }
+    public int? WindowLearnRearRight { get; init; }
+    public bool? SteeringWheelHeaterActive { get; init; }
+    public int? RearLeftSeatHeaterLevel { get; init; }
+    public int? RearRightSeatHeaterLevel { get; init; }
+    public bool? FrontWindscreenHeaterActive { get; init; }
+    public int? EngineStateCode { get; init; }
+    public int? FrontDriverSeatHeaterLevel { get; init; }
+    public int? FrontPassengerSeatHeaterLevel { get; init; }
+    public int? FrontDriverSeatVentLevel { get; init; }
+    public int? FrontPassengerSeatVentLevel { get; init; }
 }
 
 public sealed class ClimateSnapshot
