@@ -9,7 +9,7 @@ Control and monitor your GWM ORA from Home Assistant. The add-on connects to you
 
 ## What You Get
 
-- Battery SOC, range, odometer, charging, plug, cabin temperature, tire pressure, tire temperature, lock, window, A/C, and location entities.
+- Battery SOC, range, odometer, charging, plug, cabin temperature, tire, lock, window, door, trunk, A/C, and location entities, plus model-dependent fuel and comfort data.
 - Native Home Assistant controls for A/C mode, temperature, run time, door lock/unlock, and closing windows.
 - A remote command status sensor that shows progress while commands are being sent to the car.
 - Automatic discovery of the add-on by the integration.
@@ -98,8 +98,9 @@ You do not enter your GWM username or password in the integration.
 
 ## Entities
 
-- Sensors: SOC, range, odometer, charging status, remaining charging time, SOCE, tire pressures, tire temperatures, interior temperature, acquisition/update timestamps, remote command status.
-- Binary sensors: charging active, charge plug, A/C active, lock open, windows open, air circulation, front defroster.
+- Sensors: SOC, range, odometer, charging status, remaining charging time, SOCE, tire pressures, tire temperatures, interior temperature, optional fuel level/range and seat heating/ventilation levels, acquisition/update timestamps, and remote command status.
+- Binary sensors: charging active, charge plug, A/C active, lock open, driver/passenger windows and doors, trunk, air circulation, defrosters, and optional steering-wheel and windscreen heater states.
+- Disabled diagnostic sensors: raw tire state, window-learning state, engine state code, sunroof position code, and GPS authorization data when supplied by the vehicle.
 - Device tracker: vehicle GPS location when available.
 - Climate: A/C mode `off`/`cool`, target temperature, current cabin temperature.
 - Number: climate run time from 5 to 30 minutes in one-minute steps.
@@ -107,6 +108,8 @@ You do not enter your GWM username or password in the integration.
 - Button: close all windows.
 
 Remote command entities are unavailable until remote commands are enabled and a security PIN is configured in the add-on.
+
+GWM models and regions do not all return the same status signals. Model-specific fuel, comfort, and diagnostic entities are disabled by default where appropriate and can be enabled from the Home Assistant entity list. If a car does not return a value, that entity remains unknown without affecting polling or the other entities. Front doors, windows, seat heating, and seat ventilation use driver/passenger naming so their labels stay correct on both left-hand-drive and right-hand-drive cars.
 
 ### Use the charging status with evcc
 
@@ -263,7 +266,9 @@ Use at your own risk. You are responsible for validating behavior, protecting cr
 
 Special thanks to [zivillian](https://github.com/zivillian) and the [zivillian/ora2mqtt](https://github.com/zivillian/ora2mqtt) project for blazing the trail. Their work uncovered many of the details behind ORA/GWM connectivity and helped inspire the current development of this integration.
 
-Deep thanks to [wilberforce](https://github.com/wilberforce) for reverse-engineering the ANZ authentication and signing flow, implementing AU/NZ support, and validating it against a live vehicle.
+Thanks to [AlexandrErohin](https://github.com/AlexandrErohin) for contributing the initial model-specific vehicle sensor set.
+
+Deep thanks to [wilberforce](https://github.com/wilberforce) for reverse-engineering the ANZ authentication and signing flow, implementing AU/NZ support, decoding vehicle status mappings, and validating authentication and comfort signals against a live vehicle.
 
 [banner]: https://raw.githubusercontent.com/moryoav/ha-gwm_ora/main/brand/banner.png
 [hacs-badge]: https://img.shields.io/badge/HACS-Default-41BDF5.svg?style=flat-square

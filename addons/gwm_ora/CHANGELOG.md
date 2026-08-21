@@ -6,6 +6,26 @@ This project follows semantic versioning. HACS uses the latest GitHub release ta
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-08-21
+
+### Added
+
+- Added optional fuel level and fuel range sensors, door and trunk binary sensors, rear defroster and GPS authorization states, seat heating and ventilation levels, steering-wheel and windscreen heater states, and disabled diagnostic tire, window-learning, engine, and sunroof state-code sensors.
+- Added market-safe driver/passenger door data and aliases for the already released window data so the same entities work on left-hand-drive and right-hand-drive cars.
+- Added defensive telemetry and entity-contract tests for missing, malformed, duplicate, non-finite, and unsupported vehicle values.
+
+### Changed
+
+- Keep car-specific fuel, comfort, and raw diagnostic entities disabled by default where appropriate. Missing signals remain unknown and do not interrupt polling or other entities.
+- Label engine and sunroof values as raw state codes because those mappings still need live confirmation. Steering-wheel heating and front-seat heating and ventilation mappings include live ANZ ORA 5 validation.
+
+### Fixed
+
+- Prevent malformed or duplicate GWM status items, invalid seat levels, non-finite numbers, and out-of-range timestamps from breaking an entire vehicle refresh or API response.
+- Use driver/passenger naming for the contributed door mappings instead of physical left/right labels that invert between LHD and RHD markets.
+
+Thanks to [@AlexandrErohin](https://github.com/AlexandrErohin) for the initial sensor implementation and [@wilberforce](https://github.com/wilberforce) for the decoded mappings, RHD guidance, live testing, and front-seat ventilation contribution.
+
 ## [0.6.1] - 2026-08-10
 
 ### Fixed

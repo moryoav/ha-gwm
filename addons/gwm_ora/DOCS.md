@@ -63,6 +63,12 @@ The authentication flow is similar to the EU setup: the first login on a new dev
 
 Login, verification, vehicle discovery, and status polling have been validated against a live ANZ vehicle. Lock, climate, and close-window commands remain available when explicitly enabled with a security PIN, but they are currently **experimental and unconfirmed** on the ANZ backend. Test one command at a time only while the vehicle is parked, safe, and in view. Do not rely on AU/NZ remote-command automations until your vehicle has been tested successfully, and report the result in [issue #1](https://github.com/moryoav/ha-gwm_ora/issues/1).
 
+## Model-specific vehicle data
+
+Different models and regions return different GWM status codes. Version 0.7.0 adds optional fuel, door, trunk, heater, seat heating and ventilation, tire-state, window-learning, engine-state, and sunroof-position data. Car-specific comfort and diagnostic entities are disabled by default where appropriate and can be enabled from the Home Assistant entity list.
+
+Missing or malformed optional values are returned as unknown and do not stop the vehicle refresh or affect supported entities. Front doors, windows, seat heating, and seat ventilation use driver/passenger naming so the labels remain correct for both left-hand-drive and right-hand-drive cars. Engine and sunroof values are intentionally exposed as disabled raw state codes until their meaning is confirmed on more vehicles.
+
 ## Web UI
 
 The **Open Web UI** button uses Home Assistant Ingress and shows add-on health plus the latest cached vehicle summary. Remote controls are exposed by the native Home Assistant integration rather than the add-on web page.
