@@ -16,8 +16,23 @@ def _png_size(path: Path) -> tuple[int, int]:
 
 
 def test_translation_and_icon_files_are_valid_json() -> None:
-    json.loads((ROOT / "custom_components/gwm_ora/translations/en.json").read_text(encoding="utf-8"))
-    json.loads((ROOT / "custom_components/gwm_ora/icons.json").read_text(encoding="utf-8"))
+    translations = json.loads(
+        (ROOT / "custom_components/gwm_ora/translations/en.json").read_text(encoding="utf-8")
+    )
+    icons = json.loads((ROOT / "custom_components/gwm_ora/icons.json").read_text(encoding="utf-8"))
+
+    assert "charging_control_unavailable" in translations["exceptions"]
+    assert "set_charging_plan" in translations["services"]
+    assert icons["entity"]["switch"]["charging_schedule"]["default"] == "mdi:calendar-clock"
+
+
+def test_charging_services_require_explicit_window() -> None:
+    services = (ROOT / "custom_components/gwm_ora/services.yaml").read_text(encoding="utf-8")
+
+    assert "set_charging_plan:" in services
+    assert "clear_charging_plan:" in services
+    assert services.count("required: true") >= 4
+    assert "enable:" not in services
 
 
 def test_community_health_files_exist() -> None:

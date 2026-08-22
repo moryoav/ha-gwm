@@ -1,4 +1,3 @@
-using System.Linq;
 using GwmOra.Addon.Configuration;
 using GwmOra.Addon.RemoteCommands;
 
@@ -42,6 +41,7 @@ public sealed class VehiclePollingWorker : BackgroundService
             }
 
             await RefreshIgnoringFailuresAsync(stoppingToken);
+            await ClearLeftoverChargingPlanAsync(stoppingToken);
         }
     }
 
@@ -49,14 +49,11 @@ public sealed class VehiclePollingWorker : BackgroundService
     {
         try
         {
-            var vins = _vehicleService.GetVehicles().Vehicles
-                .Select(v => v.Vin)
-                .Where(v => !String.IsNullOrWhiteSpace(v));
-            await _commands.ClearAddonChargingPlanIfDisabledAsync(vins, cancellationToken);
+            await _commands.ClearAddonChargingPlansIfDisabledAsync(cancellationToken);
         }
         catch (Exception ex)
         {
-            _logger.LogDebug(ex, "Charging-plan cleanup skipped");
+            _logger.LogWarning(ex, "Could not check for leftover add-on charging plans; the next poll will retry");
         }
     }
 

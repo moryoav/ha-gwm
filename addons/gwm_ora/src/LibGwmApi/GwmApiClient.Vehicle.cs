@@ -107,20 +107,26 @@ public partial class GwmApiClient
 
     public Task<ChargingInfos> GetChargingInfosAsync(string vin, CancellationToken cancellationToken)
     {
-        // AU/NZ ("aus") sends the VIN as a request header (self-developed variant), same pattern
-        // as getRemoteCtrlResultT5. This endpoint family is AU/NZ-only.
-        var extraHeaders = _region == "aus" ? new[] { ("vin", vin) } : null;
-        return GetAppAsync<ChargingInfos>(
-            $"vehicleCharge/getChargingInfos?vin={vin}", extraHeaders, cancellationToken);
+        // The charging API belongs to the h5-gateway family in the official apps. AU/NZ's
+        // self-developed request variant additionally requires the VIN header.
+        var url = $"vehicleCharge/getChargingInfos?vin={vin}";
+        return _region == "aus"
+            ? GetH5Async<ChargingInfos>(url, new[] { ("vin", vin) }, cancellationToken)
+            : GetH5Async<ChargingInfos>(url, cancellationToken);
     }
 
     public Task SetChargingPlanAsync(SetChargingPlan request, CancellationToken cancellationToken)
     {
         // Sets/clears the vehicle's charging-schedule window (startTime/endTime = epoch-ms strings,
         // planType 0 = one-off, minimum 5-minute window). A plan window gates charging (start/stop);
-        // clearing it (enable=false) reverts to charge-on-plug. No security PIN required. aus sends
-        // the VIN as a request header.
-        var extraHeaders = _region == "aus" ? new[] { ("vin", request.Vin) } : null;
-        return PostAppAsync("vehicleCharge/setChargingPlan", request, extraHeaders, cancellationToken);
+        // clearing it (enable=false) reverts to charge-on-plug. No security PIN is required.
+        // AU/NZ's self-developed request variant additionally requires the VIN header.
+        return _region == "aus"
+            ? PostH5Async(
+                "vehicleCharge/setChargingPlan",
+                request,
+                new[] { ("vin", request.Vin) },
+                cancellationToken)
+            : PostH5Async("vehicleCharge/setChargingPlan", request, cancellationToken);
     }
 }

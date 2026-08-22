@@ -101,6 +101,11 @@
       "rear_right_seat_heater_level": {
         "default": "mdi:car-seat-heater"
       }
+    },
+    "switch": {
+      "charging_schedule": {
+        "default": "mdi:calendar-clock"
+      }
     }
   }
 }

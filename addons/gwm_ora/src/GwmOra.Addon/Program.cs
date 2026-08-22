@@ -136,6 +136,10 @@ api.MapGet("/vehicles/{vin}/charging/plan", async (string vin, RemoteCommandServ
     {
         return Results.Ok(await commands.GetChargingPlanAsync(vin, cancellationToken));
     }
+    catch (ArgumentException ex)
+    {
+        return Results.Problem(ex.Message, statusCode: StatusCodes.Status400BadRequest);
+    }
     catch (Exception ex)
     {
         return Results.Problem(ex.Message, statusCode: StatusCodes.Status502BadGateway);
@@ -147,11 +151,15 @@ api.MapPost("/vehicles/{vin}/charging/plan", async (string vin, ChargingPlanRequ
     try
     {
         await commands.SetChargingPlanAsync(vin, request, cancellationToken);
-        return Results.Accepted(value: new { status = "ok" });
+        return Results.Ok(new { status = "ok" });
     }
     catch (RemoteCommandUnavailableException ex)
     {
         return Results.Problem(ex.Message, statusCode: StatusCodes.Status403Forbidden);
+    }
+    catch (ArgumentException ex)
+    {
+        return Results.Problem(ex.Message, statusCode: StatusCodes.Status400BadRequest);
     }
     catch (Exception ex)
     {

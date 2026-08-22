@@ -20,7 +20,7 @@
 | `verification_code` | no | One-time SMS/e-mail verification code sent by GWM during first login or when this add-on device must be trusted. Fill it only after GWM sends a code. |
 | `security_pin` | no | Vehicle remote control PIN from the official app. |
 | `enable_remote_commands` | yes | Enables A/C, lock, unlock, and close-window commands. |
-| `enable_charging_control` | yes | Enables the **Scheduled charging** switch and the `set_charging_plan` / `clear_charging_plan` services, which set or clear a charging window on the vehicle (`vehicleCharge/setChargingPlan`). Default `false`. Independent of `enable_remote_commands` and needs no security PIN. Validated on an ANZ vehicle; the same code path is used for all regions. |
+| `enable_charging_control` | yes | Enables the **Scheduled charging** switch and the `gwm_ora.set_charging_plan` / `gwm_ora.clear_charging_plan` actions. Default `false`. Independent of `enable_remote_commands` and needs no security PIN. Validated on an ANZ vehicle; the same H5 gateway API is used for all regions. |
 | `poll_interval_seconds` | yes | GWM cloud polling interval from 30 to 3600 seconds. |
 | `log_level` | yes | One of `trace`, `debug`, `info`, `warning`, or `error`. |
 
@@ -76,6 +76,14 @@ Russia uses its own GWM request signing, gateways, and bundled client certificat
 Different models and regions return different GWM status codes. Version 0.7.0 adds optional fuel, door, trunk, heater, seat heating and ventilation, tire-state, window-learning, engine-state, and sunroof-position data. Car-specific comfort and diagnostic entities are disabled by default where appropriate and can be enabled from the Home Assistant entity list.
 
 Missing or malformed optional values are returned as unknown and do not stop the vehicle refresh or affect supported entities. Front doors, windows, seat heating, and seat ventilation use driver/passenger naming so the labels remain correct for both left-hand-drive and right-hand-drive cars. Engine and sunroof values are intentionally exposed as disabled raw state codes until their meaning is confirmed on more vehicles.
+
+## Charging schedule control
+
+Set `enable_charging_control: true`, restart the add-on, and reload the integration to enable charging writes. This is a separate opt-in from remote commands and does not require `security_pin`.
+
+The **Scheduled charging** switch sets a one-off window from now until eight hours later. Turning it off clears the schedule and restores charge-when-plugged-in behavior. Use `gwm_ora.set_charging_plan` for an exact start and end time or `gwm_ora.clear_charging_plan` to remove the schedule. A window must be at least five minutes. A future start time makes the vehicle wait until the window begins.
+
+GWM stores one charging-plan slot per vehicle, so a new plan replaces the previous one. The add-on tracks the exact plan it writes. If charging control is later disabled, it retries cleanup of that plan while preserving a schedule that was replaced or changed in the official GWM app.
 
 ## Web UI
 

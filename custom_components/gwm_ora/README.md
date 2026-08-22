@@ -15,10 +15,13 @@ The integration stores only the add-on host, port, generated API token, and disc
 - Number
 - Lock
 - Button
+- Switch
 
 Vehicle models and regions expose different status signals. Optional fuel, comfort, and diagnostic entities are disabled by default where appropriate, and missing values remain unknown without affecting other entities.
 
 The **Climate run time** number entity saves a duration from 5 to 30 minutes, in one-minute steps, for the next A/C command. Changing it does not start or stop the A/C.
+
+The optional **Scheduled charging** switch and `gwm_ora.set_charging_plan` / `gwm_ora.clear_charging_plan` actions require `enable_charging_control: true` in the add-on. See the root README for behavior, safety notes, and examples.
 
 ## Setup
 

@@ -58,7 +58,7 @@ class GwmOraEntity(CoordinatorEntity[GwmOraDataUpdateCoordinator]):
 
     @property
     def charging_control_available(self) -> bool:
-        """Return whether AU/NZ charging control is enabled in the add-on."""
+        """Return whether charging control is enabled in the add-on."""
         return bool((self.coordinator.data or {}).get("charging_control_enabled"))
 
 
@@ -93,7 +93,11 @@ def setup_vehicle_entities(
     entry.async_on_unload(coordinator.async_add_listener(add_new_vehicle_entities))
 
 
-async def async_call_addon_api(call):
+async def async_call_addon_api(
+    call,
+    *,
+    forbidden_translation_key: str = "remote_command_unavailable",
+):
     """Call the add-on API and raise translated Home Assistant errors."""
     try:
         return await call
@@ -105,7 +109,7 @@ async def async_call_addon_api(call):
     except GwmOraApiForbidden as err:
         raise HomeAssistantError(
             translation_domain=DOMAIN,
-            translation_key="remote_command_unavailable",
+            translation_key=forbidden_translation_key,
         ) from err
     except GwmOraApiUnavailable as err:
         raise HomeAssistantError(

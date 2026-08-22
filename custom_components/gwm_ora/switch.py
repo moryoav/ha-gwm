@@ -1,7 +1,8 @@
-"""Switch platform for GWM ORA (AU/NZ charging control)."""
+"""Switch platform for GWM charging control."""
 
 from __future__ import annotations
 
+import logging
 import time
 from typing import Any
 
@@ -10,10 +11,21 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from . import GwmOraConfigEntry
+from .api import GwmOraApiError
 from .const import DEFAULT_CHARGE_WINDOW_HOURS
 from .entity import GwmOraEntity, async_call_addon_api, setup_vehicle_entities
 
 PARALLEL_UPDATES = 0
+
+_LOGGER = logging.getLogger(__name__)
+
+
+def _charging_plan_is_active(response: dict[str, Any]) -> bool:
+    """Return whether a getChargingInfos response contains an active plan."""
+    return any(
+        plan.get("plan_type") is not None and str(plan["plan_type"]) != "-1"
+        for plan in response.get("charge_plan_list") or []
+    )
 
 
 async def async_setup_entry(
@@ -21,7 +33,7 @@ async def async_setup_entry(
     entry: GwmOraConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    """Set up GWM ORA switches."""
+    """Set up GWM switches."""
     setup_vehicle_entities(
         entry,
         async_add_entities,
@@ -34,7 +46,7 @@ async def async_setup_entry(
 
 
 class GwmOraChargingScheduleSwitch(GwmOraEntity, SwitchEntity):
-    """Manual on/off for AU/NZ scheduled charging.
+    """Manual on/off for scheduled charging.
 
     On sets a charging window from now for DEFAULT_CHARGE_WINDOW_HOURS (the car
     charges only within it); off clears the plan (the car charges whenever it is
@@ -50,7 +62,27 @@ class GwmOraChargingScheduleSwitch(GwmOraEntity, SwitchEntity):
         super().__init__(coordinator, vin)
         self._api = api
         self._attr_unique_id = f"{vin}_charging_schedule"
-        self._attr_is_on = False
+
+    async def async_added_to_hass(self) -> None:
+        """Load the current charging-plan state when the entity is added."""
+        await super().async_added_to_hass()
+        if not self.charging_control_available:
+            return
+
+        try:
+            response = await self._api.async_get_charging_plan(self.vin)
+        except GwmOraApiError as err:
+            _LOGGER.debug("Could not read the current GWM charging plan: %s", err)
+            return
+
+        self.coordinator.set_charging_plan_active(
+            self.vin, _charging_plan_is_active(response)
+        )
+
+    @property
+    def is_on(self) -> bool | None:
+        """Return the last known charging-plan state."""
+        return self.coordinator.charging_plan_active(self.vin)
 
     @property
     def available(self) -> bool:
@@ -64,15 +96,15 @@ class GwmOraChargingScheduleSwitch(GwmOraEntity, SwitchEntity):
         await async_call_addon_api(
             self._api.async_set_charging_plan(
                 self.vin, enable=True, start_time=now_ms, end_time=end_ms, plan_type=0
-            )
+            ),
+            forbidden_translation_key="charging_control_unavailable",
         )
-        self._attr_is_on = True
-        self.async_write_ha_state()
+        self.coordinator.set_charging_plan_active(self.vin, True)
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         """Clear the charging plan so the car charges whenever it is plugged in."""
         await async_call_addon_api(
-            self._api.async_set_charging_plan(self.vin, enable=False)
+            self._api.async_set_charging_plan(self.vin, enable=False),
+            forbidden_translation_key="charging_control_unavailable",
         )
-        self._attr_is_on = False
-        self.async_write_ha_state()
+        self.coordinator.set_charging_plan_active(self.vin, False)

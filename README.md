@@ -58,6 +58,7 @@ country: your-gwm-country-code
 username: owner@example.com
 password: your-gwm-password
 enable_remote_commands: true
+enable_charging_control: false
 security_pin: "your-official-app-pin"
 poll_interval_seconds: 60
 log_level: info
@@ -68,7 +69,7 @@ log_level: info
 - `username`: E-mail address for your GWM account.
 - `password`: Password for your GWM account.
 - `enable_remote_commands`: Enables A/C, lock, unlock, and close-window controls. Use `false` for read-only entities.
-- `enable_charging_control`: Enables the **Scheduled charging** switch and the `set_charging_plan` / `clear_charging_plan` services, which set or clear a charging window on the vehicle. Default `false`, independent of `enable_remote_commands`, and needs no security PIN. Validated on an ANZ vehicle; the same code path serves all regions.
+- `enable_charging_control`: Enables the **Scheduled charging** switch and the `gwm_ora.set_charging_plan` / `gwm_ora.clear_charging_plan` actions. Default `false`, independent of `enable_remote_commands`, and needs no security PIN. Validated on an ANZ vehicle; the same H5 gateway API is used for every region.
 - `security_pin`: The remote-control PIN configured in the official GWM app. Setting up that PIN in the official app is a prerequisite for remote commands.
 - `poll_interval_seconds`: How often the add-on refreshes vehicle data from GWM.
 - `log_level`: Add-on logging verbosity.
@@ -121,10 +122,41 @@ You do not enter your GWM username or password in the integration.
 - Number: climate run time from 5 to 30 minutes in one-minute steps.
 - Lock: lock and unlock vehicle doors.
 - Button: close all windows.
+- Switch: enable an eight-hour charging window now or clear the vehicle's charging schedule.
 
 Remote command entities are unavailable until remote commands are enabled and a security PIN is configured in the add-on.
+The **Scheduled charging** switch is unavailable until charging control is enabled separately.
 
 GWM models and regions do not all return the same status signals. Model-specific fuel, comfort, and diagnostic entities are disabled by default where appropriate and can be enabled from the Home Assistant entity list. If a car does not return a value, that entity remains unknown without affecting polling or the other entities. Front doors, windows, seat heating, and seat ventilation use driver/passenger naming so their labels stay correct on both left-hand-drive and right-hand-drive cars.
+
+### Charging schedule control
+
+Charging schedule writes are disabled by default. Set `enable_charging_control: true` in the add-on, restart it, and reload the integration to make the controls available. This opt-in is separate from normal remote commands and does not use the vehicle security PIN.
+
+The **Scheduled charging** switch is an assumed-state convenience control:
+
+- Turning it on replaces the vehicle's current schedule with a one-off window that starts now and ends eight hours later.
+- Turning it off clears the schedule and restores normal charge-when-plugged-in behavior. It is not a hard stop command, so a plugged-in vehicle may begin charging after the schedule is cleared.
+
+For an exact window, call `gwm_ora.set_charging_plan` from **Developer tools** > **Actions** or an automation. Both times are required and the window must be at least five minutes:
+
+```yaml
+action: gwm_ora.set_charging_plan
+data:
+  vin: "LGWEEUA57TR603334"
+  start_time: "2026-08-22 23:00:00+03:00"
+  end_time: "2026-08-23 06:00:00+03:00"
+```
+
+A future start time leaves the car waiting until the window begins. GWM keeps one charging-plan slot per vehicle, so setting a new window replaces the old one rather than adding another. To remove the window:
+
+```yaml
+action: gwm_ora.clear_charging_plan
+data:
+  vin: "LGWEEUA57TR603334"
+```
+
+The add-on records the exact plan it writes. If charging control is later disabled, it retries cleanup of that plan, but leaves a schedule alone when the official GWM app has replaced or changed it. The feature was live-tested on an ANZ ORA 5. Other regions use the same API path but have not yet been independently verified.
 
 ### Use the charging status with evcc
 

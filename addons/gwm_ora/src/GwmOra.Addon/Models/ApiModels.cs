@@ -153,12 +153,12 @@ public sealed class LockCommandRequest
     public string Action { get; init; } = String.Empty;
 }
 
-// AU/NZ charging schedule (vehicleCharge/setChargingPlan). Times are epoch milliseconds.
+// Charging schedule (vehicleCharge/setChargingPlan). Times are epoch milliseconds.
 // Enable + a [start,end] window makes the car charge only within it; disable (enable=false)
 // clears the plan (car charges on plug-in). No security PIN required.
 public sealed class ChargingPlanRequest
 {
-    public bool Enable { get; init; }
+    public bool? Enable { get; init; }
     public long? StartTime { get; init; }
     public long? EndTime { get; init; }
     public int? PlanType { get; init; }

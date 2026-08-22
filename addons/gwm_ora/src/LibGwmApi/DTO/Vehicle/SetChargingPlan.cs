@@ -3,12 +3,12 @@ using System.Text.Json.Serialization;
 namespace libgwmapi.DTO.Vehicle;
 
 /// <summary>
-/// Body of AU/NZ <c>vehicleCharge/setChargingPlan</c>. A plan window makes the car charge only
+/// Body of <c>vehicleCharge/setChargingPlan</c>. A plan window makes the car charge only
 /// within it (start at <see cref="StartTime"/>, stop at <see cref="EndTime"/>); with no plan the
 /// car charges on plug-in. No security PIN is required. Times are epoch-milliseconds strings and
 /// the window must be at least 5 minutes.
 /// </summary>
-public class SetChargingPlan
+public sealed class SetChargingPlan
 {
     [JsonPropertyName("enable")]
     public bool Enable { get; set; }
@@ -17,7 +17,7 @@ public class SetChargingPlan
     public string SeqNo { get; } = Guid.NewGuid().ToString("N") + "1234";
 
     [JsonPropertyName("vin")]
-    public string Vin { get; set; }
+    public string Vin { get; set; } = String.Empty;
 
     // 0 = one-off. Omitted when disabling/clearing the plan.
     [JsonPropertyName("planType")]

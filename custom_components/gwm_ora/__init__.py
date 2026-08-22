@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import timedelta
 
 import voluptuous as vol
 from homeassistant.config_entries import ConfigEntry
@@ -16,10 +17,10 @@ from homeassistant.exceptions import (
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import issue_registry as ir
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
+from homeassistant.util import dt as dt_util
 
 from .api import GwmOraApiAuthError, GwmOraApiClient, GwmOraApiError, GwmOraApiUnavailable
 from .const import (
-    ATTR_ENABLE,
     ATTR_END_TIME,
     ATTR_START_TIME,
     ATTR_VIN,
@@ -27,6 +28,7 @@ from .const import (
     DEFAULT_NAME,
     DOMAIN,
     LEGACY_DEFAULT_NAME,
+    MIN_CHARGE_WINDOW_MINUTES,
     PLATFORMS,
     SERVICE_CLEAR_CHARGING_PLAN,
     SERVICE_SET_CHARGING_PLAN,
@@ -49,12 +51,26 @@ GwmOraConfigEntry = ConfigEntry[GwmOraRuntimeData]
 _SET_CHARGING_PLAN_SCHEMA = vol.Schema(
     {
         vol.Required(ATTR_VIN): cv.string,
-        vol.Optional(ATTR_ENABLE, default=True): cv.boolean,
-        vol.Optional(ATTR_START_TIME): cv.datetime,
-        vol.Optional(ATTR_END_TIME): cv.datetime,
+        vol.Required(ATTR_START_TIME): cv.datetime,
+        vol.Required(ATTR_END_TIME): cv.datetime,
     }
 )
 _CLEAR_CHARGING_PLAN_SCHEMA = vol.Schema({vol.Required(ATTR_VIN): cv.string})
+
+
+def _charging_window_epoch_ms(start, end) -> tuple[int, int]:
+    """Validate a charging window and return UTC Unix milliseconds."""
+    start_utc = dt_util.as_utc(start)
+    end_utc = dt_util.as_utc(end)
+    if end_utc - start_utc < timedelta(minutes=MIN_CHARGE_WINDOW_MINUTES):
+        raise ServiceValidationError(
+            f"Charging plan window must be at least {MIN_CHARGE_WINDOW_MINUTES} minutes"
+        )
+
+    return (
+        int(dt_util.as_timestamp(start_utc) * 1000),
+        int(dt_util.as_timestamp(end_utc) * 1000),
+    )
 
 
 def _async_register_services(hass: HomeAssistant) -> None:
@@ -62,36 +78,49 @@ def _async_register_services(hass: HomeAssistant) -> None:
     if hass.services.has_service(DOMAIN, SERVICE_SET_CHARGING_PLAN):
         return
 
-    def _resolve_for_vin(vin: str) -> tuple[GwmOraApiClient, str]:
+    def _resolve_for_vin(
+        vin: str,
+    ) -> tuple[GwmOraApiClient, GwmOraDataUpdateCoordinator, str]:
         """Resolve a user-supplied VIN to its (api, internal VIN).
 
         Accepts either the display VIN (device serial) or the encoded VIN and
         returns the encoded ``vin`` the add-on API expects.
         """
+        identifier = vin.strip()
         for entry in hass.config_entries.async_loaded_entries(DOMAIN):
-            vehicle = entry.runtime_data.coordinator.resolve_vehicle(vin)
+            vehicle = entry.runtime_data.coordinator.resolve_vehicle(identifier)
             if vehicle is not None:
-                return entry.runtime_data.api, vehicle["vin"]
-        raise ServiceValidationError(f"No GWM vehicle found with VIN {vin}")
+                return (
+                    entry.runtime_data.api,
+                    entry.runtime_data.coordinator,
+                    vehicle["vin"],
+                )
+        raise ServiceValidationError(f"No GWM vehicle found with VIN {identifier}")
 
     async def _set_charging_plan(call: ServiceCall) -> None:
-        api, resolved_vin = _resolve_for_vin(call.data[ATTR_VIN])
-        enable = call.data[ATTR_ENABLE]
-        start = call.data.get(ATTR_START_TIME)
-        end = call.data.get(ATTR_END_TIME)
+        api, coordinator, resolved_vin = _resolve_for_vin(call.data[ATTR_VIN])
+        start_ms, end_ms = _charging_window_epoch_ms(
+            call.data[ATTR_START_TIME], call.data[ATTR_END_TIME]
+        )
         await async_call_addon_api(
             api.async_set_charging_plan(
                 resolved_vin,
-                enable=enable,
-                start_time=int(start.timestamp() * 1000) if start else None,
-                end_time=int(end.timestamp() * 1000) if end else None,
-                plan_type=0 if enable else None,
-            )
+                enable=True,
+                start_time=start_ms,
+                end_time=end_ms,
+                plan_type=0,
+            ),
+            forbidden_translation_key="charging_control_unavailable",
         )
+        coordinator.set_charging_plan_active(resolved_vin, True)
 
     async def _clear_charging_plan(call: ServiceCall) -> None:
-        api, resolved_vin = _resolve_for_vin(call.data[ATTR_VIN])
-        await async_call_addon_api(api.async_set_charging_plan(resolved_vin, enable=False))
+        api, coordinator, resolved_vin = _resolve_for_vin(call.data[ATTR_VIN])
+        await async_call_addon_api(
+            api.async_set_charging_plan(resolved_vin, enable=False),
+            forbidden_translation_key="charging_control_unavailable",
+        )
+        coordinator.set_charging_plan_active(resolved_vin, False)
 
     hass.services.async_register(
         DOMAIN, SERVICE_SET_CHARGING_PLAN, _set_charging_plan, schema=_SET_CHARGING_PLAN_SCHEMA

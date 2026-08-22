@@ -92,7 +92,7 @@ class GwmOraApiClient:
         )
 
     async def async_get_charging_plan(self, vin: str) -> dict[str, Any]:
-        """Return the vehicle's charging schedule (AU/NZ)."""
+        """Return the vehicle's charging schedule."""
         return await self._request("GET", f"/vehicles/{vin}/charging/plan")
 
     async def async_set_charging_plan(
@@ -105,7 +105,7 @@ class GwmOraApiClient:
         plan_type: int | None = None,
         weeks: str | None = None,
     ) -> dict[str, Any]:
-        """Set or clear the charging schedule (AU/NZ). start_time/end_time are epoch ms."""
+        """Set or clear the charging schedule. Times are Unix milliseconds."""
         payload: dict[str, Any] = {"enable": enable}
         if start_time is not None:
             payload["start_time"] = start_time
