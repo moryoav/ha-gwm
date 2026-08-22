@@ -2,8 +2,8 @@
   "config": {
     "step": {
       "user": {
-        "title": "GWM ORA add-on",
-        "description": "Connect to a running GWM ORA add-on. This is mostly useful for development or non-Supervisor installs.",
+        "title": "GWM add-on",
+        "description": "Connect to a running GWM add-on. This is mostly useful for development or non-Supervisor installs.",
         "data": {
           "host": "Host",
           "port": "Port",
@@ -16,7 +16,7 @@
         }
       },
       "reconfigure": {
-        "title": "Reconfigure GWM ORA add-on",
+        "title": "Reconfigure GWM add-on",
         "description": "Update the add-on API connection used by this integration. For normal Home Assistant add-on installs, restarting the add-on should rediscover and update these values automatically.",
         "data": {
           "host": "Host",
@@ -30,7 +30,7 @@
         }
       },
       "reauth_confirm": {
-        "title": "Reconnect GWM ORA add-on",
+        "title": "Reconnect GWM add-on",
         "description": "The add-on rejected the stored API token. Restart the add-on first; if this is a development install, enter the updated host, port, and token.",
         "data": {
           "host": "Host",
@@ -44,8 +44,8 @@
         }
       },
       "hassio_confirm": {
-        "title": "GWM ORA add-on discovered",
-        "description": "Set up the discovered GWM ORA add-on at {host}."
+        "title": "GWM add-on discovered",
+        "description": "Set up the discovered GWM add-on at {host}."
       }
     },
     "error": {
@@ -53,18 +53,18 @@
       "invalid_auth": "The add-on API token was rejected."
     },
     "abort": {
-      "already_configured": "GWM ORA is already configured."
+      "already_configured": "GWM is already configured."
     }
   },
   "exceptions": {
     "addon_auth_failed": {
-      "message": "The GWM ORA add-on rejected the stored API token."
+      "message": "The GWM add-on rejected the stored API token."
     },
     "addon_request_failed": {
-      "message": "The GWM ORA add-on could not complete the request."
+      "message": "The GWM add-on could not complete the request."
     },
     "addon_unavailable": {
-      "message": "The GWM ORA add-on is not reachable."
+      "message": "The GWM add-on is not reachable."
     },
     "remote_command_unavailable": {
       "message": "Remote commands are unavailable. Enable remote commands and configure the security PIN in the add-on."
@@ -75,8 +75,8 @@
   },
   "issues": {
     "addon_auth_failed": {
-      "title": "GWM ORA add-on authentication failed",
-      "description": "The integration can reach the GWM ORA add-on, but the add-on rejected the stored API token. Restart the add-on first so Supervisor can rediscover it. For development or non-Supervisor installs, use Reconfigure and enter the current add-on API token."
+      "title": "GWM add-on authentication failed",
+      "description": "The integration can reach the GWM add-on, but the add-on rejected the stored API token. Restart the add-on first so Supervisor can rediscover it. For development or non-Supervisor installs, use Reconfigure and enter the current add-on API token."
     }
   },
   "entity": {

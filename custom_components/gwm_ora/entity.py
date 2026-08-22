@@ -1,4 +1,4 @@
-"""Base entities for GWM ORA."""
+"""Base entities for GWM."""
 
 from __future__ import annotations
 
@@ -19,7 +19,7 @@ if TYPE_CHECKING:
 
 
 class GwmOraEntity(CoordinatorEntity[GwmOraDataUpdateCoordinator]):
-    """Base entity bound to one GWM ORA vehicle."""
+    """Base entity bound to one GWM vehicle."""
 
     _attr_has_entity_name = True
 
@@ -43,7 +43,7 @@ class GwmOraEntity(CoordinatorEntity[GwmOraDataUpdateCoordinator]):
         vehicle = self.vehicle or {}
         return DeviceInfo(
             identifiers={(DOMAIN, self.vin)},
-            name=vehicle.get("name") or "GWM ORA",
+            name=vehicle.get("name") or "GWM vehicle",
             manufacturer=vehicle.get("manufacturer") or "GWM",
             model=vehicle.get("model"),
             serial_number=vehicle.get("serial_number"),

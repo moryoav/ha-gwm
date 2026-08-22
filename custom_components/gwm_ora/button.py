@@ -1,4 +1,4 @@
-"""Button platform for GWM ORA."""
+"""Button platform for GWM."""
 
 from __future__ import annotations
 
@@ -17,7 +17,7 @@ async def async_setup_entry(
     entry: GwmOraConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    """Set up GWM ORA buttons."""
+    """Set up GWM buttons."""
     setup_vehicle_entities(
         entry,
         async_add_entities,

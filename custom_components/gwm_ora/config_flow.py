@@ -1,4 +1,4 @@
-"""Config flow for GWM ORA."""
+"""Config flow for GWM."""
 
 from __future__ import annotations
 
@@ -39,7 +39,7 @@ def _manual_data(user_input: dict[str, Any], *, slug: str = "manual") -> dict[st
 
 
 class GwmOraConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
-    """Handle a GWM ORA config flow."""
+    """Handle a GWM config flow."""
 
     VERSION = 1
 

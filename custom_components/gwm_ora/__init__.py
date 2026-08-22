@@ -1,4 +1,4 @@
-"""GWM ORA native integration."""
+"""GWM native integration."""
 
 from __future__ import annotations
 
@@ -12,13 +12,13 @@ from homeassistant.helpers import issue_registry as ir
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .api import GwmOraApiAuthError, GwmOraApiClient, GwmOraApiError, GwmOraApiUnavailable
-from .const import CONF_TOKEN, DOMAIN, PLATFORMS
+from .const import CONF_TOKEN, DEFAULT_NAME, DOMAIN, LEGACY_DEFAULT_NAME, PLATFORMS
 from .coordinator import GwmOraDataUpdateCoordinator
 
 
 @dataclass(slots=True)
 class GwmOraRuntimeData:
-    """Runtime data for a GWM ORA config entry."""
+    """Runtime data for a GWM config entry."""
 
     api: GwmOraApiClient
     coordinator: GwmOraDataUpdateCoordinator
@@ -28,7 +28,10 @@ GwmOraConfigEntry = ConfigEntry[GwmOraRuntimeData]
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: GwmOraConfigEntry) -> bool:
-    """Set up GWM ORA from a config entry."""
+    """Set up GWM from a config entry."""
+    if entry.title == LEGACY_DEFAULT_NAME:
+        hass.config_entries.async_update_entry(entry, title=DEFAULT_NAME)
+
     session = async_get_clientsession(hass)
     api = GwmOraApiClient(
         session,

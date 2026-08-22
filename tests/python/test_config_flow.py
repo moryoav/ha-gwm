@@ -1,4 +1,4 @@
-"""Config flow tests for the GWM ORA integration."""
+"""Config flow tests for the GWM integration."""
 
 from __future__ import annotations
 

@@ -2,7 +2,7 @@
 
 ## Our Pledge
 
-We want GWM ORA for Home Assistant to be a welcoming project for people with different backgrounds, skill levels, vehicles, regions, and Home Assistant setups.
+We want GWM for Home Assistant to be a welcoming project for people with different backgrounds, skill levels, vehicles, regions, and Home Assistant setups.
 
 Contributors, maintainers, and users are expected to participate respectfully and constructively in issues, pull requests, discussions, and any other project spaces.
 

@@ -1,4 +1,4 @@
-"""Lock platform for GWM ORA."""
+"""Lock platform for GWM."""
 
 from __future__ import annotations
 
@@ -17,7 +17,7 @@ async def async_setup_entry(
     entry: GwmOraConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    """Set up GWM ORA locks."""
+    """Set up GWM locks."""
     setup_vehicle_entities(
         entry,
         async_add_entities,
@@ -28,7 +28,7 @@ async def async_setup_entry(
 
 
 class GwmOraDoorLock(GwmOraEntity, LockEntity):
-    """GWM ORA door lock."""
+    """GWM door lock."""
 
     _attr_translation_key = "door_lock"
 

@@ -46,7 +46,7 @@ public sealed class VehiclePollingWorker : BackgroundService
             await _vehicleService.RefreshNowAsync(cancellationToken);
             if (_lastFailureKey is not null)
             {
-                _logger.LogInformation("GWM ORA polling recovered");
+                _logger.LogInformation("GWM polling recovered");
                 _lastFailureKey = null;
             }
         }
@@ -68,18 +68,18 @@ public sealed class VehiclePollingWorker : BackgroundService
         var key = $"{ex.GetType().FullName}:{ex.Message}";
         if (String.Equals(key, _lastFailureKey, StringComparison.Ordinal))
         {
-            _logger.LogDebug("GWM ORA poll still failing: {Message}", ex.Message);
+            _logger.LogDebug("GWM poll still failing: {Message}", ex.Message);
             return;
         }
 
         _lastFailureKey = key;
         if (includeException)
         {
-            _logger.LogWarning(ex, "GWM ORA poll failed; the next poll will retry");
+            _logger.LogWarning(ex, "GWM poll failed; the next poll will retry");
         }
         else
         {
-            _logger.LogWarning("GWM ORA poll is waiting for account verification: {Message}", ex.Message);
+            _logger.LogWarning("GWM poll is waiting for account verification: {Message}", ex.Message);
         }
     }
 }

@@ -96,7 +96,7 @@ public static class VehicleSnapshotMapper
         return new VehicleSnapshot
         {
             Vin = vehicle.Vin,
-            Name = FirstNonEmpty(vehicle.AppShowSeriesName, vehicle.VehicleNick?.ToString(), vehicle.ModelName, "GWM ORA"),
+            Name = FirstNonEmpty(vehicle.AppShowSeriesName, vehicle.VehicleNick?.ToString(), vehicle.ModelName, "GWM vehicle"),
             Manufacturer = FirstNonEmpty(vehicle.BrandName, vehicle.OtBrandName, "GWM"),
             Model = FirstNonEmpty(vehicle.Vtype, vehicle.VTypeName, vehicle.ModelName),
             SerialNumber = status.DeviceId,

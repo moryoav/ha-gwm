@@ -7,10 +7,10 @@ configuration:
     description: GWM cloud region to connect to. Use eu for Europe/Israel, aus for Australia/New Zealand, or rus for Russia accounts.
   username:
     name: Username
-    description: E-mail address used for the GWM ORA account.
+    description: E-mail address used for the GWM account.
   password:
     name: Password
-    description: Password used for the GWM ORA account.
+    description: Password used for the GWM account.
   verification_code:
     name: Verification code
     description: Optional one-time SMS or e-mail code requested by GWM when the add-on device is not trusted yet. Leave empty unless the add-on log asks for it.
@@ -27,4 +27,4 @@ configuration:
     name: Log level
     description: Minimum log level for the add-on service.
 network:
-  8099/tcp: Internal API for the GWM ORA custom integration.
+  8099/tcp: Internal API for the GWM custom integration.

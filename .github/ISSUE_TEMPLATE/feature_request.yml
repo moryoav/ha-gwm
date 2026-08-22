@@ -49,7 +49,7 @@ body:
     attributes:
       label: Vehicle and region
       description: Share broad model/region details if relevant. Do not include VIN.
-      placeholder: "Example: ORA 03, Germany"
+      placeholder: "Example: Vehicle model, country"
 
   - type: textarea
     id: alternatives

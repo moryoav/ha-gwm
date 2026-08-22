@@ -35,7 +35,7 @@ public static class IngressPage
             <head>
               <meta charset="utf-8">
               <meta name="viewport" content="width=device-width,initial-scale=1">
-              <title>GWM ORA</title>
+              <title>GWM</title>
               <style>
                 :root { color-scheme: light dark; font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
                 body { margin: 0; background: Canvas; color: CanvasText; }
@@ -62,7 +62,7 @@ public static class IngressPage
             <body>
               <main>
                 <header>
-                  <h1>GWM ORA</h1>
+                  <h1>GWM</h1>
                   <span class="status {{statusClass}}">{{WebUtility.HtmlEncode(health.Status)}}</span>
                 </header>
                 <section>

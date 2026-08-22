@@ -6,6 +6,16 @@ This project follows semantic versioning. HACS uses the latest GitHub release ta
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-08-22
+
+### Changed
+
+- Renamed the user-facing project, add-on, and integration from **GWM ORA** to **GWM** to reflect support for compatible vehicles available through the official GWM app.
+- Renamed the GitHub repository from `ha-gwm_ora` to `ha-gwm` and updated installation buttons, documentation, metadata, badges, and community links to the new URL.
+- Replaced ORA-specific examples and presentation assets with generic GWM names and official GWM branding.
+- Automatically rename existing config entries that still use the old default title while preserving user-customized titles.
+- Kept the `gwm_ora` integration domain, add-on slug, folders, discovery identifier, API environment variables, and internal code namespaces unchanged so existing installations continue working without identifier migration or reconfiguration.
+
 ## [0.8.0] - 2026-08-21
 
 ### Added

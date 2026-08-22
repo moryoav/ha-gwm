@@ -1,13 +1,13 @@
-# GWM ORA Add-on Documentation
+# GWM Add-on Documentation
 
 ## Installation
 
 1. Add this repository to the Home Assistant add-on store.
-2. Install the **GWM ORA** add-on.
+2. Install the **GWM** add-on.
 3. Fill in the add-on configuration.
 4. Start the add-on.
 5. Install the `custom_components/gwm_ora` integration from this repository.
-6. Confirm the discovered **GWM ORA** integration in Home Assistant.
+6. Confirm the discovered **GWM** integration in Home Assistant.
 
 ## Configuration
 
@@ -29,11 +29,11 @@ When the add-on logs in for the first time, GWM sends a one-time verification co
 
 Check the phone messages and e-mail inbox for your GWM account, including spam or junk folders. For European accounts, the e-mail will most likely come from `noreply@gwm-eu.com` with the subject `GWM Verification Code`.
 
-<img src="https://raw.githubusercontent.com/moryoav/ha-gwm_ora/main/docs/images/gwm-verification-code-email.jpeg" alt="Example GWM Verification Code e-mail" width="320">
+<img src="https://raw.githubusercontent.com/moryoav/ha-gwm/main/docs/images/gwm-verification-code-email.jpeg" alt="Example GWM Verification Code e-mail" width="320">
 
 After you receive the code:
 
-1. Open the **GWM ORA** add-on page in Home Assistant.
+1. Open the **GWM** add-on page in Home Assistant.
 2. Go to the **Configuration** tab.
 3. Click **Show unused optional configuration options**.
 4. Fill in **Verification code** (`verification_code`) with the one-time code.
@@ -42,7 +42,7 @@ After you receive the code:
 
 After a successful login, the add-on stores GWM tokens under `/data` and tries to clear `verification_code` from the add-on options. The add-on Web UI should then show **Authenticated** as **Yes** and **Verification** as **Not required**.
 
-![GWM ORA add-on authenticated status](https://raw.githubusercontent.com/moryoav/ha-gwm_ora/main/docs/images/gwm-addon-authenticated.jpg)
+![GWM add-on authenticated status](https://raw.githubusercontent.com/moryoav/ha-gwm/main/docs/images/gwm-addon-authenticated.jpg)
 
 If GWM rejects the code, clear `verification_code`, restart the add-on so it requests a fresh code, then enter the new code and restart again. Verification codes are short-lived, so use the newest code you received.
 

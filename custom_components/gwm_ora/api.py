@@ -1,4 +1,4 @@
-"""Client for the local GWM ORA add-on API."""
+"""Client for the local GWM add-on API."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ import aiohttp
 
 
 class GwmOraApiError(Exception):
-    """Base error for GWM ORA add-on API failures."""
+    """Base error for GWM add-on API failures."""
 
 
 class GwmOraApiAuthError(GwmOraApiError):

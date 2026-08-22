@@ -1,4 +1,4 @@
-"""Binary sensor platform for GWM ORA."""
+"""Binary sensor platform for GWM."""
 
 from __future__ import annotations
 
@@ -23,7 +23,7 @@ PARALLEL_UPDATES = 0
 
 @dataclass(frozen=True, kw_only=True)
 class GwmOraBinarySensorEntityDescription(BinarySensorEntityDescription):
-    """Describes a GWM ORA binary sensor."""
+    """Describes a GWM binary sensor."""
 
     value_fn: Callable[[dict[str, Any] | None], bool | None]
 
@@ -161,7 +161,7 @@ async def async_setup_entry(
     entry: GwmOraConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    """Set up GWM ORA binary sensors."""
+    """Set up GWM binary sensors."""
     setup_vehicle_entities(
         entry,
         async_add_entities,
@@ -173,7 +173,7 @@ async def async_setup_entry(
 
 
 class GwmOraBinarySensor(GwmOraEntity, BinarySensorEntity):
-    """A GWM ORA binary sensor."""
+    """A GWM binary sensor."""
 
     entity_description: GwmOraBinarySensorEntityDescription
 
