@@ -1,4 +1,4 @@
-"""Static coverage checks for the GWM ORA integration entity descriptions."""
+"""Static coverage checks for the GWM integration entity descriptions."""
 
 import json
 from pathlib import Path

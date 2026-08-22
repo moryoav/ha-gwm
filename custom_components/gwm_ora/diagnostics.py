@@ -1,4 +1,4 @@
-"""Diagnostics support for GWM ORA."""
+"""Diagnostics support for GWM."""
 
 from __future__ import annotations
 

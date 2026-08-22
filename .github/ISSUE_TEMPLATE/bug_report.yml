@@ -1,5 +1,5 @@
 name: Bug report
-description: Report a reproducible problem with GWM ORA for Home Assistant.
+description: Report a reproducible problem with GWM for Home Assistant.
 title: "[Bug]: "
 labels:
   - bug
@@ -12,7 +12,7 @@ body:
   - type: input
     id: version
     attributes:
-      label: GWM ORA for Home Assistant version
+      label: GWM for Home Assistant version
       description: Include the integration/add-on version or commit if known.
       placeholder: "Example: 0.2.0"
     validations:
@@ -74,7 +74,7 @@ body:
     attributes:
       label: Vehicle and region
       description: Share only broad details. Do not include VIN.
-      placeholder: "Example: ORA 03, Germany"
+      placeholder: "Example: Vehicle model, country"
 
   - type: textarea
     id: steps

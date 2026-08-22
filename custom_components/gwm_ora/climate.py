@@ -1,4 +1,4 @@
-"""Climate platform for GWM ORA."""
+"""Climate platform for GWM."""
 
 from __future__ import annotations
 
@@ -20,7 +20,7 @@ async def async_setup_entry(
     entry: GwmOraConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    """Set up GWM ORA climate entities."""
+    """Set up GWM climate entities."""
     setup_vehicle_entities(
         entry,
         async_add_entities,
@@ -31,7 +31,7 @@ async def async_setup_entry(
 
 
 class GwmOraClimate(GwmOraEntity, ClimateEntity):
-    """GWM ORA A/C climate control."""
+    """GWM A/C climate control."""
 
     _attr_translation_key = "ac_climate"
     _attr_hvac_modes = [HVACMode.OFF, HVACMode.COOL]

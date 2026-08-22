@@ -1,4 +1,4 @@
-"""Data coordinator for GWM ORA."""
+"""Data coordinator for GWM."""
 
 from __future__ import annotations
 
@@ -96,7 +96,7 @@ class GwmOraDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             try:
                 command = await self.api.async_get_command(command_id)
             except (GwmOraApiUnavailable, GwmOraApiError) as err:
-                _LOGGER.debug("Could not refresh GWM ORA command %s status: %s", command_id, err)
+                _LOGGER.debug("Could not refresh GWM command %s status: %s", command_id, err)
                 continue
 
             self._apply_command_status(command)

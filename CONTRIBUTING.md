@@ -1,6 +1,6 @@
-# Contributing to GWM ORA for Home Assistant
+# Contributing to GWM for Home Assistant
 
-Thanks for your interest in improving GWM ORA for Home Assistant.
+Thanks for your interest in improving GWM for Home Assistant.
 
 This project has two main parts:
 
@@ -19,7 +19,7 @@ Small fixes, documentation updates, and clearly scoped bug fixes can usually go 
 
 When reporting a bug, please include:
 
-- The GWM ORA for Home Assistant version.
+- The GWM for Home Assistant version.
 - Your Home Assistant version.
 - Whether you installed through HACS, manually, or from a development branch.
 - Your architecture, such as `amd64`, `aarch64`, or `armv7`.
@@ -48,8 +48,8 @@ Features that expand remote vehicle control should include a clear safety ration
 Clone the repository:
 
 ```bash
-git clone https://github.com/moryoav/ha-gwm_ora.git
-cd ha-gwm_ora
+git clone https://github.com/moryoav/ha-gwm.git
+cd ha-gwm
 ```
 
 The repository layout is:

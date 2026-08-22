@@ -61,13 +61,15 @@ def test_addon_metadata_declares_internal_api_and_discovery() -> None:
     config = (ROOT / "addons/gwm_ora/config.yaml").read_text(encoding="utf-8")
     dockerfile = (ROOT / "addons/gwm_ora/Dockerfile").read_text(encoding="utf-8")
 
+    assert "name: GWM\n" in config
+    assert "slug: gwm_ora\n" in config
     assert "discovery:\n  - gwm_ora" in config
     assert "ingress: true" in config
     assert "ingress_port: 8099" in config
     assert "8099/tcp: null" in config
     assert 'ASPNETCORE_HTTP_PORTS: "8099"' in config
-    assert 'version: "0.8.0"' in config
-    assert 'GWM_ORA_ADDON_VERSION: "0.8.0"' in config
+    assert 'version: "0.9.0"' in config
+    assert 'GWM_ORA_ADDON_VERSION: "0.9.0"' in config
     assert "ASPNETCORE_URLS" not in config
     assert "ENV ASPNETCORE_HTTP_PORTS=8099" in dockerfile
     assert "ENV GWM_ORA_ADDON_VERSION=${BUILD_VERSION}" in dockerfile
@@ -126,13 +128,15 @@ def test_hacs_default_repository_readiness_files_exist() -> None:
     manifest = json.loads((ROOT / "custom_components/gwm_ora/manifest.json").read_text(encoding="utf-8"))
 
     assert hacs == {
-        "name": "GWM ORA",
+        "name": "GWM",
         "homeassistant": "2026.1.0",
     }
-    assert manifest["documentation"] == "https://github.com/moryoav/ha-gwm_ora"
-    assert manifest["issue_tracker"] == "https://github.com/moryoav/ha-gwm_ora/issues"
+    assert manifest["documentation"] == "https://github.com/moryoav/ha-gwm"
+    assert manifest["issue_tracker"] == "https://github.com/moryoav/ha-gwm/issues"
     assert manifest["codeowners"] == ["@moryoav"]
-    assert manifest["version"] == "0.8.0"
+    assert manifest["domain"] == "gwm_ora"
+    assert manifest["name"] == "GWM"
+    assert manifest["version"] == "0.9.0"
 
     custom_components = [path.name for path in (ROOT / "custom_components").iterdir() if path.is_dir()]
     assert custom_components == ["gwm_ora"]

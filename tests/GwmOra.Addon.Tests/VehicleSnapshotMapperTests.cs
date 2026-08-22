@@ -13,9 +13,9 @@ public class VehicleSnapshotMapperTests
         var vehicle = new Vehicle
         {
             Vin = "VIN123",
-            AppShowSeriesName = "ORA",
+            AppShowSeriesName = "Vehicle series",
             BrandName = "GWM",
-            Vtype = "Funky Cat"
+            Vtype = "Vehicle model"
         };
         var status = new VehicleStatus
         {

@@ -1,11 +1,11 @@
 {
   "domain": "gwm_ora",
-  "name": "GWM ORA",
+  "name": "GWM",
   "codeowners": ["@moryoav"],
   "config_flow": true,
-  "documentation": "https://github.com/moryoav/ha-gwm_ora",
+  "documentation": "https://github.com/moryoav/ha-gwm",
   "iot_class": "cloud_polling",
-  "issue_tracker": "https://github.com/moryoav/ha-gwm_ora/issues",
+  "issue_tracker": "https://github.com/moryoav/ha-gwm/issues",
   "requirements": [],
-  "version": "0.8.0"
+  "version": "0.9.0"
 }

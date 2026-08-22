@@ -1,4 +1,4 @@
-"""Device tracker platform for GWM ORA."""
+"""Device tracker platform for GWM."""
 
 from __future__ import annotations
 
@@ -20,7 +20,7 @@ async def async_setup_entry(
     entry: GwmOraConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    """Set up GWM ORA device trackers."""
+    """Set up GWM device trackers."""
     setup_vehicle_entities(
         entry,
         async_add_entities,

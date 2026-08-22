@@ -1,4 +1,4 @@
-"""Sensor platform for GWM ORA."""
+"""Sensor platform for GWM."""
 
 from __future__ import annotations
 
@@ -31,7 +31,7 @@ CHARGING_STATUS_OPTIONS = [
 
 @dataclass(frozen=True, kw_only=True)
 class GwmOraSensorEntityDescription(SensorEntityDescription):
-    """Describes a GWM ORA sensor."""
+    """Describes a GWM sensor."""
 
     value_fn: Callable[[dict[str, Any] | None], Any]
 
@@ -351,7 +351,7 @@ async def async_setup_entry(
     entry: GwmOraConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    """Set up GWM ORA sensors."""
+    """Set up GWM sensors."""
     setup_vehicle_entities(
         entry,
         async_add_entities,
@@ -362,7 +362,7 @@ async def async_setup_entry(
 
 
 class GwmOraSensor(GwmOraEntity, SensorEntity):
-    """A GWM ORA sensor."""
+    """A GWM sensor."""
 
     entity_description: GwmOraSensorEntityDescription
 

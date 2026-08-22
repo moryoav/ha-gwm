@@ -10,6 +10,16 @@ This project follows semantic versioning. HACS uses the latest GitHub release ta
 
 - Optional charging-schedule control for all regions, behind a new `enable_charging_control` opt-in (default off, separate from remote commands, no security PIN). Adds a **Scheduled charging** switch and `gwm_ora.set_charging_plan` / `gwm_ora.clear_charging_plan` services that set or clear a charging window (`vehicleCharge/setChargingPlan`) — a car-side lever for solar-excess charging. The services accept the VIN shown on the device, and a plan whose window starts in the future pauses charging until then; turning the switch off clears the plan so the car returns to charging whenever it is plugged in. When the opt-in is off the write is rejected (403), and any leftover plan the add-on itself set is cleared on startup so it can't silently block charging (a plan set in the GWM app is never touched). Verified end-to-end on an ANZ ORA 5; EU uses the same code path (ANZ additionally sends the required `vin` request header) but is not yet independently tested.
 
+## [0.9.0] - 2026-08-22
+
+### Changed
+
+- Renamed the user-facing project, add-on, and integration from **GWM ORA** to **GWM** to reflect support for compatible vehicles available through the official GWM app.
+- Renamed the GitHub repository from `ha-gwm_ora` to `ha-gwm` and updated installation buttons, documentation, metadata, badges, and community links to the new URL.
+- Replaced ORA-specific examples and presentation assets with generic GWM names and official GWM branding.
+- Automatically rename existing config entries that still use the old default title while preserving user-customized titles.
+- Kept the `gwm_ora` integration domain, add-on slug, folders, discovery identifier, API environment variables, and internal code namespaces unchanged so existing installations continue working without identifier migration or reconfiguration.
+
 ## [0.8.0] - 2026-08-21
 
 ### Added

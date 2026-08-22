@@ -1,6 +1,6 @@
-# GWM ORA
+# GWM
 
-This custom integration connects Home Assistant to the local **GWM ORA** add-on.
+This custom integration connects Home Assistant to the local **GWM** add-on and exposes vehicles available through the connected GWM account.
 
 For installation buttons, add-on setup, security notes, examples, and troubleshooting, see the repository root `README.md`.
 
@@ -22,10 +22,10 @@ The **Climate run time** number entity saves a duration from 5 to 30 minutes, in
 
 ## Setup
 
-1. Install and start the `GWM ORA` add-on.
-2. Open HACS, search for **GWM ORA** under **Integrations**, select it, and choose **Download**.
+1. Install and start the `GWM` add-on.
+2. Open HACS, search for **GWM** under **Integrations**, select it, and choose **Download**.
 3. Restart Home Assistant.
-4. Open **Settings** > **Devices & services** and confirm the discovered **GWM ORA** integration.
+4. Open **Settings** > **Devices & services** and confirm the discovered **GWM** integration.
 
 If discovery does not appear, restart the add-on and then restart Home Assistant.
 

@@ -1,6 +1,6 @@
 # Support
 
-Thanks for using GWM ORA for Home Assistant.
+Thanks for using GWM for Home Assistant.
 
 ## Getting Help
 
@@ -17,7 +17,7 @@ Use the bug report issue template when something is not working as expected.
 
 Please include:
 
-- Your GWM ORA for Home Assistant version.
+- Your GWM for Home Assistant version.
 - Your Home Assistant version.
 - Your installation method.
 - Your architecture, such as `amd64`, `aarch64`, or `armv7`.

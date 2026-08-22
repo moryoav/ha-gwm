@@ -1,6 +1,6 @@
 # Security Policy
 
-GWM ORA for Home Assistant handles GWM account credentials, access and refresh tokens, a generated add-on API token, vehicle location, and optional remote vehicle commands. Please treat security and privacy issues with care.
+GWM for Home Assistant handles GWM account credentials, access and refresh tokens, a generated add-on API token, vehicle location, and optional remote vehicle commands. Please treat security and privacy issues with care.
 
 ## Supported Versions
 

@@ -1,11 +1,25 @@
-# GWM ORA for Home Assistant
+# GWM for Home Assistant
 [![HACS][hacs-badge]][hacs-url] [![release][release-badge]][release-url] [![license][license-badge]][license-url]
 
 [![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/Y5B124NZ2L)
 
-![GWM ORA][banner]
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="brand/dark_banner.png">
+  <source media="(prefers-color-scheme: light)" srcset="brand/banner.png">
+  <img alt="GWM" src="brand/banner.png">
+</picture>
 
-Control and monitor your GWM ORA from Home Assistant. The add-on connects to your GWM account, and the Home Assistant integration creates sensors and controls for your car.
+Control and monitor your GWM vehicle from Home Assistant. The add-on connects to your GWM account, and the Home Assistant integration creates sensors and controls for your vehicle.
+
+## Tested Vehicles
+
+This integration has been tested with:
+
+- ORA 03
+- ORA 05
+- HAVAL H3
+
+Other GWM models may also work. If you try the integration with another model, please [open a GitHub issue](https://github.com/moryoav/ha-gwm/issues/new/choose) and report the model, region, and which features you tested so this list can be expanded.
 
 ## What You Get
 
@@ -21,7 +35,7 @@ Remote commands can take time. The car may report several pending attempts befor
 
 ### 1. Add the Add-on Repository
 
-[![Add the GWM ORA add-on repository to Home Assistant](https://my.home-assistant.io/badges/supervisor_add_addon_repository.svg)](https://my.home-assistant.io/redirect/supervisor_add_addon_repository/?repository_url=https%3A%2F%2Fgithub.com%2Fmoryoav%2Fha-gwm_ora)
+[![Add the GWM add-on repository to Home Assistant](https://my.home-assistant.io/badges/supervisor_add_addon_repository.svg)](https://my.home-assistant.io/redirect/supervisor_add_addon_repository/?repository_url=https%3A%2F%2Fgithub.com%2Fmoryoav%2Fha-gwm)
 
 Manual path:
 
@@ -31,12 +45,12 @@ Manual path:
 4. Add:
 
 ```text
-https://github.com/moryoav/ha-gwm_ora
+https://github.com/moryoav/ha-gwm
 ```
 
 ### 2. Install and Configure the Add-on
 
-Install **GWM ORA**, then fill in the add-on options. Select the cloud region that serves the account.
+Install **GWM**, then fill in the add-on options. Select the cloud region that serves the account.
 
 ```yaml
 region: eu
@@ -63,11 +77,11 @@ log_level: info
 
 When the add-on logs in for the first time, GWM will send a one-time verification code by SMS or e-mail. Check the phone messages and e-mail inbox for your GWM account, including spam or junk folders. For European accounts, the e-mail will most likely come from `noreply@gwm-eu.com` with the subject `GWM Verification Code`.
 
-<img src="https://raw.githubusercontent.com/moryoav/ha-gwm_ora/main/docs/images/gwm-verification-code-email.jpeg" alt="Example GWM Verification Code e-mail" width="320">
+<img src="https://raw.githubusercontent.com/moryoav/ha-gwm/main/docs/images/gwm-verification-code-email.jpeg" alt="Example GWM Verification Code e-mail" width="320">
 
 After you receive the code:
 
-1. Go back to the **GWM ORA** add-on **Configuration** page.
+1. Go back to the **GWM** add-on **Configuration** page.
 2. Click **Show unused optional configuration options**.
 3. Fill in **Verification code** (`verification_code`) with the one-time code.
 4. Save the configuration.
@@ -75,25 +89,25 @@ After you receive the code:
 
 After successful authentication, the add-on Web UI should show **Authenticated** as **Yes** and **Verification** as **Not required**.
 
-![GWM ORA add-on authenticated status](https://raw.githubusercontent.com/moryoav/ha-gwm_ora/main/docs/images/gwm-addon-authenticated.jpg)
+![GWM add-on authenticated status](https://raw.githubusercontent.com/moryoav/ha-gwm/main/docs/images/gwm-addon-authenticated.jpg)
 
 ### 3. Install the Integration
 
 #### HACS
 
-[![Open the GWM ORA HACS repository](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=moryoav&repository=ha-gwm_ora&category=integration)
+[![Open the GWM HACS repository](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=moryoav&repository=ha-gwm&category=integration)
 
-GWM ORA is available in the default HACS catalog, so no custom repository setup is required.
+GWM is available in the default HACS catalog, so no custom repository setup is required.
 
-1. Select the button above, or open HACS and search for **GWM ORA** under **Integrations**.
-2. Select **GWM ORA** and choose **Download**.
+1. Select the button above, or open HACS and search for **GWM** under **Integrations**.
+2. Select **GWM** and choose **Download**.
 3. Restart Home Assistant.
 
 ### 4. Add the Integration
 
-[![Add the GWM ORA integration](https://my.home-assistant.io/badges/config_flow_start.svg)](https://my.home-assistant.io/redirect/config_flow_start/?domain=gwm_ora)
+[![Add the GWM integration](https://my.home-assistant.io/badges/config_flow_start.svg)](https://my.home-assistant.io/redirect/config_flow_start/?domain=gwm_ora)
 
-After Home Assistant restarts, open **Settings** -> **Devices & services**. The integration should discover the running add-on as **GWM ORA**; select it and confirm setup. If it is not discovered, select **Add integration** and search for **GWM ORA**.
+After Home Assistant restarts, open **Settings** -> **Devices & services**. The integration should discover the running add-on as **GWM**; select it and confirm setup. If it is not discovered, select **Add integration** and search for **GWM**.
 
 You do not enter your GWM username or password in the integration.
 
@@ -118,12 +132,12 @@ The **Charging status** sensor reports `disconnected`, `connected`, `charging`, 
 
 ```yaml
 vehicles:
-  - name: ora
+  - name: gwm_vehicle
     type: template
     template: homeassistant
     uri: http://homeassistant.local:8123
-    soc: sensor.ora_soc
-    status: sensor.ora_charging_status
+    soc: sensor.gwm_vehicle_soc
+    status: sensor.gwm_vehicle_charging_status
     statusB: awaiting_charging, waiting_for_power
 ```
 
@@ -146,7 +160,7 @@ Set **Climate run time** before turning on the A/C to choose how long the remote
 
 ## Supported Vehicles
 
-This project is designed for GWM ORA vehicles that use the same GWM cloud behavior as the original `ora2mqtt` project, including ORA 03/Funky Cat style models exposed by the GWM mobile app.
+This project is designed for vehicles that can be managed through the official GWM mobile app and use a supported GWM cloud region.
 
 Regional GWM services and vehicle firmware can differ, so some entities may be unavailable on some cars.
 
@@ -204,36 +218,36 @@ After changing either option, restart the add-on and reload the integration.
 Notify when the charge plug is connected but charging is not active:
 
 ```yaml
-alias: ORA plugged in but not charging
+alias: GWM vehicle plugged in but not charging
 triggers:
   - trigger: state
-    entity_id: binary_sensor.ora_charge_plug
+    entity_id: binary_sensor.gwm_vehicle_charge_plug
     to: "on"
 conditions:
   - condition: state
-    entity_id: binary_sensor.ora_charging_active
+    entity_id: binary_sensor.gwm_vehicle_charging_active
     state: "off"
 actions:
   - action: notify.mobile_app_phone
     data:
-      message: "The ORA is plugged in but not charging."
+      message: "The GWM vehicle is plugged in but not charging."
 ```
 
 Pre-cool the cabin before a commute:
 
 ```yaml
-alias: ORA pre-cool before commute
+alias: GWM vehicle pre-cool before commute
 triggers:
   - trigger: time
     at: "07:20:00"
 conditions:
   - condition: numeric_state
-    entity_id: sensor.ora_soc
+    entity_id: sensor.gwm_vehicle_soc
     above: 30
 actions:
   - action: climate.set_temperature
     target:
-      entity_id: climate.ora_a_c_climate
+      entity_id: climate.gwm_vehicle_a_c_climate
     data:
       temperature: 22
       hvac_mode: cool
@@ -243,8 +257,8 @@ Test remote command automations manually first and use them only when the vehicl
 
 ## Removal
 
-1. Delete the `GWM ORA` integration entry from Home Assistant.
-2. Stop and uninstall the `GWM ORA` add-on.
+1. Delete the `GWM` integration entry from Home Assistant.
+2. Stop and uninstall the `GWM` add-on.
 3. Remove this repository from the add-on store if you no longer need it.
 4. Remove the custom integration from HACS or delete `/config/custom_components/gwm_ora`.
 5. Restart Home Assistant.
@@ -257,23 +271,22 @@ Remote commands can affect the real vehicle. Use them carefully.
 
 ## Disclaimer
 
-This project is unofficial and is not affiliated with or endorsed by Great Wall Motor, GWM, ORA, or Home Assistant. Vehicle cloud APIs and remote command behavior may change without notice.
+This project is unofficial and is not affiliated with or endorsed by Great Wall Motor, GWM, or Home Assistant. Vehicle cloud APIs and remote command behavior may change without notice.
 
 Use at your own risk. You are responsible for validating behavior, protecting credentials, keeping backups, and deciding whether remote commands are appropriate for your vehicle and environment.
 
 ## Special Thanks
 
-Special thanks to [zivillian](https://github.com/zivillian) and the [zivillian/ora2mqtt](https://github.com/zivillian/ora2mqtt) project for blazing the trail. Their work uncovered many of the details behind ORA/GWM connectivity and helped inspire the current development of this integration.
+Special thanks to [zivillian](https://github.com/zivillian) and the [zivillian/ora2mqtt](https://github.com/zivillian/ora2mqtt) project for blazing the trail. Their work uncovered many of the details behind GWM connectivity and helped inspire the current development of this integration.
 
 Thanks to [AlexandrErohin](https://github.com/AlexandrErohin) for contributing the initial model-specific vehicle sensor set and Russia cloud support.
 
 Deep thanks to [wilberforce](https://github.com/wilberforce) for reverse-engineering the ANZ authentication and signing flow, implementing AU/NZ support, decoding vehicle status mappings, and validating authentication and comfort signals against a live vehicle.
 
-[banner]: https://raw.githubusercontent.com/moryoav/ha-gwm_ora/main/brand/banner.png
 [hacs-badge]: https://img.shields.io/badge/HACS-Default-41BDF5.svg?style=flat-square
 [hacs-url]: https://github.com/hacs/integration
-[release-badge]: https://img.shields.io/github/v/release/moryoav/ha-gwm_ora?style=flat-square
-[release-url]: https://github.com/moryoav/ha-gwm_ora/releases
-[downloads-badge]: https://img.shields.io/github/downloads/moryoav/ha-gwm_ora/total?style=flat-square
-[license-badge]: https://img.shields.io/github/license/moryoav/ha-gwm_ora?style=flat-square
-[license-url]: https://github.com/moryoav/ha-gwm_ora/blob/main/LICENSE
+[release-badge]: https://img.shields.io/github/v/release/moryoav/ha-gwm?style=flat-square
+[release-url]: https://github.com/moryoav/ha-gwm/releases
+[downloads-badge]: https://img.shields.io/github/downloads/moryoav/ha-gwm/total?style=flat-square
+[license-badge]: https://img.shields.io/github/license/moryoav/ha-gwm?style=flat-square
+[license-url]: https://github.com/moryoav/ha-gwm/blob/main/LICENSE

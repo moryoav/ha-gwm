@@ -1,4 +1,4 @@
-"""Number platform for GWM ORA."""
+"""Number platform for GWM."""
 
 from __future__ import annotations
 
@@ -23,7 +23,7 @@ async def async_setup_entry(
     entry: GwmOraConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    """Set up GWM ORA number entities."""
+    """Set up GWM number entities."""
     setup_vehicle_entities(
         entry,
         async_add_entities,
@@ -38,7 +38,7 @@ async def async_setup_entry(
 
 
 class GwmOraClimateRunTimeNumber(GwmOraEntity, NumberEntity):
-    """GWM ORA climate run-time setting."""
+    """GWM climate run-time setting."""
 
     _attr_translation_key = "climate_run_time"
     _attr_device_class = NumberDeviceClass.DURATION

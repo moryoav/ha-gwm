@@ -1,4 +1,4 @@
-"""GWM ORA native integration."""
+"""GWM native integration."""
 
 from __future__ import annotations
 
@@ -24,7 +24,9 @@ from .const import (
     ATTR_START_TIME,
     ATTR_VIN,
     CONF_TOKEN,
+    DEFAULT_NAME,
     DOMAIN,
+    LEGACY_DEFAULT_NAME,
     PLATFORMS,
     SERVICE_CLEAR_CHARGING_PLAN,
     SERVICE_SET_CHARGING_PLAN,
@@ -35,7 +37,7 @@ from .entity import async_call_addon_api
 
 @dataclass(slots=True)
 class GwmOraRuntimeData:
-    """Runtime data for a GWM ORA config entry."""
+    """Runtime data for a GWM config entry."""
 
     api: GwmOraApiClient
     coordinator: GwmOraDataUpdateCoordinator
@@ -70,7 +72,7 @@ def _async_register_services(hass: HomeAssistant) -> None:
             vehicle = entry.runtime_data.coordinator.resolve_vehicle(vin)
             if vehicle is not None:
                 return entry.runtime_data.api, vehicle["vin"]
-        raise ServiceValidationError(f"No GWM ORA vehicle found with VIN {vin}")
+        raise ServiceValidationError(f"No GWM vehicle found with VIN {vin}")
 
     async def _set_charging_plan(call: ServiceCall) -> None:
         api, resolved_vin = _resolve_for_vin(call.data[ATTR_VIN])
@@ -100,7 +102,10 @@ def _async_register_services(hass: HomeAssistant) -> None:
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: GwmOraConfigEntry) -> bool:
-    """Set up GWM ORA from a config entry."""
+    """Set up GWM from a config entry."""
+    if entry.title == LEGACY_DEFAULT_NAME:
+        hass.config_entries.async_update_entry(entry, title=DEFAULT_NAME)
+
     session = async_get_clientsession(hass)
     api = GwmOraApiClient(
         session,

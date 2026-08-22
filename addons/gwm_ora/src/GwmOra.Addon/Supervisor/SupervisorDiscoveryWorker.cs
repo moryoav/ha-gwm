@@ -57,7 +57,7 @@ public sealed class SupervisorDiscoveryWorker : BackgroundService
             using var content = new StringContent(JsonSerializer.Serialize(payload, _jsonOptions), Encoding.UTF8, "application/json");
             using var response = await client.PostAsync("discovery", content, stoppingToken);
             response.EnsureSuccessStatusCode();
-            _logger.LogInformation("Published GWM ORA add-on discovery for host {Host}", host);
+            _logger.LogInformation("Published GWM add-on discovery for host {Host}", host);
         }
         catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
         {

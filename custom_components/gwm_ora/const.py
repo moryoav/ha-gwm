@@ -1,11 +1,12 @@
-"""Constants for the GWM ORA integration."""
+"""Constants for the GWM integration."""
 
 from __future__ import annotations
 
 from homeassistant.const import Platform
 
 DOMAIN = "gwm_ora"
-DEFAULT_NAME = "GWM ORA"
+DEFAULT_NAME = "GWM"
+LEGACY_DEFAULT_NAME = "GWM ORA"
 DEFAULT_PORT = 8099
 CONF_TOKEN = "token"
 CONF_API_VERSION = "api_version"
