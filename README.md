@@ -11,6 +11,16 @@
 
 Control and monitor your GWM vehicle from Home Assistant. The add-on connects to your GWM account, and the Home Assistant integration creates sensors and controls for your vehicle.
 
+## Tested Vehicles
+
+This integration has been tested with:
+
+- ORA 03
+- ORA 05
+- HAVAL H3
+
+Other GWM models may also work. If you try the integration with another model, please [open a GitHub issue](https://github.com/moryoav/ha-gwm/issues/new/choose) and report the model, region, and which features you tested so this list can be expanded.
+
 ## What You Get
 
 - Battery SOC, range, odometer, charging, plug, cabin temperature, tire, lock, window, door, trunk, A/C, and location entities, plus model-dependent fuel and comfort data.
