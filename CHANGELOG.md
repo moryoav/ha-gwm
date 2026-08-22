@@ -6,6 +6,8 @@ This project follows semantic versioning. HACS uses the latest GitHub release ta
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-08-22
+
 ### Added
 
 - Added optional charging-schedule control behind a separate `enable_charging_control` opt-in that defaults to off and does not require a security PIN. Home Assistant now provides a **Scheduled charging** switch plus `gwm_ora.set_charging_plan` and `gwm_ora.clear_charging_plan` actions for exact charging windows.
