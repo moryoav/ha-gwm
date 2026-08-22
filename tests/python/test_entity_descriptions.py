@@ -241,6 +241,7 @@ def test_climate_run_time_number_metadata() -> None:
     entity = object.__new__(GwmOraClimateRunTimeNumber)
 
     assert Platform.NUMBER in PLATFORMS
+    assert Platform.SWITCH in PLATFORMS
     assert entity.translation_key == "climate_run_time"
     assert entity.device_class is NumberDeviceClass.DURATION
     assert entity.entity_category is EntityCategory.CONFIG

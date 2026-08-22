@@ -33,6 +33,7 @@ class GwmOraDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         )
         self.api = api
         self._command_tasks: dict[str, asyncio.Task[None]] = {}
+        self._charging_plan_active: dict[str, bool] = {}
 
     async def _async_update_data(self) -> dict[str, Any]:
         try:
@@ -51,6 +52,33 @@ class GwmOraDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     def vehicle(self, vin: str) -> dict[str, Any] | None:
         """Return one vehicle snapshot by VIN."""
         return next((vehicle for vehicle in self.vehicles if vehicle.get("vin") == vin), None)
+
+    def resolve_vehicle(self, identifier: str) -> dict[str, Any] | None:
+        """Return one vehicle snapshot by internal VIN or display serial number.
+
+        Users supply the human-readable VIN (the device serial number, GWM's
+        ``showedVin``), while the add-on keys vehicles by the encoded ``vin``.
+        Accept either so service calls can use the VIN shown on the device.
+        """
+        display_identifier = identifier.casefold()
+        return next(
+            (
+                vehicle
+                for vehicle in self.vehicles
+                if identifier == vehicle.get("vin")
+                or display_identifier == str(vehicle.get("serial_number") or "").casefold()
+            ),
+            None,
+        )
+
+    def charging_plan_active(self, vin: str) -> bool | None:
+        """Return the last known charging-plan state for a vehicle."""
+        return self._charging_plan_active.get(vin)
+
+    def set_charging_plan_active(self, vin: str, active: bool) -> None:
+        """Update a vehicle's locally known charging-plan state."""
+        self._charging_plan_active[vin] = active
+        self.async_update_listeners()
 
     def async_track_command(self, command: dict[str, Any]) -> None:
         """Track a queued remote command and push status updates into HA."""

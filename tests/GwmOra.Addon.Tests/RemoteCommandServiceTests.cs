@@ -1,3 +1,4 @@
+using GwmOra.Addon.Configuration;
 using GwmOra.Addon.Models;
 using GwmOra.Addon.RemoteCommands;
 using libgwmapi.DTO.Vehicle;
@@ -327,5 +328,89 @@ public class RemoteCommandServiceTests
         };
 
         Assert.True(RemoteCommandService.ShouldSendClimateCommand(request, currentlyOn: false));
+    }
+
+    [Fact]
+    public void ChargingPlanValidationAcceptsFiveMinuteWindow()
+    {
+        RemoteCommandService.ValidateChargingPlanRequest("VIN123", new ChargingPlanRequest
+        {
+            Enable = true,
+            StartTime = 0,
+            EndTime = 300_000,
+            PlanType = 0
+        });
+    }
+
+    [Fact]
+    public void ChargingPlanValidationAcceptsClearWithoutWindow()
+    {
+        RemoteCommandService.ValidateChargingPlanRequest("VIN123", new ChargingPlanRequest
+        {
+            Enable = false
+        });
+    }
+
+    [Fact]
+    public void ChargingPlanValidationRejectsMissingEnable()
+    {
+        Assert.Throws<ArgumentException>(() =>
+            RemoteCommandService.ValidateChargingPlanRequest("VIN123", new ChargingPlanRequest()));
+    }
+
+    [Fact]
+    public void ChargingPlanValidationRejectsMissingOrShortWindow()
+    {
+        Assert.Throws<ArgumentException>(() =>
+            RemoteCommandService.ValidateChargingPlanRequest("VIN123", new ChargingPlanRequest
+            {
+                Enable = true,
+                StartTime = 0
+            }));
+        Assert.Throws<ArgumentException>(() =>
+            RemoteCommandService.ValidateChargingPlanRequest("VIN123", new ChargingPlanRequest
+            {
+                Enable = true,
+                StartTime = 0,
+                EndTime = 299_999
+            }));
+    }
+
+    [Fact]
+    public void ChargingPlanOwnershipRequiresMatchingIdAndWindow()
+    {
+        var tracked = new TrackedChargingPlan
+        {
+            PlanId = 42,
+            PlanType = 0,
+            StartTime = 1_000,
+            EndTime = 301_000,
+            Weeks = String.Empty
+        };
+
+        Assert.True(RemoteCommandService.ChargingPlanMatches(new ChargePlanItem
+        {
+            PlanId = 42,
+            PlanType = "0",
+            StartTime = 1_000,
+            EndTime = 301_000,
+            Weeks = String.Empty
+        }, tracked));
+        Assert.False(RemoteCommandService.ChargingPlanMatches(new ChargePlanItem
+        {
+            PlanId = 43,
+            PlanType = "0",
+            StartTime = 1_000,
+            EndTime = 301_000,
+            Weeks = String.Empty
+        }, tracked));
+        Assert.False(RemoteCommandService.ChargingPlanMatches(new ChargePlanItem
+        {
+            PlanId = 42,
+            PlanType = "0",
+            StartTime = 1_000,
+            EndTime = 302_000,
+            Weeks = String.Empty
+        }, tracked));
     }
 }

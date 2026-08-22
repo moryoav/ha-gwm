@@ -91,6 +91,36 @@ class GwmOraApiClient:
             json={},
         )
 
+    async def async_get_charging_plan(self, vin: str) -> dict[str, Any]:
+        """Return the vehicle's charging schedule."""
+        return await self._request("GET", f"/vehicles/{vin}/charging/plan")
+
+    async def async_set_charging_plan(
+        self,
+        vin: str,
+        *,
+        enable: bool,
+        start_time: int | None = None,
+        end_time: int | None = None,
+        plan_type: int | None = None,
+        weeks: str | None = None,
+    ) -> dict[str, Any]:
+        """Set or clear the charging schedule. Times are Unix milliseconds."""
+        payload: dict[str, Any] = {"enable": enable}
+        if start_time is not None:
+            payload["start_time"] = start_time
+        if end_time is not None:
+            payload["end_time"] = end_time
+        if plan_type is not None:
+            payload["plan_type"] = plan_type
+        if weeks is not None:
+            payload["weeks"] = weeks
+        return await self._request(
+            "POST",
+            f"/vehicles/{vin}/charging/plan",
+            json=payload,
+        )
+
     async def _request(
         self,
         method: str,

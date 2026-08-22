@@ -46,6 +46,7 @@ public sealed class GwmVehicleService
             GeneratedAt = DateTimeOffset.UtcNow,
             RemoteCommandsEnabled = RemoteCommandsAvailable,
             SecurityPinConfigured = !String.IsNullOrWhiteSpace(_options.SecurityPin),
+            ChargingControlEnabled = _options.EnableChargingControl,
             Vehicles = _vehicles
         };
     }
@@ -61,6 +62,7 @@ public sealed class GwmVehicleService
             VehicleCount = _vehicles.Length,
             RemoteCommandsEnabled = _options.EnableRemoteCommands,
             SecurityPinConfigured = !String.IsNullOrWhiteSpace(_options.SecurityPin),
+            ChargingControlEnabled = _options.EnableChargingControl,
             PollIntervalSeconds = _options.PollIntervalSeconds,
             LastRefresh = LastRefresh,
             LastError = LastError

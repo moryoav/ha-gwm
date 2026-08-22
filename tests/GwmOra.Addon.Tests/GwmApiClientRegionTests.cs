@@ -2,6 +2,7 @@ using System.Net;
 using System.Text;
 using System.Text.Json;
 using libgwmapi;
+using libgwmapi.DTO.Vehicle;
 using Microsoft.Extensions.Logging.Abstractions;
 
 namespace GwmOra.Addon.Tests;
@@ -289,5 +290,73 @@ public class GwmApiClientRegionTests
 
         Assert.NotNull(handler.LastRequest);
         Assert.False(handler.LastRequest!.Headers.Contains("vin"));
+    }
+
+    private const string ChargingInfosJson =
+        """{"code":"000000","description":"ok","data":{"chargePlanList":[{"planId":1,"planType":"0","startTime":123,"endTime":456,"weeks":""}]}}""";
+
+    private const string SuccessJson = """{"code":"000000","description":"ok","data":"SUCCESS"}""";
+
+    [Fact]
+    public async Task AusSendsVinHeaderOnGetChargingInfos()
+    {
+        var handler = new CapturingHandler(ChargingInfosJson);
+        using var h5 = new HttpClient(handler);
+        using var app = new HttpClient(new JsonResponseHandler(ChargingInfosJson));
+        var client = new GwmApiClient(h5, app, NullLoggerFactory.Instance, "aus");
+
+        var infos = await client.GetChargingInfosAsync("ENCODED-VIN", CancellationToken.None);
+
+        Assert.Single(infos.ChargePlanList);
+        Assert.NotNull(handler.LastRequest);
+        Assert.True(handler.LastRequest!.Headers.TryGetValues("vin", out var values));
+        Assert.Equal("ENCODED-VIN", values!.Single());
+        Assert.Contains("aus-h5-gateway", handler.LastRequest.RequestUri!.Host);
+    }
+
+    [Fact]
+    public async Task AusSendsVinHeaderOnSetChargingPlan()
+    {
+        var handler = new CapturingHandler(SuccessJson);
+        using var h5 = new HttpClient(handler);
+        using var app = new HttpClient(new JsonResponseHandler(SuccessJson));
+        var client = new GwmApiClient(h5, app, NullLoggerFactory.Instance, "aus");
+
+        await client.SetChargingPlanAsync(
+            new SetChargingPlan { Enable = false, Vin = "ENCODED-VIN" }, CancellationToken.None);
+
+        Assert.NotNull(handler.LastRequest);
+        Assert.True(handler.LastRequest!.Headers.TryGetValues("vin", out var values));
+        Assert.Equal("ENCODED-VIN", values!.Single());
+        Assert.Contains("aus-h5-gateway", handler.LastRequest.RequestUri!.Host);
+    }
+
+    [Theory]
+    [InlineData("eu", "eu-h5-gateway")]
+    [InlineData("rus", "rus-h5-gateway")]
+    public async Task NonAusChargingPlanUsesH5GatewayWithoutVinHeader(
+        string region,
+        string expectedHost)
+    {
+        var h5Handler = new CapturingHandler(ChargingInfosJson);
+        var appHandler = new CapturingHandler(ChargingInfosJson);
+        using var h5 = new HttpClient(h5Handler);
+        using var app = new HttpClient(appHandler);
+        var client = new GwmApiClient(h5, app, NullLoggerFactory.Instance, region);
+
+        await client.GetChargingInfosAsync("ENCODED-VIN", CancellationToken.None);
+
+        Assert.NotNull(h5Handler.LastRequest);
+        Assert.Contains(expectedHost, h5Handler.LastRequest!.RequestUri!.Host);
+        Assert.False(h5Handler.LastRequest.Headers.Contains("vin"));
+        Assert.Null(appHandler.LastRequest);
+
+        await client.SetChargingPlanAsync(
+            new SetChargingPlan { Enable = false, Vin = "ENCODED-VIN" }, CancellationToken.None);
+
+        Assert.Equal(HttpMethod.Post, h5Handler.LastRequest.Method);
+        Assert.Contains(expectedHost, h5Handler.LastRequest.RequestUri!.Host);
+        Assert.False(h5Handler.LastRequest.Headers.Contains("vin"));
+        Assert.Null(appHandler.LastRequest);
     }
 }

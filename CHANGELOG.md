@@ -6,6 +6,15 @@ This project follows semantic versioning. HACS uses the latest GitHub release ta
 
 ## [Unreleased]
 
+### Added
+
+- Added optional charging-schedule control behind a separate `enable_charging_control` opt-in that defaults to off and does not require a security PIN. Home Assistant now provides a **Scheduled charging** switch plus `gwm_ora.set_charging_plan` and `gwm_ora.clear_charging_plan` actions for exact charging windows.
+- Added per-vehicle ownership tracking and retry-safe cleanup for schedules written by the add-on. A schedule changed in the official GWM app is preserved when charging control is later disabled.
+
+The charging API uses the H5 gateway in every region, with the additional `vin` header required by AU/NZ. The feature was verified end-to-end on an ANZ ORA 5; other regions have not yet been independently tested.
+
+Thanks to [@wilberforce](https://github.com/wilberforce) for researching, implementing, and live-testing charging control.
+
 ## [0.9.0] - 2026-08-22
 
 ### Changed

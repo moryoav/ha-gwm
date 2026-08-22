@@ -17,6 +17,7 @@ public class AddonOptionsLoaderTests
           "verification_code": " 1234 ",
           "security_pin": "123456",
           "enable_remote_commands": true,
+          "enable_charging_control": true,
           "poll_interval_seconds": 120,
           "log_level": "debug"
         }
@@ -29,8 +30,29 @@ public class AddonOptionsLoaderTests
         Assert.Equal("owner@example.com", options.Username);
         Assert.Equal("1234", options.VerificationCode);
         Assert.True(options.EnableRemoteCommands);
+        Assert.True(options.EnableChargingControl);
         Assert.Equal(120, options.PollIntervalSeconds);
         Assert.Equal("debug", options.LogLevel);
+    }
+
+    [Fact]
+    public void ChargingControlDefaultsToDisabled()
+    {
+        var path = Path.GetTempFileName();
+        File.WriteAllText(path, """
+        {
+          "country": "DE",
+          "region": "aus",
+          "username": "owner@example.com",
+          "password": "secret",
+          "poll_interval_seconds": 60,
+          "log_level": "info"
+        }
+        """);
+
+        var options = AddonOptionsLoader.Load(path);
+
+        Assert.False(options.EnableChargingControl);
     }
 
     [Fact]

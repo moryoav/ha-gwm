@@ -1,0 +1,23 @@
+set_charging_plan:
+  fields:
+    vin:
+      required: true
+      example: "LGWEEUA57TR603334"
+      selector:
+        text:
+    start_time:
+      required: true
+      selector:
+        datetime:
+    end_time:
+      required: true
+      selector:
+        datetime:
+
+clear_charging_plan:
+  fields:
+    vin:
+      required: true
+      example: "LGWEEUA57TR603334"
+      selector:
+        text:

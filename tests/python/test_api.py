@@ -38,3 +38,42 @@ async def test_set_climate_omits_unspecified_values() -> None:
         "/vehicles/VIN123/commands/climate",
         json={"mode": "cool"},
     )
+
+
+@pytest.mark.asyncio
+async def test_set_charging_plan_includes_complete_window() -> None:
+    client = GwmOraApiClient(AsyncMock(), "addon", 8099, "token")
+    client._request = AsyncMock(return_value={"status": "ok"})
+
+    await client.async_set_charging_plan(
+        "VIN123",
+        enable=True,
+        start_time=1_000,
+        end_time=301_000,
+        plan_type=0,
+    )
+
+    client._request.assert_awaited_once_with(
+        "POST",
+        "/vehicles/VIN123/charging/plan",
+        json={
+            "enable": True,
+            "start_time": 1_000,
+            "end_time": 301_000,
+            "plan_type": 0,
+        },
+    )
+
+
+@pytest.mark.asyncio
+async def test_clear_charging_plan_omits_window() -> None:
+    client = GwmOraApiClient(AsyncMock(), "addon", 8099, "token")
+    client._request = AsyncMock(return_value={"status": "ok"})
+
+    await client.async_set_charging_plan("VIN123", enable=False)
+
+    client._request.assert_awaited_once_with(
+        "POST",
+        "/vehicles/VIN123/charging/plan",
+        json={"enable": False},
+    )

@@ -26,6 +26,9 @@ public sealed class AddonOptions
     [JsonPropertyName("enable_remote_commands")]
     public bool EnableRemoteCommands { get; init; }
 
+    [JsonPropertyName("enable_charging_control")]
+    public bool EnableChargingControl { get; init; }
+
     [JsonPropertyName("poll_interval_seconds")]
     public int PollIntervalSeconds { get; init; } = 60;
 
@@ -111,6 +114,7 @@ public static class AddonOptionsLoader
             VerificationCode = String.IsNullOrWhiteSpace(options.VerificationCode) ? null : options.VerificationCode.Trim(),
             SecurityPin = String.IsNullOrWhiteSpace(options.SecurityPin) ? null : options.SecurityPin.Trim(),
             EnableRemoteCommands = options.EnableRemoteCommands,
+            EnableChargingControl = options.EnableChargingControl,
             PollIntervalSeconds = options.PollIntervalSeconds,
             LogLevel = logLevel
         };

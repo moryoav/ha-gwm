@@ -36,6 +36,12 @@ public sealed class AddonState
     [JsonPropertyName("verification_code_requested_at")]
     public DateTimeOffset? VerificationCodeRequestedAt { get; set; }
 
+    // Track the exact plan written for each vehicle. On a later configuration change this
+    // lets the add-on distinguish its own leftover plan from one replaced in the GWM app.
+    [JsonPropertyName("charging_plans_set_by_addon")]
+    public Dictionary<string, TrackedChargingPlan> ChargingPlansSetByAddon { get; set; } =
+        new(StringComparer.Ordinal);
+
     public bool EnsureGenerated()
     {
         var changed = false;
@@ -57,8 +63,32 @@ public sealed class AddonState
             changed = true;
         }
 
+        if (ChargingPlansSetByAddon is null)
+        {
+            ChargingPlansSetByAddon = new Dictionary<string, TrackedChargingPlan>(StringComparer.Ordinal);
+            changed = true;
+        }
+
         return changed;
     }
+}
+
+public sealed class TrackedChargingPlan
+{
+    [JsonPropertyName("plan_id")]
+    public long? PlanId { get; set; }
+
+    [JsonPropertyName("plan_type")]
+    public int PlanType { get; set; }
+
+    [JsonPropertyName("start_time")]
+    public long StartTime { get; set; }
+
+    [JsonPropertyName("end_time")]
+    public long EndTime { get; set; }
+
+    [JsonPropertyName("weeks")]
+    public string Weeks { get; set; } = String.Empty;
 }
 
 public sealed class AddonStateStore
@@ -112,6 +142,21 @@ public sealed class AddonStateStore
         {
             update(State);
             await SaveCoreAsync(cancellationToken);
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
+    public async Task<TResult> ReadAsync<TResult>(
+        Func<AddonState, TResult> read,
+        CancellationToken cancellationToken)
+    {
+        await _gate.WaitAsync(cancellationToken);
+        try
+        {
+            return read(State);
         }
         finally
         {

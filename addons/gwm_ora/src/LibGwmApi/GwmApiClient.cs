@@ -351,6 +351,18 @@ public partial class GwmApiClient
         return await GetResponseAsync<T>(response, cancellationToken);
     }
 
+    private async Task<T> GetH5Async<T>(
+        string url,
+        IEnumerable<(string Name, string Value)> extraHeaders,
+        CancellationToken cancellationToken)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Get, url);
+        AddHeaders(request, extraHeaders);
+
+        var response = await _h5Client.SendAsync(request, cancellationToken);
+        return await GetResponseAsync<T>(response, cancellationToken);
+    }
+
     private async Task<T> GetAppAsync<T>(
         string url,
         CancellationToken cancellationToken)

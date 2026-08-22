@@ -15,6 +15,7 @@ public sealed class RemoteCommandService
     private const int DefaultMaxResultPolls = 18;
     private const int RussianMaxResultPolls = 60;
     private static readonly TimeSpan ResultPollInterval = TimeSpan.FromSeconds(5);
+    private static readonly TimeSpan MinimumChargingWindow = TimeSpan.FromMinutes(5);
 
     private readonly AddonOptions _options;
     private readonly AddonStateStore _stateStore;
@@ -233,6 +234,194 @@ public sealed class RemoteCommandService
         }
     }
 
+    // Charging schedules use the authenticated account but no vehicle security PIN. A plan window
+    // gates charging start/stop; clearing it reverts to charge-on-plug.
+    public async Task<ChargingInfos> GetChargingPlanAsync(string vin, CancellationToken cancellationToken)
+    {
+        ValidateVin(vin);
+        var client = await AuthenticatedClientAsync(cancellationToken);
+        return await client.GetChargingInfosAsync(vin, cancellationToken);
+    }
+
+    public async Task SetChargingPlanAsync(string vin, ChargingPlanRequest request, CancellationToken cancellationToken)
+    {
+        EnsureChargingControlAvailable();
+        ValidateChargingPlanRequest(vin, request);
+
+        var enable = request.Enable!.Value;
+        var client = await AuthenticatedClientAsync(cancellationToken);
+        var plan = new SetChargingPlan { Enable = enable, Vin = vin };
+        if (enable)
+        {
+            plan.PlanType = request.PlanType ?? 0;
+            plan.StartTime = request.StartTime?.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            plan.EndTime = request.EndTime?.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            plan.Weeks = request.Weeks ?? String.Empty;
+        }
+
+        await client.SetChargingPlanAsync(plan, cancellationToken);
+
+        if (!enable)
+        {
+            await RemoveTrackedChargingPlanAsync(vin, CancellationToken.None);
+            return;
+        }
+
+        var trackedPlan = new TrackedChargingPlan
+        {
+            PlanType = plan.PlanType!.Value,
+            StartTime = request.StartTime!.Value,
+            EndTime = request.EndTime!.Value,
+            Weeks = plan.Weeks ?? String.Empty
+        };
+
+        // Capture the server-assigned plan id when possible. The write has already succeeded,
+        // so a read-back failure must not turn the successful command into a user-visible error.
+        try
+        {
+            var current = await client.GetChargingInfosAsync(vin, cancellationToken);
+            trackedPlan.PlanId = current.ChargePlanList
+                .FirstOrDefault(candidate => ChargingPlanMatches(candidate, trackedPlan))
+                ?.PlanId;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Charging plan was set, but its server id could not be confirmed");
+        }
+
+        // Persist ownership even if the HTTP request was canceled after GWM accepted the write.
+        await _stateStore.UpdateAsync(
+            state => state.ChargingPlansSetByAddon[vin] = trackedPlan,
+            CancellationToken.None);
+    }
+
+    // If charging control is turned off, remove only plans that still match the exact plan the
+    // add-on wrote. A plan replaced in the GWM app gets a different id or window and is preserved.
+    public async Task ClearAddonChargingPlansIfDisabledAsync(CancellationToken cancellationToken)
+    {
+        if (_options.EnableChargingControl)
+        {
+            return;
+        }
+
+        var trackedPlans = await _stateStore.ReadAsync(
+            state => state.ChargingPlansSetByAddon.ToArray(),
+            cancellationToken);
+        if (trackedPlans.Length == 0)
+        {
+            return;
+        }
+
+        var client = await AuthenticatedClientAsync(cancellationToken);
+        foreach (var (vin, trackedPlan) in trackedPlans)
+        {
+            try
+            {
+                var current = await client.GetChargingInfosAsync(vin, cancellationToken);
+                var matchingPlan = current.ChargePlanList
+                    .FirstOrDefault(candidate => ChargingPlanMatches(candidate, trackedPlan));
+                if (matchingPlan is null)
+                {
+                    if (current.ChargePlanList.Any(IsActiveChargingPlan))
+                    {
+                        _logger.LogInformation(
+                            "Left a charging plan unchanged because it no longer matches the plan written by the add-on");
+                    }
+
+                    await RemoveTrackedChargingPlanAsync(vin, cancellationToken);
+                    continue;
+                }
+
+                await client.SetChargingPlanAsync(new SetChargingPlan { Enable = false, Vin = vin }, cancellationToken);
+                _logger.LogInformation("Cleared a leftover add-on charging plan because charging control is now disabled");
+                await RemoveTrackedChargingPlanAsync(vin, cancellationToken);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Could not inspect or clear a leftover charging plan; the next poll will retry");
+            }
+        }
+    }
+
+    internal static void ValidateChargingPlanRequest(string vin, ChargingPlanRequest request)
+    {
+        ValidateVin(vin);
+        if (!request.Enable.HasValue)
+        {
+            throw new ArgumentException("Charging plan request must specify enable.", nameof(request));
+        }
+
+        if (!request.Enable.Value)
+        {
+            return;
+        }
+
+        if (request.PlanType is not null and not 0)
+        {
+            throw new ArgumentException("Only one-off charging plans (plan_type 0) are supported.", nameof(request));
+        }
+
+        if (!request.StartTime.HasValue || !request.EndTime.HasValue)
+        {
+            throw new ArgumentException("Enabled charging plans require both start_time and end_time.", nameof(request));
+        }
+
+        DateTimeOffset start;
+        DateTimeOffset end;
+        try
+        {
+            start = DateTimeOffset.FromUnixTimeMilliseconds(request.StartTime.Value);
+            end = DateTimeOffset.FromUnixTimeMilliseconds(request.EndTime.Value);
+        }
+        catch (ArgumentOutOfRangeException ex)
+        {
+            throw new ArgumentException("Charging plan times must be valid Unix timestamps in milliseconds.", nameof(request), ex);
+        }
+
+        if (end - start < MinimumChargingWindow)
+        {
+            throw new ArgumentException("Charging plan window must be at least 5 minutes.", nameof(request));
+        }
+    }
+
+    internal static bool ChargingPlanMatches(ChargePlanItem candidate, TrackedChargingPlan trackedPlan)
+    {
+        if (!IsActiveChargingPlan(candidate)
+            || trackedPlan.PlanId.HasValue && candidate.PlanId != trackedPlan.PlanId.Value)
+        {
+            return false;
+        }
+
+        return String.Equals(
+                   candidate.PlanType,
+                   trackedPlan.PlanType.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                   StringComparison.Ordinal)
+               && candidate.StartTime == trackedPlan.StartTime
+               && candidate.EndTime == trackedPlan.EndTime
+               && String.Equals(candidate.Weeks ?? String.Empty, trackedPlan.Weeks, StringComparison.Ordinal);
+    }
+
+    private static bool IsActiveChargingPlan(ChargePlanItem plan) =>
+        !String.IsNullOrWhiteSpace(plan.PlanType)
+        && !String.Equals(plan.PlanType, "-1", StringComparison.Ordinal);
+
+    private static void ValidateVin(string vin)
+    {
+        if (String.IsNullOrWhiteSpace(vin))
+        {
+            throw new ArgumentException("Vehicle VIN is required.", nameof(vin));
+        }
+    }
+
+    private Task RemoveTrackedChargingPlanAsync(string vin, CancellationToken cancellationToken) =>
+        _stateStore.UpdateAsync(
+            state => state.ChargingPlansSetByAddon.Remove(vin),
+            cancellationToken);
+
     private async Task<GwmApiClient> AuthenticatedClientAsync(CancellationToken cancellationToken)
     {
         var client = _clientFactory.Create(_options, _stateStore.State);
@@ -326,6 +515,15 @@ public sealed class RemoteCommandService
         if (String.IsNullOrWhiteSpace(_options.SecurityPin))
         {
             throw new RemoteCommandUnavailableException("Remote commands require security_pin in the add-on configuration.");
+        }
+    }
+
+    // Charging control is a separate, explicit opt-in from remote commands and needs no PIN.
+    private void EnsureChargingControlAvailable()
+    {
+        if (!_options.EnableChargingControl)
+        {
+            throw new RemoteCommandUnavailableException("Charging control is disabled. Set enable_charging_control in the add-on configuration.");
         }
     }
 
