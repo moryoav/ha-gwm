@@ -3,11 +3,7 @@
 
 [![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/Y5B124NZ2L)
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="brand/dark_banner.png">
-  <source media="(prefers-color-scheme: light)" srcset="brand/banner.png">
-  <img alt="GWM" src="brand/banner.png">
-</picture>
+<img alt="GWM" src="https://www.gwm.com.my/content/dam/gwm/pages/my/en/logo/gwm-black-pc.svg">
 
 Control and monitor your GWM vehicle from Home Assistant. The add-on connects to your GWM account, and the Home Assistant integration creates sensors and controls for your vehicle.
 
