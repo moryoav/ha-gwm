@@ -3,7 +3,11 @@
 
 [![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/Y5B124NZ2L)
 
-![GWM ORA][banner]
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="brand/dark_banner.png">
+  <source media="(prefers-color-scheme: light)" srcset="brand/banner.png">
+  <img alt="GWM" src="brand/banner.png">
+</picture>
 
 Control and monitor your GWM ORA from Home Assistant. The add-on connects to your GWM account, and the Home Assistant integration creates sensors and controls for your car.
 
@@ -268,7 +272,6 @@ Thanks to [AlexandrErohin](https://github.com/AlexandrErohin) for contributing t
 
 Deep thanks to [wilberforce](https://github.com/wilberforce) for reverse-engineering the ANZ authentication and signing flow, implementing AU/NZ support, decoding vehicle status mappings, and validating authentication and comfort signals against a live vehicle.
 
-[banner]: https://raw.githubusercontent.com/moryoav/ha-gwm_ora/main/brand/banner.png
 [hacs-badge]: https://img.shields.io/badge/HACS-Default-41BDF5.svg?style=flat-square
 [hacs-url]: https://github.com/hacs/integration
 [release-badge]: https://img.shields.io/github/v/release/moryoav/ha-gwm_ora?style=flat-square
