@@ -43,6 +43,75 @@ Feature requests are welcome. Please describe:
 
 Features that expand remote vehicle control should include a clear safety rationale and must preserve explicit user opt-in.
 
+## Adding Support for a New GWM Cloud Region
+
+GWM's cloud APIs are private, undocumented, and different between regions. Authentication, gateway addresses, request signing, TLS requirements, headers, payloads, response formats, and remote-command behavior may all vary. Supporting a new region is therefore not as simple as adding another gateway hostname.
+
+The maintainer cannot discover or safely validate a regional implementation without access to that region's official app, a locally registered account, and a compatible vehicle. Only a user who has that access can provide the protocol evidence and real-world testing needed to add reliable support. A feature request by itself is not enough, but the maintainer can review a community implementation, help fit it into the project, and take it forward from a pull request.
+
+Only inspect an app, account, device, and vehicle that you are authorized to use. Follow applicable laws and the app's terms, and begin with read-only operations.
+
+### Start With Public App Information
+
+Before collecting traffic, add the following non-sensitive information to the related issue:
+
+- The official app name and store link.
+- The exact app version and, on Android, its package name.
+- The phone platform and OS version.
+- The broad account-registration country or region.
+- The vehicle model and model year, without its VIN.
+
+Do not send credentials or private captures at this stage. This information helps determine the safest and most useful next step.
+
+### Capture the Regional Protocol
+
+Android is generally the easiest platform to inspect. A typical workflow is:
+
+1. Route a test phone or emulator through an HTTPS inspection tool such as mitmproxy, HTTP Toolkit, or Charles Proxy.
+2. Record separate, focused sessions for login and SMS/e-mail verification, token refresh or session restoration, vehicle discovery, and vehicle-status refresh.
+3. Perform one action at a time so each request can be matched to the corresponding screen or result in the official app.
+4. If TLS certificate pinning prevents inspection, use JADX or apktool to examine the legitimately obtained APK for regional gateway configuration, API paths, request-signing code, and certificate handling. On a suitable test device, tools such as Frida or Objection may help inspect the app's own traffic.
+5. Leave remote commands until read-only login, discovery, and status retrieval work. Test any command individually, near the vehicle, with explicit user opt-in and a clear way to confirm the physical result.
+
+For each operation, determine as much of the following as possible:
+
+- Gateway hostname, HTTP method, path, and query parameters.
+- Required headers and the formats of country, region, app, and device identifiers.
+- Request and response structures, including success and error codes.
+- Login, verification, session-conflict, and token-refresh behavior.
+- Request-signing or encryption algorithm, canonical input, encoding, and nonce/timestamp rules.
+- Whether certificate pinning, client certificates, or mutual TLS are used.
+- Vehicle discovery, status polling, and, later, command-result polling behavior.
+
+Static analysis and traffic captures should be used together where practical: captures show the real wire format, while app code can explain signatures or values that a proxy cannot interpret.
+
+### Sanitize All Evidence
+
+Never post raw captures or logs without reviewing and sanitizing them. Remove or replace:
+
+- Usernames, passwords, verification codes, security PINs, and answers to security questions.
+- Access tokens, refresh tokens, cookies, session identifiers, API tokens, and signing secrets.
+- VINs, internal vehicle identifiers, command IDs, device IDs, ICCIDs, and advertising IDs.
+- Names, phone numbers, e-mail addresses, exact locations, private URLs, and other personal data.
+- Private keys or other reusable client secrets extracted from an app or device.
+
+Keep field names, data types, relevant prefixes, and approximate lengths where they are needed to understand the protocol, but replace values with obviously synthetic examples. Do not upload an APK or proprietary app assets to the repository. If you are unsure whether a value is sensitive, do not publish it; ask the maintainer how to proceed.
+
+### Preparing a Pull Request
+
+You may use an AI coding assistant of your choice to analyze sanitized evidence and prepare a pull request. Give it this repository, this contributing guide, and only sanitized captures or notes.
+
+A useful regional pull request should include, as applicable:
+
+- A new region option and its country/region validation.
+- Regional gateway routing, authentication, verification, and token refresh.
+- Region-specific signing, TLS policy, headers, serialization, and error handling.
+- Vehicle discovery and status retrieval before remote commands.
+- Sanitized fixtures, golden signing vectors, and focused tests for regional differences.
+- Documentation, translations, configuration validation, and changelog updates.
+
+Keep new regional behavior isolated so it does not silently change existing regions. Avoid guessing missing protocol details, and ensure the existing test suite continues to pass. The first pull request does not need to be perfect: a focused read-only implementation with good sanitized evidence and tests is a useful starting point that the maintainer can review and refine.
+
 ## Development Setup
 
 Clone the repository:
