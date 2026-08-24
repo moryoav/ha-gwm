@@ -1,0 +1,176 @@
+{
+  "schema_version": 1,
+  "regions": [
+    {
+      "region": "eu",
+      "device_id_length": 16,
+      "allowed_countries": null,
+      "base_headers": {
+        "rs": "2",
+        "terminal": "GW_APP_GWM",
+        "brand": "6",
+        "language": "en",
+        "systemType": "1",
+        "cVer": "1.3.0",
+        "secVersion": "2.0",
+        "appId": "6",
+        "channel": "APP",
+        "enterpriseId": "CC01"
+      },
+      "gateways": {
+        "h5_v1": {
+          "base_url": "https://eu-h5-gateway.gwmcloud.com/app-api/api/v1.0/",
+          "signing_profile": "eu-bt-auth",
+          "tls_mode": "default"
+        },
+        "auth_v2": {
+          "base_url": "https://eu-h5-gateway.gwmcloud.com/app-api/api/v2.0/",
+          "signing_profile": "eu-gwm-auth",
+          "tls_mode": "default"
+        },
+        "app_v1": {
+          "base_url": "https://eu-app-gateway.gwmcloud.com/app-api/api/v1.0/",
+          "signing_profile": "eu-bt-auth",
+          "tls_mode": "eu_issued_mtls"
+        },
+        "certificate_v1": {
+          "base_url": "https://eu-app-gateway-common.gwmcloud.com/app-api/api/v1.0/",
+          "signing_profile": "eu-bt-auth",
+          "tls_mode": "eu_bootstrap_mtls"
+        }
+      },
+      "unsupported_gateways": [],
+      "synthetic_request": {
+        "country": "ZZ",
+        "device_id": "feedface-dead-beef-cafe-0123456789ab",
+        "access_token": "SYNTHETIC-TASK4-TOKEN",
+        "normalized_device_id": "feedfacedeadbeef",
+        "headers": {
+          "rs": "2",
+          "terminal": "GW_APP_GWM",
+          "brand": "6",
+          "language": "en",
+          "systemType": "1",
+          "cVer": "1.3.0",
+          "secVersion": "2.0",
+          "appId": "6",
+          "channel": "APP",
+          "enterpriseId": "CC01",
+          "country": "ZZ",
+          "regionCode": "ZZ",
+          "deviceId": "feedfacedeadbeef",
+          "iccid": "feedfacedeadbeef",
+          "accessToken": "SYNTHETIC-TASK4-TOKEN"
+        }
+      }
+    },
+    {
+      "region": "aus",
+      "device_id_length": 16,
+      "allowed_countries": ["AU", "NZ"],
+      "base_headers": {
+        "rs": "2",
+        "terminal": "GW_APP_Haval",
+        "brand": "1",
+        "enterpriseId": "CC01",
+        "appId": "1",
+        "channel": "APP",
+        "cVer": "1.0.0",
+        "systemType": "1",
+        "language": "en_US"
+      },
+      "gateways": {
+        "h5_v1": {
+          "base_url": "https://aus-h5-gateway.gwmcloud.com/app-api/api/v1.0/",
+          "signing_profile": "anz-bt-auth",
+          "tls_mode": "default"
+        },
+        "app_v1": {
+          "base_url": "https://aus-h5-gateway.gwmcloud.com/app-api/api/v1.0/",
+          "signing_profile": "anz-bt-auth",
+          "tls_mode": "default"
+        }
+      },
+      "unsupported_gateways": ["auth_v2", "certificate_v1"],
+      "synthetic_request": {
+        "country": "AU",
+        "device_id": "feedface-dead-beef-cafe-0123456789ab",
+        "access_token": "SYNTHETIC-TASK4-TOKEN",
+        "normalized_device_id": "feedfacedeadbeef",
+        "headers": {
+          "rs": "2",
+          "terminal": "GW_APP_Haval",
+          "brand": "1",
+          "enterpriseId": "CC01",
+          "appId": "1",
+          "channel": "APP",
+          "cVer": "1.0.0",
+          "systemType": "1",
+          "language": "en_US",
+          "country": "AU",
+          "regionCode": "AU",
+          "deviceId": "feedfacedeadbeef",
+          "iccid": "feedfacedeadbeef",
+          "accessToken": "SYNTHETIC-TASK4-TOKEN"
+        }
+      }
+    },
+    {
+      "region": "rus",
+      "device_id_length": null,
+      "allowed_countries": ["RU"],
+      "base_headers": {
+        "rs": "2",
+        "terminal": "GW_APP_Haval",
+        "brand": "1",
+        "enterpriseId": "CC01",
+        "brandId": "CCZ001",
+        "appId": "1",
+        "channel": "APP",
+        "systemType": "1",
+        "cVer": "1.0.0",
+        "communityBrand": "1",
+        "language": "ru",
+        "secVersion": "2.0"
+      },
+      "gateways": {
+        "h5_v1": {
+          "base_url": "https://rus-h5-gateway.gwmcloud.com/app-api/api/v1.0/",
+          "signing_profile": "russia-gwm-auth",
+          "tls_mode": "default"
+        },
+        "app_v1": {
+          "base_url": "https://rus-app-gateway.gwmcloud.com/app-api/api/v1.0/",
+          "signing_profile": "russia-gwm-auth",
+          "tls_mode": "russia_bootstrap_mtls"
+        }
+      },
+      "unsupported_gateways": ["auth_v2", "certificate_v1"],
+      "synthetic_request": {
+        "country": "RU",
+        "device_id": "feedface-dead-beef-cafe-0123456789ab",
+        "access_token": "SYNTHETIC-TASK4-TOKEN",
+        "normalized_device_id": "feedface-dead-beef-cafe-0123456789ab",
+        "headers": {
+          "rs": "2",
+          "terminal": "GW_APP_Haval",
+          "brand": "1",
+          "enterpriseId": "CC01",
+          "brandId": "CCZ001",
+          "appId": "1",
+          "channel": "APP",
+          "systemType": "1",
+          "cVer": "1.0.0",
+          "communityBrand": "1",
+          "language": "ru",
+          "secVersion": "2.0",
+          "country": "RU",
+          "regionCode": "RU",
+          "deviceId": "feedface-dead-beef-cafe-0123456789ab",
+          "iccid": "feedface-dead-beef-cafe-0123456789ab",
+          "accessToken": "SYNTHETIC-TASK4-TOKEN"
+        }
+      }
+    }
+  ]
+}

@@ -8,3 +8,8 @@ ignore = ["E501"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests/python"]
+
+[tool.mypy]
+python_version = "3.13"
+strict = true
+exclude = ["^gwm_ora_client/live_poc\\.py$"]

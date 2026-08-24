@@ -1,0 +1,574 @@
+"""Typed, read-only async GWM client foundation."""
+
+from __future__ import annotations
+
+import asyncio
+import json
+import math
+import re
+import ssl
+from collections.abc import Callable, Mapping
+from dataclasses import dataclass, field
+from types import MappingProxyType
+from typing import Self, cast
+from urllib.parse import urlsplit
+
+from ._protocol import _AsyncTransport, _Deadline, _TransportRequest, _TransportResponse
+from .config import GwmClientConfig
+from .errors import (
+    GwmApiError,
+    GwmAuthenticationError,
+    GwmClientError,
+    GwmClosedError,
+    GwmConfigurationError,
+    GwmDeadlineExceededError,
+    GwmHttpError,
+    GwmNetworkError,
+    GwmOptionalEndpointError,
+    GwmProtocolError,
+    GwmRateLimitError,
+    GwmRedirectError,
+    GwmResponseTooLargeError,
+    GwmRoutePolicyError,
+    GwmSchemaError,
+    GwmTlsError,
+)
+from .models import (
+    CloudVehicle,
+    CloudVehicleBasics,
+    CloudVehicleStatus,
+    GwmSession,
+    VehicleIdentifier,
+    parse_cloud_vehicle_basics,
+    parse_cloud_vehicle_status,
+    parse_cloud_vehicles,
+)
+from .regions import GatewayRole, Region, RegionProtocol, TlsMode, get_region_protocol
+from .signing import SignedRequest, SigningProfile, sign_request
+from .transport import AiohttpTransport
+
+_MAX_JSON_DEPTH = 64
+
+
+@dataclass(frozen=True, slots=True)
+class _ReadEndpoint[T]:
+    operation: str
+    path: str
+    query_kind: str
+    decoder: Callable[[object, Region], T] = field(repr=False)
+
+
+_ACQUIRE_VEHICLES = _ReadEndpoint(
+    operation="acquire_vehicles",
+    path="globalapp/vehicle/acquireVehicles",
+    query_kind="none",
+    decoder=lambda data, region: parse_cloud_vehicles(
+        data,
+        allow_numbers_for_strings=region is Region.RUSSIA,
+    ),
+)
+_LAST_STATUS = _ReadEndpoint(
+    operation="get_last_status",
+    path="vehicle/getLastStatus",
+    query_kind="last_status",
+    decoder=lambda data, region: parse_cloud_vehicle_status(
+        data,
+        allow_stringified_numbers=region in {Region.ANZ, Region.RUSSIA},
+        allow_numbers_for_strings=region is Region.RUSSIA,
+    ),
+)
+_VEHICLE_BASICS = _ReadEndpoint(
+    operation="get_vehicle_basics",
+    path="vehicle/vehicleBasicsInfo",
+    query_kind="vehicle_basics",
+    decoder=lambda data, region: parse_cloud_vehicle_basics(
+        data,
+        allow_numbers_for_strings=region is Region.RUSSIA,
+    ),
+)
+_READ_ENDPOINTS = MappingProxyType(
+    {
+        endpoint.operation: endpoint
+        for endpoint in (_ACQUIRE_VEHICLES, _LAST_STATUS, _VEHICLE_BASICS)
+    }
+)
+
+
+class GwmClient:
+    """A lifecycle-managed client exposing only the proven read operations."""
+
+    def __init__(
+        self,
+        config: GwmClientConfig,
+        session: GwmSession,
+        *,
+        transport: _AsyncTransport | None = None,
+    ) -> None:
+        if type(config) is not GwmClientConfig:
+            raise GwmConfigurationError()
+        self._config = config
+        self._protocol = get_region_protocol(config.region)
+        self._session = self._validated_session(session)
+        self._transport: _AsyncTransport
+        if transport is None:
+            self._transport = AiohttpTransport.create_owned(
+                max_response_bytes=config.max_response_bytes
+            )
+            self._owns_transport = True
+        else:
+            self._transport = transport
+            self._owns_transport = False
+        self._closed = False
+        self._closing = False
+        self._close_lock = asyncio.Lock()
+        self._request_lock = asyncio.Lock()
+
+    @property
+    def region(self) -> Region:
+        return self._protocol.region
+
+    @property
+    def closed(self) -> bool:
+        return self._closed
+
+    async def __aenter__(self) -> Self:
+        if self._closed or self._closing:
+            raise GwmClosedError()
+        return self
+
+    async def __aexit__(self, *_exc_info: object) -> None:
+        await self.aclose()
+
+    async def aclose(self) -> None:
+        async with self._close_lock:
+            if self._closed:
+                return
+            self._closing = True
+            try:
+                async with self._request_lock:
+                    if self._owns_transport:
+                        await self._transport.aclose()
+            except BaseException:
+                self._closing = False
+                raise
+            self._closed = True
+            self._closing = False
+
+    def replace_session(self, session: GwmSession) -> None:
+        """Atomically replace future request state without changing in-flight requests."""
+
+        if self._closed or self._closing:
+            raise GwmClosedError()
+        self._session = self._validated_session(session)
+
+    async def acquire_vehicles(
+        self,
+        *,
+        timeout: float | None = None,
+    ) -> tuple[CloudVehicle, ...]:
+        return await self._execute(_ACQUIRE_VEHICLES, identifier=None, timeout=timeout)
+
+    async def get_last_status(
+        self,
+        identifier: VehicleIdentifier,
+        *,
+        timeout: float | None = None,
+    ) -> CloudVehicleStatus:
+        return await self._execute(_LAST_STATUS, identifier=identifier, timeout=timeout)
+
+    async def get_vehicle_basics(
+        self,
+        identifier: VehicleIdentifier,
+        *,
+        timeout: float | None = None,
+    ) -> CloudVehicleBasics:
+        return await self._execute(_VEHICLE_BASICS, identifier=identifier, timeout=timeout)
+
+    async def _execute[T](
+        self,
+        endpoint: _ReadEndpoint[T],
+        *,
+        identifier: VehicleIdentifier | None,
+        timeout: float | None,
+    ) -> T:
+        if _READ_ENDPOINTS.get(endpoint.operation) is not endpoint:
+            raise GwmRoutePolicyError()
+        operation = endpoint.operation
+        if endpoint.query_kind == "none":
+            if identifier is not None:
+                raise GwmRoutePolicyError(operation=operation)
+        elif type(identifier) is not VehicleIdentifier:
+            raise GwmRoutePolicyError(operation=operation)
+        if self._closed or self._closing:
+            raise GwmClosedError(operation=operation)
+        total_timeout = self._validated_timeout(timeout, operation=operation)
+        loop = asyncio.get_running_loop()
+        deadline = _Deadline(loop.time() + total_timeout)
+        failure: GwmClientError | None = None
+
+        try:
+            async with asyncio.timeout_at(deadline.expires_at):
+                async with self._request_lock:
+                    if self._closed or self._closing:
+                        raise GwmClosedError(operation=operation)
+                    session = self._validated_session(self._session)
+                    request = self._prepare_read_request(endpoint, session, identifier)
+                    response = await self._transport.execute(
+                        request,
+                        deadline=deadline,
+                        connect_timeout=self._config.timeouts.connect,
+                        read_timeout=self._config.timeouts.read,
+                    )
+                    if type(response) is not _TransportResponse:
+                        raise GwmProtocolError(operation=operation)
+                    if deadline.remaining(loop.time()) <= 0:
+                        raise GwmDeadlineExceededError(operation=operation)
+                    data = _decode_envelope(response, operation=operation)
+                    if deadline.remaining(loop.time()) <= 0:
+                        raise GwmDeadlineExceededError(operation=operation)
+                    try:
+                        result = endpoint.decoder(
+                            data,
+                            self._protocol.region,
+                        )
+                    except (KeyError, OverflowError, RecursionError, TypeError, ValueError):
+                        if deadline.remaining(loop.time()) <= 0:
+                            raise GwmDeadlineExceededError(operation=operation) from None
+                        failure = GwmSchemaError(operation=operation)
+                    else:
+                        if deadline.remaining(loop.time()) <= 0:
+                            raise GwmDeadlineExceededError(operation=operation)
+                        return result
+        except asyncio.CancelledError:
+            raise
+        except GwmClientError as error:
+            failure = (
+                GwmDeadlineExceededError(operation=operation)
+                if deadline.remaining(loop.time()) <= 0
+                else _sanitized_client_error(error, operation=operation)
+            )
+        except TimeoutError:
+            failure = GwmDeadlineExceededError(operation=operation)
+        except Exception:
+            failure = (
+                GwmDeadlineExceededError(operation=operation)
+                if deadline.remaining(loop.time()) <= 0
+                else GwmNetworkError(operation=operation)
+            )
+
+        if failure is not None:
+            raise failure
+        raise GwmSchemaError(operation=operation)
+
+    def _prepare_read_request[T](
+        self,
+        endpoint: _ReadEndpoint[T],
+        session: GwmSession,
+        identifier: VehicleIdentifier | None,
+    ) -> _TransportRequest:
+        operation = endpoint.operation
+        route_failure = False
+        try:
+            gateway = self._protocol.gateway(GatewayRole.APP_V1)
+            relative_url = endpoint.path + _logical_query(endpoint, identifier)
+            unsigned_url = gateway.base_url + relative_url
+            signed = sign_request(gateway.signing_profile, "GET", unsigned_url)
+            _validate_signed_read(
+                signed,
+                endpoint=endpoint,
+                protocol=self._protocol,
+                identifier=identifier,
+            )
+            headers = {
+                **self._protocol.authenticated_headers(
+                    country=session.country,
+                    device_id=session.device_id,
+                    access_token=session.access_token,
+                ),
+                "Accept": "application/json",
+                **signed.headers,
+            }
+            return _TransportRequest(
+                operation=operation,
+                method="GET",
+                url=signed.url,
+                headers=headers,
+                ssl_context=session.app_ssl_context,
+            )
+        except (TypeError, ValueError):
+            route_failure = True
+        if route_failure:
+            raise GwmRoutePolicyError(operation=operation)
+        raise GwmRoutePolicyError(operation=operation)
+
+    def _validated_session(self, session: GwmSession) -> GwmSession:
+        if type(session) is not GwmSession:
+            raise GwmConfigurationError()
+        invalid = False
+        try:
+            self._protocol.validate_country(session.country)
+            self._protocol.normalize_device_id(session.device_id)
+            self._protocol.authenticated_headers(
+                country=session.country,
+                device_id=session.device_id,
+                access_token=session.access_token,
+            )
+            _validate_app_tls_context(self._protocol, session.app_ssl_context)
+        except (AttributeError, TypeError, ValueError):
+            invalid = True
+        if invalid:
+            raise GwmConfigurationError()
+        return session
+
+    def _validated_timeout(self, value: float | None, *, operation: str) -> float:
+        if value is None:
+            return self._config.timeouts.total
+        if (
+            isinstance(value, bool)
+            or not isinstance(value, int | float)
+            or not math.isfinite(value)
+            or value <= 0
+            or value > self._config.timeouts.total
+        ):
+            raise GwmConfigurationError(operation=operation)
+        return float(value)
+
+
+def _logical_query[T](
+    endpoint: _ReadEndpoint[T],
+    identifier: VehicleIdentifier | None,
+) -> str:
+    if endpoint.query_kind == "none":
+        if identifier is not None:
+            raise ValueError("route_invalid")
+        return ""
+    if identifier is None:
+        raise ValueError("route_invalid")
+    if endpoint.query_kind == "last_status":
+        return f"?vin={identifier.encoded}&seqNo="
+    if endpoint.query_kind == "vehicle_basics":
+        return f"?vin={identifier.encoded}&flag=true"
+    raise ValueError("route_invalid")
+
+
+def _validate_signed_read[T](
+    signed: SignedRequest,
+    *,
+    endpoint: _ReadEndpoint[T],
+    protocol: RegionProtocol,
+    identifier: VehicleIdentifier | None,
+) -> None:
+    gateway = protocol.gateway(GatewayRole.APP_V1)
+    parsed = urlsplit(signed.url)
+    expected_base = urlsplit(gateway.base_url)
+    try:
+        port = parsed.port
+    except ValueError:
+        raise ValueError("route_invalid") from None
+
+    expected_path = expected_base.path + endpoint.path
+    if endpoint.query_kind == "none":
+        expected_query = ""
+    elif identifier is None:
+        raise ValueError("route_invalid")
+    elif endpoint.query_kind == "last_status":
+        expected_query = f"vin={identifier.encoded}" + (
+            "&seqNo=" if protocol.region is Region.EU else ""
+        )
+    elif endpoint.query_kind == "vehicle_basics":
+        expected_query = (
+            f"vin={identifier.encoded}&flag=true"
+            if protocol.region is Region.EU
+            else f"flag=true&vin={identifier.encoded}"
+        )
+    else:
+        raise ValueError("route_invalid")
+
+    if (
+        signed.method != "GET"
+        or signed.body is not None
+        or parsed.scheme != "https"
+        or parsed.hostname != expected_base.hostname
+        or parsed.path != expected_path
+        or parsed.query != expected_query
+        or port is not None
+        or parsed.username is not None
+        or parsed.password is not None
+        or parsed.fragment
+    ):
+        raise ValueError("route_invalid")
+    _validate_signing_headers(signed, gateway.signing_profile)
+
+
+def _validate_signing_headers(
+    signed: SignedRequest,
+    profile: SigningProfile,
+) -> None:
+    prefix = profile.prefix
+    expected_names = {
+        f"{prefix}-auth-appkey",
+        f"{prefix}-auth-nonce",
+        f"{prefix}-auth-timestamp",
+        f"{prefix}-auth-sign",
+    }
+    if set(signed.headers) != expected_names:
+        raise ValueError("route_invalid")
+    nonce = signed.headers[f"{prefix}-auth-nonce"]
+    timestamp = signed.headers[f"{prefix}-auth-timestamp"]
+    signature = signed.headers[f"{prefix}-auth-sign"]
+    if (
+        signed.headers[f"{prefix}-auth-appkey"] != profile.app_key
+        or re.fullmatch(r"[0-9A-Fa-f]{16}", nonce) is None
+        or (profile.uppercase_nonce and nonce != nonce.upper())
+        or (not profile.uppercase_nonce and nonce != nonce.lower())
+        or not 10 <= len(timestamp) <= 17
+        or not timestamp.isdecimal()
+        or re.fullmatch(r"[0-9a-f]{64}", signature) is None
+    ):
+        raise ValueError("route_invalid")
+
+
+def _validate_app_tls_context(protocol: RegionProtocol, context: object) -> None:
+    if (
+        not isinstance(context, ssl.SSLContext)
+        or not context.check_hostname
+        or context.verify_mode != ssl.CERT_REQUIRED
+    ):
+        raise ValueError("tls_context_invalid")
+    minimum_version = context.minimum_version
+    maximum_version = context.maximum_version
+    if minimum_version < ssl.TLSVersion.TLSv1_2 or (
+        maximum_version != ssl.TLSVersion.MAXIMUM_SUPPORTED
+        and (
+            maximum_version < ssl.TLSVersion.TLSv1_2
+            or maximum_version < minimum_version
+        )
+    ):
+        raise ValueError("tls_context_invalid")
+    tls_mode = protocol.gateway(GatewayRole.APP_V1).tls_mode
+    if tls_mode is TlsMode.DEFAULT:
+        if context.security_level <= 0:
+            raise ValueError("tls_context_invalid")
+    elif context.security_level != 0:
+        raise ValueError("tls_context_invalid")
+
+
+def _decode_envelope(response: _TransportResponse, *, operation: str) -> object:
+    if response.status in {401, 403}:
+        raise GwmAuthenticationError(operation=operation)
+    if response.status == 429:
+        retry_after = response.headers.get("retry-after")
+        retry_seconds = (
+            int(retry_after)
+            if retry_after and len(retry_after) <= 10 and retry_after.isdecimal()
+            else None
+        )
+        raise GwmRateLimitError(
+            operation=operation,
+            retry_after_seconds=retry_seconds,
+        )
+    if not 200 <= response.status <= 299:
+        raise GwmHttpError(operation=operation, status=response.status)
+
+    invalid = False
+    try:
+        text = response.body.decode("utf-8", errors="strict")
+        envelope = json.loads(
+            text,
+            object_pairs_hook=_unique_object,
+            parse_constant=_reject_json_constant,
+        )
+        _validate_json_depth(envelope)
+    except (UnicodeDecodeError, json.JSONDecodeError, RecursionError, ValueError):
+        invalid = True
+        envelope = None
+    if invalid or not isinstance(envelope, Mapping):
+        raise GwmSchemaError(operation=operation)
+
+    code = envelope.get("code")
+    if code != "000000":
+        raise GwmApiError(operation=operation, api_code=code)
+    if "data" not in envelope:
+        raise GwmSchemaError(operation=operation)
+    return envelope["data"]
+
+
+def _unique_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
+    result: dict[str, object] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError("duplicate_json_key")
+        result[key] = value
+    return result
+
+
+def _reject_json_constant(_value: str) -> object:
+    raise ValueError("invalid_json_number")
+
+
+def _validate_json_depth(value: object, *, depth: int = 0) -> None:
+    if depth > _MAX_JSON_DEPTH:
+        raise ValueError("json_too_deep")
+    if isinstance(value, float) and not math.isfinite(value):
+        raise ValueError("invalid_json_number")
+    if isinstance(value, Mapping):
+        for child in value.values():
+            _validate_json_depth(child, depth=depth + 1)
+    elif isinstance(value, list):
+        for child in value:
+            _validate_json_depth(child, depth=depth + 1)
+
+
+def _sanitized_client_error(error: GwmClientError, *, operation: str) -> GwmClientError:
+    error_type = type(error)
+    if error_type is GwmHttpError:
+        return GwmHttpError(
+            operation=operation,
+            status=cast(GwmHttpError, error).status,
+        )
+    if error_type is GwmRateLimitError:
+        rate_error = cast(GwmRateLimitError, error)
+        return GwmRateLimitError(
+            operation=operation,
+            api_code=rate_error.api_code,
+            retry_after_seconds=rate_error.retry_after_seconds,
+        )
+    if error_type is GwmAuthenticationError:
+        return GwmAuthenticationError(
+            operation=operation,
+            api_code=cast(GwmAuthenticationError, error).api_code,
+        )
+    if error_type is GwmOptionalEndpointError:
+        return GwmOptionalEndpointError(
+            operation=operation,
+            api_code=cast(GwmOptionalEndpointError, error).api_code,
+        )
+    if error_type is GwmApiError:
+        return GwmApiError(
+            operation=operation,
+            api_code=cast(GwmApiError, error).api_code,
+        )
+    if error_type is GwmClosedError:
+        return GwmClosedError(operation=operation)
+    if error_type is GwmConfigurationError:
+        return GwmConfigurationError(operation=operation)
+    if error_type is GwmDeadlineExceededError:
+        return GwmDeadlineExceededError(operation=operation)
+    if error_type is GwmNetworkError:
+        return GwmNetworkError(operation=operation)
+    if error_type is GwmProtocolError:
+        return GwmProtocolError(operation=operation)
+    if error_type is GwmRedirectError:
+        return GwmRedirectError(operation=operation)
+    if error_type is GwmResponseTooLargeError:
+        return GwmResponseTooLargeError(operation=operation)
+    if error_type is GwmRoutePolicyError:
+        return GwmRoutePolicyError(operation=operation)
+    if error_type is GwmSchemaError:
+        return GwmSchemaError(operation=operation)
+    if error_type is GwmTlsError:
+        return GwmTlsError(operation=operation)
+    return GwmNetworkError(operation=operation)
+
+
+__all__ = ["GwmClient"]

@@ -128,6 +128,7 @@ addons/gwm_ora/                 Home Assistant add-on metadata, container packag
 addons/gwm_ora/src/GwmOra.Addon/ .NET add-on service
 addons/gwm_ora/src/LibGwmApi/   GWM API client adapted from ora2mqtt behavior
 custom_components/gwm_ora/      Home Assistant custom integration
+gwm_ora_client/                 Home Assistant-independent async GWM cloud client
 tests/                          .NET and Python tests
 .github/workflows/              CI and release workflows
 ```
@@ -162,6 +163,7 @@ Run:
 ```powershell
 dotnet test
 python -m ruff check gwm_ora_client custom_components tests/python
+python -m mypy gwm_ora_client
 python -m compileall gwm_ora_client custom_components tests/python
 python -m pytest tests/python
 ```

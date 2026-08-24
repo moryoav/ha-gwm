@@ -1,16 +1,42 @@
-"""Home Assistant-independent building blocks for the GWM cloud client.
+"""Home Assistant-independent async GWM cloud client foundation."""
 
-The package contains the offline Task 2 protocol primitives and a deliberately
-disposable, reuse-only Task 3 live-read proof.  It remains independent of Home
-Assistant; the production async transport begins in Task 4.
-"""
-
+from .client import GwmClient
+from .config import GwmClientConfig, RequestTimeouts
 from .crypto import (
     GeneratedClientCertificateRequest,
     generate_client_certificate_request,
     load_certificate,
     recover_transformed_private_key,
 )
+from .errors import (
+    GwmApiError,
+    GwmAuthenticationError,
+    GwmClientError,
+    GwmClosedError,
+    GwmConfigurationError,
+    GwmDeadlineExceededError,
+    GwmHttpError,
+    GwmNetworkError,
+    GwmOptionalEndpointError,
+    GwmProtocolError,
+    GwmRateLimitError,
+    GwmRedirectError,
+    GwmResponseTooLargeError,
+    GwmRoutePolicyError,
+    GwmSchemaError,
+    GwmTlsError,
+    GwmTransportError,
+)
+from .models import (
+    CloudClimateConfiguration,
+    CloudStatusItem,
+    CloudVehicle,
+    CloudVehicleBasics,
+    CloudVehicleStatus,
+    GwmSession,
+    VehicleIdentifier,
+)
+from .regions import Region
 from .signing import (
     ANZ_BT_AUTH,
     EU_BT_AUTH,
@@ -24,13 +50,41 @@ from .tls import LEGACY_CIPHER_STRING, create_gwm_ssl_context
 
 __all__ = [
     "ANZ_BT_AUTH",
+    "CloudClimateConfiguration",
+    "CloudStatusItem",
+    "CloudVehicle",
+    "CloudVehicleBasics",
+    "CloudVehicleStatus",
     "EU_BT_AUTH",
     "EU_GWM_AUTH",
+    "GwmApiError",
+    "GwmAuthenticationError",
+    "GwmClient",
+    "GwmClientConfig",
+    "GwmClientError",
+    "GwmClosedError",
+    "GwmConfigurationError",
+    "GwmDeadlineExceededError",
+    "GwmHttpError",
+    "GwmNetworkError",
+    "GwmOptionalEndpointError",
+    "GwmProtocolError",
+    "GwmRateLimitError",
+    "GwmRedirectError",
+    "GwmResponseTooLargeError",
+    "GwmRoutePolicyError",
+    "GwmSchemaError",
+    "GwmSession",
+    "GwmTlsError",
+    "GwmTransportError",
     "LEGACY_CIPHER_STRING",
     "RUSSIA_GWM_AUTH",
+    "Region",
+    "RequestTimeouts",
     "GeneratedClientCertificateRequest",
     "SignedRequest",
     "SigningProfile",
+    "VehicleIdentifier",
     "create_gwm_ssl_context",
     "generate_client_certificate_request",
     "load_certificate",

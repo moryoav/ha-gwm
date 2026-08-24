@@ -6,8 +6,8 @@ This document is the durable plan, behavior contract, decision log, and test led
 
 - Working branch: `feature/integration-only`
 - Branch point: `1184737` (`Update README GWM logo to SVG`)
-- Current checkpoint: Task 3 complete; Gate A passed
-- Next checkpoint: Task 4 — async, typed, HA-independent client foundation (not yet approved)
+- Current checkpoint: Task 4 complete; Gate A remains passed
+- Next checkpoint: Task 5 — EU production authentication and read parity (not yet approved)
 - Runtime behavior changed so far: none
 
 Work proceeds one explicitly approved task at a time. At the end of every task, update this document, run the checks appropriate to that checkpoint, create one focused local commit, report the result, and stop. Do not begin the next task without a new user green light.
@@ -241,7 +241,7 @@ After Task 18, packaging, installation migration, documentation, complete tests,
 - [x] Task 1 — Create branch, record baseline, architecture, and parity contract.
 - [x] Task 2 — Build offline Python crypto, signing, and scoped-TLS POC.
 - [x] Task 3 — Run a live read-only direct-cloud POC in an available region.
-- [ ] Task 4 — Harden the POC into an async, typed, HA-independent client foundation.
+- [x] Task 4 — Harden the POC into an async, typed, HA-independent client foundation.
 - [ ] Task 5 — Implement EU production authentication and read parity.
 - [ ] Task 6 — Implement ANZ production authentication and read parity.
 - [ ] Task 7 — Implement Russia production authentication and read parity.
@@ -275,6 +275,10 @@ After Task 18, packaging, installation migration, documentation, complete tests,
 | D-012 | 2026-08-24 | Pass the unchanged OEM CA bundles directly to OpenSSL after strict PEM/DER-envelope validation. | Modern `cryptography` rejects invalid characters in the legacy CA subjects; rewriting signed certificates would invalidate them, while OpenSSL accepts the original bundles at the required scoped security level. |
 | D-013 | 2026-08-24 | Make the live POC reuse-only and limit it to vehicle discovery plus one status read. | Existing add-on state avoids login, refresh, verification, enrollment, and ANZ session-reclaim side effects; omitting user-profile retrieval minimizes personal data handled by the proof. |
 | D-014 | 2026-08-24 | Treat the cloud `vin` field as an opaque bounded vehicle identifier and require canonical percent encoding. | GWM distinguishes its internal encoded identifier from the displayed VIN; strict round-trip encoding preserves compatibility without permitting query injection. |
+| D-015 | 2026-08-24 | Expose only typed discovery, last-status, and vehicle-basics reads from the Task 4 client. | A closed operation registry hardens the POC without creating an arbitrary method/path escape hatch or prematurely enabling session and vehicle mutations. |
+| D-016 | 2026-08-24 | Use immutable per-request session snapshots and independent immutable regional protocol policies. | Token or TLS-identity replacement can affect future requests without mutating an in-flight request, while EU, ANZ, and Russia retain separate origin, signing, header, query, decoding, device-ID, country, and TLS contracts. |
+| D-017 | 2026-08-24 | Use `aiohttp` with a single monotonic deadline, bounded streaming, and redirects, environment proxies, cookies, content decoding, and retries disabled. | The integration needs native async I/O and reliable cancellation without leaking signed URLs or allowing hidden network behavior; compressed responses remain rejected until bounded decompression is deliberately implemented. |
+| D-018 | 2026-08-24 | Make strict typing and a dependency-minimal client suite explicit CI gates. | Directly testing against `aiohttp`, `cryptography`, and pytest without Home Assistant proves the protocol package remains independently usable; strict mypy checking catches boundary drift before HA wiring begins. |
 
 ## Baseline Evidence
 
@@ -418,6 +422,48 @@ dotnet test --no-restore --configuration Release
 
 The Python warning and .NET nullable-annotation warnings are the unchanged baseline warnings. Gate A is passed for direct EU vehicle reads. ANZ and Russia remain offline-parity-only until their later regional checkpoints.
 
+## Task 4 Async Client Foundation Evidence
+
+Evidence captured on 2026-08-24 from `feature/integration-only`. All Task 4 execution was offline: no GWM endpoint, account state, Home Assistant instance, add-on, vehicle, or command was contacted or changed. The disposable Task 3 runner remains isolated and unchanged.
+
+Delivered foundation:
+
+- Added a lifecycle-managed `GwmClient` with typed `acquire_vehicles`, `get_last_status`, and `get_vehicle_basics` methods. It requires an existing immutable authenticated-session snapshot; no login, refresh, verification, enrollment, session reclaim, persistence, or HA wiring exists yet.
+- Added separately testable immutable EU, ANZ, and Russia policies for the known H5, auth, app, and certificate origins, regional signers, static/dynamic headers, country and device-ID rules, TLS roles, query canonicalization, and scalar-tolerance boundaries.
+- Added redaction-safe cloud vehicle, status-item, status, and basics DTOs without Task 8 normalized-snapshot mapping. Discovery parsing deliberately discards unrelated license, engine, ICCID, location, and other unknown fields; status values are recursively frozen for later mapping.
+- Added a dedicated `aiohttp` transport with exact encoded URLs, an injected policy-validated `SSLContext`, no redirects/proxies/cookies/retries/automatic decompression, bounded streaming, response cleanup, owned-versus-external lifecycle, and no background tasks. Identity provisioning remains part of the regional authentication checkpoints.
+- Applied one absolute event-loop deadline across lock acquisition, transport, response streaming, envelope parsing, and typed decoding. Caller cancellation propagates unchanged; overlapping account requests are serialized.
+- Added fixed-message configuration, route, lifecycle, transport, HTTP, authentication, rate-limit, API, protocol, and schema exceptions that retain no URL, headers, body, cloud description, identifier, token, TLS material, or underlying aiohttp exception.
+- Added strict UTF-8 JSON and envelope handling that rejects redirects, oversized/compressed responses, duplicate keys, `NaN`/infinity, excessive depth, numeric-zero success codes, missing data, and region-invalid typed payloads.
+- Added versioned, explicitly synthetic request/region fixtures and offline coverage for all three regions and all three read operations, including opaque encoded identifiers and Russia's integer-to-string precision boundary.
+- Added explicit `aiohttp` and mypy CI dependencies, a dependency-minimal client job, recursive HA-import boundary checks, and strict mypy checking for the reusable package while excluding only the disposable Task 3 runner.
+- Made no released add-on or integration runtime-path change and performed no network I/O.
+
+Validation:
+
+```text
+# Dependency-minimal HA-independent client suite
+python -m pytest tests/python/client
+321 passed
+
+python -m mypy gwm_ora_client
+Success: no issues found in 11 source files
+
+python -m ruff check gwm_ora_client custom_components tests/python
+All checks passed!
+
+python -m compileall -q gwm_ora_client custom_components tests/python
+# no output; exit 0
+
+python -m pytest tests/python
+358 passed, 1 warning
+
+dotnet test --no-restore --configuration Release
+128 passed, 0 failed, 0 skipped
+```
+
+The dependency-minimal Ruff, mypy, compile, and 321-test client gate also passed under WSL/Linux with Python 3.13. The Python warning and .NET nullable-annotation warnings are the unchanged baseline warnings. The async read surface is production-structured but not production-authenticated: Tasks 5–7 must still implement and prove each region's authentication/session behavior and expand sanitized regional response parity before Home Assistant can use it.
+
 ## Checkpoint Log
 
 ### Task 1 — Branch, baseline, and migration ledger
@@ -462,9 +508,22 @@ Delivered:
 - Replaced captured or real-looking vehicle identifiers in existing vectors, regional tests, and service examples with explicit synthetic fixtures.
 - Made no released add-on or integration runtime-path change.
 
+### Task 4 — Async typed client foundation
+
+Status: complete on 2026-08-24.
+
+Delivered:
+
+- Replaced the disposable POC's architectural role with separate production modules for configuration, errors, immutable cloud DTOs, regional policy, private wire contracts, async transport, and the typed read client; retained the POC itself as Task 3 evidence.
+- Defined the full known regional origin/signing/TLS matrix while exposing only the three read operations and an immutable existing-session snapshot.
+- Added strict route, header, TLS, response, error-redaction, timeout, cancellation, non-overlap, lifecycle, and scalar-decoding boundaries while preserving finite raw cloud values for Task 8 availability normalization.
+- Added versioned synthetic fixtures and expanded the dependency-minimal suite to 321 tests (217 added after Task 3), with strict package type checking and dedicated CI coverage.
+- Kept authentication, persistence, normalized snapshot mapping, Home Assistant wiring, commands, charging, packaging, and migration deferred to their planned checkpoints.
+- Made no live request and no add-on or integration runtime-path change.
+
 ### Next checkpoint (requires explicit approval)
 
-Task 4 will turn the disposable proof into an async, typed, HA-independent client foundation. It will define production transport, regional strategy, models, exception taxonomy, cancellation/timeouts, and test fixtures while retaining the existing add-on/integration runtime path. Task 4 will not yet implement production login flows, switch Home Assistant to direct cloud access, send vehicle commands, publish anything, or remove the Task 3 safety evidence.
+Task 5 will implement EU production login, verification continuation, token refresh, client-certificate enrollment/renewal, immutable session replacement, and sanitized EU discovery/status/basics response parity on top of the Task 4 foundation. It will remain HA-independent and read-only: it will not switch Home Assistant to direct cloud access, implement ANZ/Russia authentication, send vehicle commands, change charging plans, publish anything, or remove the existing add-on path. Any Task 5 live read will require explicit approval and a separately agreed credential/evidence procedure.
 
 ## Open Risks and Questions
 
@@ -472,6 +531,9 @@ Task 4 will turn the disposable proof into an async, typed, HA-independent clien
 - The bundled EU general bootstrap certificate expires on 2027-01-04 and needs a renewal/provenance plan before production cutover.
 - Modern `cryptography` rejects invalid PrintableString characters in the legacy OEM CA subjects; the POC validates their envelopes and lets OpenSSL consume the original signed bytes instead.
 - Exact live parity of undocumented authentication and response behavior in ANZ and Russia; EU read transport is now proven live, while production EU authentication remains unimplemented.
+- The Task 4 cloud DTOs intentionally retain only the fields required to establish the boundary; Tasks 5–8 still need sanitized regional fixtures and complete normalized-snapshot parity.
+- ANZ's optional vehicle-basics `607099` response semantics remain explicitly deferred to Task 6 regional read parity.
+- Whether Task 9 should use one dedicated cookie-free client session per config entry or a policy-validated HA-owned session while preserving scoped TLS and unload ownership.
 - Availability of safe test accounts/vehicles for every regional read and write matrix.
 - ANZ’s single-active-session behavior during side-by-side migration testing.
 - Safe handling and future renewal of bundled bootstrap certificates and OEM-derived key material.

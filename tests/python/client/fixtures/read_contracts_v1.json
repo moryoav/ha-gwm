@@ -1,0 +1,58 @@
+{
+  "schema_version": 1,
+  "identifier": "SYNTHETIC+OPAQUE/ID=",
+  "regions": {
+    "eu": {
+      "country": "ZZ",
+      "device_id": "feedface-dead-beef-cafe-0123456789ab",
+      "normalized_device_id": "feedfacedeadbeef",
+      "host": "eu-app-gateway.gwmcloud.com",
+      "tls_mode": "eu_issued_mtls",
+      "signing_prefix": "bt-auth-",
+      "absent_headers": ["brandId", "communityBrand"]
+    },
+    "aus": {
+      "country": "AU",
+      "device_id": "feedface-dead-beef-cafe-0123456789ab",
+      "normalized_device_id": "feedfacedeadbeef",
+      "host": "aus-h5-gateway.gwmcloud.com",
+      "tls_mode": "default",
+      "signing_prefix": "bt-auth-",
+      "absent_headers": ["brandId", "communityBrand", "secVersion"]
+    },
+    "rus": {
+      "country": "RU",
+      "device_id": "feedface-dead-beef-cafe-0123456789ab",
+      "normalized_device_id": "feedface-dead-beef-cafe-0123456789ab",
+      "host": "rus-app-gateway.gwmcloud.com",
+      "tls_mode": "russia_bootstrap_mtls",
+      "signing_prefix": "gwm-auth-",
+      "absent_headers": []
+    }
+  },
+  "operations": [
+    {
+      "operation": "acquire_vehicles",
+      "path": "/app-api/api/v1.0/globalapp/vehicle/acquireVehicles",
+      "queries": {"eu": "", "aus": "", "rus": ""}
+    },
+    {
+      "operation": "get_last_status",
+      "path": "/app-api/api/v1.0/vehicle/getLastStatus",
+      "queries": {
+        "eu": "vin=SYNTHETIC%2BOPAQUE%2FID%3D&seqNo=",
+        "aus": "vin=SYNTHETIC%2BOPAQUE%2FID%3D",
+        "rus": "vin=SYNTHETIC%2BOPAQUE%2FID%3D"
+      }
+    },
+    {
+      "operation": "get_vehicle_basics",
+      "path": "/app-api/api/v1.0/vehicle/vehicleBasicsInfo",
+      "queries": {
+        "eu": "vin=SYNTHETIC%2BOPAQUE%2FID%3D&flag=true",
+        "aus": "flag=true&vin=SYNTHETIC%2BOPAQUE%2FID%3D",
+        "rus": "flag=true&vin=SYNTHETIC%2BOPAQUE%2FID%3D"
+      }
+    }
+  ]
+}
