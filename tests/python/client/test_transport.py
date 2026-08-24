@@ -157,6 +157,24 @@ def _request(*, context: ssl.SSLContext | None = None) -> _TransportRequest:
     )
 
 
+def _post_request(
+    *,
+    body: bytes = b'{"account":"synthetic@example.invalid"}',
+    context: ssl.SSLContext | None = None,
+) -> _TransportRequest:
+    return _TransportRequest(
+        operation="login",
+        method="POST",
+        url="https://example.invalid/app-api/api/v2.0/userAuth/loginWithPassword",
+        headers={
+            "Accept": "application/json",
+            "Content-Type": "application/json; charset=utf-8",
+        },
+        ssl_context=context or _context(),
+        body=body,
+    )
+
+
 def _deadline(seconds: float = 10) -> _Deadline:
     return _Deadline(asyncio.get_running_loop().time() + seconds)
 
@@ -192,6 +210,7 @@ async def test_transport_sends_exact_encoded_request_with_safe_options() -> None
     assert kwargs["auto_decompress"] is False
     assert kwargs["auth"] is None
     assert kwargs["cookies"] == {}
+    assert kwargs["data"] is None
     assert kwargs["middlewares"] == ()
     assert kwargs["params"] is None
     assert kwargs["proxy"] is None
@@ -199,6 +218,29 @@ async def test_transport_sends_exact_encoded_request_with_safe_options() -> None
     assert kwargs["raise_for_status"] is False
     assert kwargs["ssl"] is context
     assert kwargs["skip_auto_headers"] == {"Accept", "Accept-Encoding", "User-Agent"}
+    assert "json" not in kwargs
+
+
+@pytest.mark.asyncio
+async def test_transport_sends_exact_post_bytes_without_json_or_retry() -> None:
+    body = b'{"password":"SENSITIVE-request-body"}'
+    session = _FakeSession()
+    transport = AiohttpTransport(cast(aiohttp.ClientSession, session))
+
+    result = await transport.execute(
+        _post_request(body=body),
+        deadline=_deadline(),
+        connect_timeout=3,
+        read_timeout=4,
+    )
+
+    assert result.status == 200
+    assert len(session.calls) == 1
+    args, kwargs = session.calls[0]
+    assert args[0] == "POST"
+    assert kwargs["data"] is body
+    assert "json" not in kwargs
+    assert session._retry_connection is False
 
 
 @pytest.mark.asyncio
@@ -521,7 +563,7 @@ async def test_oversized_decimal_content_length_is_protocol_error() -> None:
         )
 
 
-def test_wire_request_rejects_non_get_unsafe_headers_origins_and_tls() -> None:
+def test_wire_request_rejects_unsupported_method_unsafe_headers_origins_and_tls() -> None:
     context = _context()
     context.check_hostname = False
     with pytest.raises(ValueError, match="^tls_context_invalid$"):
@@ -529,7 +571,7 @@ def test_wire_request_rejects_non_get_unsafe_headers_origins_and_tls() -> None:
     with pytest.raises(ValueError, match="^method_not_allowed$"):
         _TransportRequest(
             operation="request",
-            method="POST",
+            method="PUT",
             url="https://example.invalid/read",
             headers={},
             ssl_context=_context(),
@@ -546,5 +588,95 @@ def test_wire_request_rejects_non_get_unsafe_headers_origins_and_tls() -> None:
             operation="request",
             url="https://example.invalid/read",
             headers={"Cookie": SENSITIVE},
+            ssl_context=_context(),
+        )
+
+
+def test_wire_request_enforces_safe_get_and_post_body_contracts() -> None:
+    sensitive = b'SENSITIVE-request-body-019fea1b'
+    request = _post_request(body=sensitive)
+    assert request.body is sensitive
+    assert sensitive.decode() not in repr(request)
+    assert _post_request(body=b"x" * (512 * 1024)).body == b"x" * (512 * 1024)
+    assert _TransportRequest(
+        operation="request",
+        method="POST",
+        url="https://example.invalid/read",
+        headers={"content-type": "application/json; charset=utf-8"},
+        ssl_context=_context(),
+        body=b"{}",
+    ).body == b"{}"
+
+    invalid_requests = [
+        {
+            "method": "GET",
+            "headers": {},
+            "body": b"{}",
+        },
+        {
+            "method": "GET",
+            "headers": {"content-type": "application/json; charset=utf-8"},
+            "body": None,
+        },
+        {
+            "method": "POST",
+            "headers": {"Content-Type": "application/json; charset=utf-8"},
+            "body": None,
+        },
+        {
+            "method": "POST",
+            "headers": {"Content-Type": "application/json; charset=utf-8"},
+            "body": b"",
+        },
+        {
+            "method": "POST",
+            "headers": {"Content-Type": "application/json; charset=utf-8"},
+            "body": bytearray(b"{}"),
+        },
+        {
+            "method": "POST",
+            "headers": {"Content-Type": "application/json"},
+            "body": b"{}",
+        },
+        {
+            "method": "POST",
+            "headers": {},
+            "body": b"{}",
+        },
+        {
+            "method": "POST",
+            "headers": {"Content-Type": "application/json; charset=utf-8"},
+            "body": b"x" * (512 * 1024 + 1),
+        },
+    ]
+    for values in invalid_requests:
+        with pytest.raises(ValueError):
+            _TransportRequest(
+                operation="request",
+                url="https://example.invalid/read",
+                ssl_context=_context(),
+                **values,  # type: ignore[arg-type]
+            )
+
+
+def test_wire_request_rejects_headers_duplicated_case_insensitively() -> None:
+    with pytest.raises(ValueError, match="^header_invalid$"):
+        _TransportRequest(
+            operation="request",
+            method="POST",
+            url="https://example.invalid/read",
+            headers={
+                "Content-Type": "application/json; charset=utf-8",
+                "content-type": "application/json; charset=utf-8",
+            },
+            ssl_context=_context(),
+            body=b"{}",
+        )
+
+    with pytest.raises(ValueError, match="^header_invalid$"):
+        _TransportRequest(
+            operation="request",
+            url="https://example.invalid/read",
+            headers={"X-Trace": "one", "x-trace": "two"},
             ssl_context=_context(),
         )

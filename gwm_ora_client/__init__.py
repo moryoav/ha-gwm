@@ -27,6 +27,21 @@ from .errors import (
     GwmTlsError,
     GwmTransportError,
 )
+from .eu_auth import (
+    EuAuthenticated,
+    EuAuthenticationResult,
+    EuAuthState,
+    EuCredentials,
+    EuVerificationRequired,
+)
+from .eu_identity import (
+    EuBootstrapMaterial,
+    EuIdentityError,
+    EuIssuedIdentity,
+    create_eu_bootstrap_ssl_context,
+    create_eu_issued_ssl_context,
+    is_eu_issued_identity_usable,
+)
 from .models import (
     CloudClimateConfiguration,
     CloudStatusItem,
@@ -57,6 +72,14 @@ __all__ = [
     "CloudVehicleStatus",
     "EU_BT_AUTH",
     "EU_GWM_AUTH",
+    "EuAuthenticated",
+    "EuAuthenticationResult",
+    "EuAuthState",
+    "EuBootstrapMaterial",
+    "EuCredentials",
+    "EuIdentityError",
+    "EuIssuedIdentity",
+    "EuVerificationRequired",
     "GwmApiError",
     "GwmAuthenticationError",
     "GwmClient",
@@ -86,8 +109,11 @@ __all__ = [
     "SigningProfile",
     "VehicleIdentifier",
     "create_gwm_ssl_context",
+    "create_eu_bootstrap_ssl_context",
+    "create_eu_issued_ssl_context",
     "generate_client_certificate_request",
     "load_certificate",
+    "is_eu_issued_identity_usable",
     "recover_transformed_private_key",
     "sign_request",
 ]

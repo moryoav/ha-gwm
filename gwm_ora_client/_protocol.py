@@ -13,6 +13,8 @@ from urllib.parse import urlsplit
 
 _OPERATION_ALIAS = re.compile(r"[a-z][a-z0-9_]{0,63}")
 _HEADER_NAME = re.compile(r"[-!#$%&'*+.^_`|~0-9A-Za-z]+")
+_JSON_CONTENT_TYPE = "application/json; charset=utf-8"
+_MAX_REQUEST_BODY_BYTES = 512 * 1024
 _FORBIDDEN_HEADERS = frozenset(
     {
         "authorization",
@@ -39,11 +41,12 @@ class _TransportRequest:
     headers: Mapping[str, str] = field(repr=False)
     ssl_context: ssl.SSLContext = field(repr=False)
     method: str = "GET"
+    body: bytes | None = field(default=None, repr=False)
 
     def __post_init__(self) -> None:
         if _OPERATION_ALIAS.fullmatch(self.operation) is None:
             raise ValueError("operation_invalid")
-        if self.method != "GET":
+        if self.method not in {"GET", "POST"}:
             raise ValueError("method_not_allowed")
         _validate_https_url(self.url)
         if (
@@ -54,18 +57,41 @@ class _TransportRequest:
             raise ValueError("tls_context_invalid")
 
         copied: dict[str, str] = {}
+        normalized_names: set[str] = set()
         for name, value in self.headers.items():
+            normalized_name = name.lower() if isinstance(name, str) else ""
             if (
                 not isinstance(name, str)
                 or _HEADER_NAME.fullmatch(name) is None
-                or name.lower() in _FORBIDDEN_HEADERS
+                or normalized_name in _FORBIDDEN_HEADERS
+                or normalized_name in normalized_names
                 or not isinstance(value, str)
                 or any(ord(character) < 0x20 or ord(character) > 0x7E for character in value)
                 or "\r" in value
                 or "\n" in value
             ):
                 raise ValueError("header_invalid")
+            normalized_names.add(normalized_name)
             copied[name] = value
+
+        content_type = next(
+            (value for name, value in copied.items() if name.lower() == "content-type"),
+            None,
+        )
+        if self.method == "GET":
+            if self.body is not None:
+                raise ValueError("request_body_invalid")
+            if content_type is not None:
+                raise ValueError("header_invalid")
+        else:
+            if (
+                not isinstance(self.body, bytes)
+                or not self.body
+                or len(self.body) > _MAX_REQUEST_BODY_BYTES
+            ):
+                raise ValueError("request_body_invalid")
+            if content_type != _JSON_CONTENT_TYPE:
+                raise ValueError("header_invalid")
         object.__setattr__(self, "headers", MappingProxyType(copied))
 
 

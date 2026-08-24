@@ -282,7 +282,7 @@ async def test_versioned_read_fixture_matches_all_regions_and_operations() -> No
             assert transport.close_calls == 0
 
 
-def test_only_closed_read_registry_and_typed_public_methods_exist() -> None:
+def test_only_closed_operation_surfaces_and_typed_public_methods_exist() -> None:
     assert set(_READ_ENDPOINTS) == {
         "acquire_vehicles",
         "get_last_status",
@@ -296,6 +296,7 @@ def test_only_closed_read_registry_and_typed_public_methods_exist() -> None:
     assert public_coroutines == {
         "aclose",
         "acquire_vehicles",
+        "authenticate_eu",
         "get_last_status",
         "get_vehicle_basics",
     }

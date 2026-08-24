@@ -1,4 +1,4 @@
-"""Bounded aiohttp transport for already prepared GWM read requests."""
+"""Bounded aiohttp transport for already prepared GWM requests."""
 
 from __future__ import annotations
 
@@ -32,7 +32,7 @@ _SKIP_AUTO_HEADERS = frozenset({"Accept", "Accept-Encoding", "User-Agent"})
 
 
 class AiohttpTransport:
-    """Execute fixed read requests without redirects, cookies, proxies, or retries."""
+    """Execute fixed requests without redirects, cookies, proxies, or retries."""
 
     def __init__(
         self,
@@ -146,6 +146,7 @@ class AiohttpTransport:
                 auto_decompress=False,
                 auth=None,
                 cookies={},
+                data=request.body,
                 headers=request.headers,
                 middlewares=(),
                 params=None,

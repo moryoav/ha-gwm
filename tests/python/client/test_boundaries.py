@@ -82,8 +82,6 @@ def test_client_fixtures_are_versioned_and_explicitly_synthetic() -> None:
         assert payload["schema_version"] == 1
         assert "-----BEGIN PRIVATE KEY-----" not in text
         assert "-----BEGIN RSA PRIVATE KEY-----" not in text
-        assert '"password"' not in text
-        assert '"refresh_token"' not in text
         _assert_sensitive_fixture_values_are_synthetic(payload)
 
 
@@ -93,8 +91,18 @@ def _assert_sensitive_fixture_values_are_synthetic(value: object) -> None:
             normalized_key = key.replace("_", "").lower()
             if normalized_key in {"accesstoken", "refreshtoken"}:
                 assert isinstance(child, str) and child.startswith("SYNTHETIC-")
+            if normalized_key == "password":
+                assert isinstance(child, str) and child.startswith("SYNTHETIC-")
+            if normalized_key in {"account", "email"}:
+                assert isinstance(child, str) and child.startswith("SYNTHETIC-")
+            if key in {"verifyCode", "verificationCode", "verification_code"}:
+                assert isinstance(child, str) and child.startswith("SYNTHETIC-")
+            if normalized_key in {"privatekey", "clientprivatekey"}:
+                raise AssertionError("private keys are forbidden in fixtures")
             if key == "identifier":
                 assert isinstance(child, str) and child.startswith("SYNTHETIC")
+            if key == "body" and isinstance(child, str) and child.startswith(("{", "[")):
+                _assert_sensitive_fixture_values_are_synthetic(json.loads(child))
             _assert_sensitive_fixture_values_are_synthetic(child)
     elif isinstance(value, list):
         for child in value:
@@ -105,3 +113,20 @@ def _assert_sensitive_fixture_values_are_synthetic(value: object) -> None:
 def test_fixture_guard_covers_wire_and_python_token_spellings(key: str) -> None:
     with pytest.raises(AssertionError):
         _assert_sensitive_fixture_values_are_synthetic({key: "REAL-TOKEN-MUST-FAIL"})
+
+
+@pytest.mark.parametrize(
+    "key",
+    [
+        "accessToken",
+        "refreshToken",
+        "password",
+        "account",
+        "email",
+        "verifyCode",
+        "privateKey",
+    ],
+)
+def test_fixture_guard_inspects_embedded_wire_bodies(key: str) -> None:
+    with pytest.raises(AssertionError):
+        _assert_sensitive_fixture_values_are_synthetic({"body": json.dumps({key: "REAL-MATERIAL-MUST-FAIL"})})
