@@ -92,8 +92,8 @@ Run:
 
 ```powershell
 dotnet test
-python -m ruff check custom_components tests/python
-python -m compileall custom_components tests/python
+python -m ruff check gwm_ora_client custom_components tests/python
+python -m compileall gwm_ora_client custom_components tests/python
 python -m pytest tests/python
 ```
 

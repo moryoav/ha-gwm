@@ -6,8 +6,8 @@ This document is the durable plan, behavior contract, decision log, and test led
 
 - Working branch: `feature/integration-only`
 - Branch point: `1184737` (`Update README GWM logo to SVG`)
-- Current checkpoint: Task 1 complete
-- Next checkpoint: Task 2 — offline Python crypto, signing, and TLS proof of concept
+- Current checkpoint: Task 2 complete
+- Next checkpoint: Task 3 — live read-only direct-cloud proof of concept (not yet approved)
 - Runtime behavior changed so far: none
 
 Work proceeds one explicitly approved task at a time. At the end of every task, update this document, run the checks appropriate to that checkpoint, create one focused local commit, report the result, and stop. Do not begin the next task without a new user green light.
@@ -239,7 +239,7 @@ After Task 18, packaging, installation migration, documentation, complete tests,
 ## Roadmap
 
 - [x] Task 1 — Create branch, record baseline, architecture, and parity contract.
-- [ ] Task 2 — Build offline Python crypto, signing, and scoped-TLS POC.
+- [x] Task 2 — Build offline Python crypto, signing, and scoped-TLS POC.
 - [ ] Task 3 — Run a live read-only direct-cloud POC in an available region.
 - [ ] Task 4 — Harden the POC into an async, typed, HA-independent client foundation.
 - [ ] Task 5 — Implement EU production authentication and read parity.
@@ -270,6 +270,9 @@ After Task 18, packaging, installation migration, documentation, complete tests,
 | D-007 | 2026-08-22 | Preserve separate regional strategies and tests. | EU, ANZ, and Russia differ in authentication, signing, TLS, payloads, and response behavior. |
 | D-008 | 2026-08-22 | Require separate approval before every live write test. | Remote commands and charging schedules affect a real vehicle. |
 | D-009 | 2026-08-22 | Defer PyPI/bundling and installation-migration decisions until after the POC. | Avoid release and migration work before feasibility is demonstrated. |
+| D-010 | 2026-08-24 | Keep the POC in a repository-root `gwm_ora_client` package with no HA imports. | Prove the protocol boundary independently while packaging for HACS versus PyPI remains deferred. |
+| D-011 | 2026-08-24 | Apply `DEFAULT@SECLEVEL=0` only to a newly created GWM `SSLContext`, retaining Python's default protocol bounds, hostname checks, certificate verification, and system trust. | The legacy SHA-1 CA chain requires OpenSSL authentication level 0, but unrelated HA HTTPS traffic must retain its normal security policy. |
+| D-012 | 2026-08-24 | Pass the unchanged OEM CA bundles directly to OpenSSL after strict PEM/DER-envelope validation. | Modern `cryptography` rejects invalid characters in the legacy CA subjects; rewriting signed certificates would invalidate them, while OpenSSL accepts the original bundles at the required scoped security level. |
 
 ## Baseline Evidence
 
@@ -315,6 +318,62 @@ dotnet test --no-restore --configuration Release
 
 Restore/build emitted existing `CS8632` warnings where nullable annotations appear in the `LibGwmApi` project while nullable context is disabled. They did not fail the build or tests.
 
+## Task 2 Feasibility Evidence
+
+Evidence captured on 2026-08-24 from `feature/integration-only` before the Task 2 checkpoint commit. All work was offline: no GWM endpoint, account, credential, token, VIN, or vehicle command was used.
+
+Environment:
+
+- Ubuntu under WSL2 with CPython 3.13.13.
+- Home Assistant 2026.2.3 for the complete integration suite.
+- `cryptography` 46.0.5 and OpenSSL 3.5.6.
+- A separate dependency-minimal run installed only `cryptography` and pytest for the client POC tests; Home Assistant was not installed in that environment.
+
+Results:
+
+- Reproduced all 13 existing C# signature vectors: EU `gwm-auth`, EU `bt-auth`, ANZ `bt-auth`, and Russia `gwm-auth`.
+- Preserved the regional query differences, exact JSON-body signing, nonce case, app profiles, .NET whitespace behavior, and whole-string percent encoding.
+- Parsed both general client certificates, reversed both transformed private exponents, recovered valid RSA-2048 CRT keys, matched their certificate public keys, and signed/verified fixed messages.
+- Validated the three-certificate EU and Russia PEM envelopes and regional subject markers without altering the signed legacy CA data.
+- Generated a fixed-input enrollment CSR with the expected subject order and values, RSA-2048 key, SHA-256 with PKCS#1 v1.5 signature, Base64 DER CSR, and Base64 PKCS#8 key.
+- Loaded both regional CA bundles and recovered client identities into dedicated GWM contexts while retaining hostname verification, `CERT_REQUIRED`, and Python's default TLS protocol bounds.
+- Proved that constructing a GWM context changes neither `OPENSSL_CONF`, Python's default HTTPS-context factory/cipher policy, nor the security level and ciphers of a fresh default context.
+- Added strict rejection for incomplete, corrupt, or trailing-garbage CA bundles and mismatched or structurally changed transformed keys.
+- Kept URLs, signed bodies, CSRs, and private keys out of result-object representations.
+
+The actual legacy-chain reason was also reproduced with frozen-time offline OpenSSL verification for both EU and Russia:
+
+```text
+openssl verify -attime 1786119079 -auth_level 2 ...
+error 68 at 1 depth lookup: CA signature digest algorithm too weak
+
+openssl verify -attime 1786119079 -auth_level 0 ...
+gwm_general.cer: OK
+gwm_general_rus.cer: OK
+```
+
+Validation:
+
+```text
+# Dependency-minimal client run (no Home Assistant installed)
+python -m pytest tests/python/client
+44 passed
+
+python -m ruff check gwm_ora_client custom_components tests/python
+All checks passed!
+
+python -m compileall -q gwm_ora_client custom_components tests/python
+# no output; exit 0
+
+python -m pytest tests/python
+81 passed, 1 warning
+
+dotnet test --no-restore --configuration Release
+128 passed, 0 failed, 0 skipped
+```
+
+The Python warning remains the same upstream `aiohttp.web.Application` inheritance deprecation recorded at baseline. The .NET build likewise retains only the baseline `CS8632` warnings.
+
 ## Checkpoint Log
 
 ### Task 1 — Branch, baseline, and migration ledger
@@ -330,13 +389,29 @@ Delivered:
 - Recorded decisions, acceptance gates, risks, and the remaining task sequence.
 - Made no runtime behavior changes.
 
-### Next approved checkpoint
+### Task 2 — Offline Python crypto, signing, and scoped TLS POC
 
-Task 2 will add only offline, library-shaped Python POC code and deterministic tests for signing, transformed-key recovery, certificates/CSR, and a scoped GWM TLS context. It will not connect to GWM, change HA runtime behavior, send commands, or store live secrets.
+Status: complete on 2026-08-24.
+
+Delivered:
+
+- Added HA-independent, offline signing, certificate/key recovery, CSR, and TLS-context primitives under `gwm_ora_client`.
+- Ported every current C# signing golden vector and added canonicalization edge coverage.
+- Proved recovery and use of the existing EU and Russia transformed bootstrap keys.
+- Proved that the real regional legacy CA material and matching identities load into context-local OpenSSL policy without changing process defaults.
+- Added architectural, malformed-input, and sensitive-representation tests.
+- Extended CI and contributor check scopes to include the standalone client package and made `cryptography` an explicit CI dependency.
+- Made no HA integration/add-on runtime change and performed no network I/O.
+
+### Next checkpoint (requires explicit approval)
+
+Task 3 will perform a narrowly bounded live, read-only direct-cloud POC in one available region using user-supplied credentials outside the repository. Before starting, agree on the available region/account, credential-handling method, sanitized evidence, and how to avoid disrupting ANZ's single-active-session behavior. Task 3 will not change HA runtime behavior, send vehicle commands, publish anything, or commit credentials or cloud responses.
 
 ## Open Risks and Questions
 
-- Whether every GWM legacy TLS requirement can be scoped to a dedicated Python SSL context on all supported HA architectures.
+- Cross-architecture confirmation of the scoped GWM SSL context; Linux x86-64/OpenSSL 3.5.6 is proven offline, while supported ARM architectures remain untested.
+- The bundled EU general bootstrap certificate expires on 2027-01-04 and needs a renewal/provenance plan before production cutover.
+- Modern `cryptography` rejects invalid PrintableString characters in the legacy OEM CA subjects; the POC validates their envelopes and lets OpenSSL consume the original signed bytes instead.
 - Exact live parity of undocumented authentication and response behavior across EU, ANZ, and Russia.
 - Availability of safe test accounts/vehicles for every regional read and write matrix.
 - ANZ’s single-active-session behavior during side-by-side migration testing.
