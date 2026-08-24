@@ -1,8 +1,8 @@
 """Home Assistant-independent building blocks for the GWM cloud client.
 
-Task 2 intentionally exposes only the offline signing, certificate, CSR, and
-TLS primitives needed to prove that the add-on protocol can be ported.  No
-network transport or Home Assistant runtime code belongs in this package yet.
+The package contains the offline Task 2 protocol primitives and a deliberately
+disposable, reuse-only Task 3 live-read proof.  It remains independent of Home
+Assistant; the production async transport begins in Task 4.
 """
 
 from .crypto import (

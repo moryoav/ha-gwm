@@ -6,8 +6,8 @@ This document is the durable plan, behavior contract, decision log, and test led
 
 - Working branch: `feature/integration-only`
 - Branch point: `1184737` (`Update README GWM logo to SVG`)
-- Current checkpoint: Task 2 complete
-- Next checkpoint: Task 3 — live read-only direct-cloud proof of concept (not yet approved)
+- Current checkpoint: Task 3 complete; Gate A passed
+- Next checkpoint: Task 4 — async, typed, HA-independent client foundation (not yet approved)
 - Runtime behavior changed so far: none
 
 Work proceeds one explicitly approved task at a time. At the end of every task, update this document, run the checks appropriate to that checkpoint, create one focused local commit, report the result, and stop. Do not begin the next task without a new user green light.
@@ -220,7 +220,7 @@ Tasks 1–3 intentionally do not:
 
 ## Acceptance Gates
 
-### Gate A — Technical feasibility
+### Gate A — Technical feasibility (passed 2026-08-24)
 
 After Task 3, Python must reproduce the offline signing/certificate vectors and retrieve a sanitized live vehicle snapshot directly from at least one GWM region using scoped TLS. Failure pauses the migration for reassessment.
 
@@ -240,7 +240,7 @@ After Task 18, packaging, installation migration, documentation, complete tests,
 
 - [x] Task 1 — Create branch, record baseline, architecture, and parity contract.
 - [x] Task 2 — Build offline Python crypto, signing, and scoped-TLS POC.
-- [ ] Task 3 — Run a live read-only direct-cloud POC in an available region.
+- [x] Task 3 — Run a live read-only direct-cloud POC in an available region.
 - [ ] Task 4 — Harden the POC into an async, typed, HA-independent client foundation.
 - [ ] Task 5 — Implement EU production authentication and read parity.
 - [ ] Task 6 — Implement ANZ production authentication and read parity.
@@ -273,6 +273,8 @@ After Task 18, packaging, installation migration, documentation, complete tests,
 | D-010 | 2026-08-24 | Keep the POC in a repository-root `gwm_ora_client` package with no HA imports. | Prove the protocol boundary independently while packaging for HACS versus PyPI remains deferred. |
 | D-011 | 2026-08-24 | Apply `DEFAULT@SECLEVEL=0` only to a newly created GWM `SSLContext`, retaining Python's default protocol bounds, hostname checks, certificate verification, and system trust. | The legacy SHA-1 CA chain requires OpenSSL authentication level 0, but unrelated HA HTTPS traffic must retain its normal security policy. |
 | D-012 | 2026-08-24 | Pass the unchanged OEM CA bundles directly to OpenSSL after strict PEM/DER-envelope validation. | Modern `cryptography` rejects invalid characters in the legacy CA subjects; rewriting signed certificates would invalidate them, while OpenSSL accepts the original bundles at the required scoped security level. |
+| D-013 | 2026-08-24 | Make the live POC reuse-only and limit it to vehicle discovery plus one status read. | Existing add-on state avoids login, refresh, verification, enrollment, and ANZ session-reclaim side effects; omitting user-profile retrieval minimizes personal data handled by the proof. |
+| D-014 | 2026-08-24 | Treat the cloud `vin` field as an opaque bounded vehicle identifier and require canonical percent encoding. | GWM distinguishes its internal encoded identifier from the displayed VIN; strict round-trip encoding preserves compatibility without permitting query injection. |
 
 ## Baseline Evidence
 
@@ -374,6 +376,48 @@ dotnet test --no-restore --configuration Release
 
 The Python warning remains the same upstream `aiohttp.web.Application` inheritance deprecation recorded at baseline. The .NET build likewise retains only the baseline `CS8632` warnings.
 
+## Task 3 Live Feasibility Evidence
+
+Evidence captured on 2026-08-24 from `feature/integration-only`. The proof reused a temporary copy of existing EU/IL add-on state and performed no login, token refresh, verification, certificate enrollment, or vehicle mutation.
+
+Live result:
+
+- Retrieved the account's vehicle list directly from the EU app gateway and then retrieved one vehicle's last-status snapshot.
+- Sent exactly two allowlisted HTTPS `GET` requests: `globalapp/vehicle/acquireVehicles` and `vehicle/getLastStatus`.
+- Authenticated with the existing access token and matching device identity; no password, refresh token, verification code, security PIN, login, refresh, certificate enrollment, session reclaim, or user-profile request was used.
+- Loaded the existing enrolled EU client identity and direct issuing intermediate into a dedicated mutual-TLS context at OpenSSL security level 0.
+- Proved during the live run that hostname verification and `CERT_REQUIRED` remained enabled and that a fresh default TLS context retained its original security level, protocol bounds, cipher fingerprint, and HTTPS-context factory.
+- Received a non-empty discovery result and a status response containing item values plus timestamp, location, battery-SOC, and charging-signal fields. Only presence booleans were retained; identifiers, exact values, vehicle or status-item counts, model details, timestamps, coordinates, full request headers, query-bearing URLs, and raw response bodies were not recorded.
+- Used no redirects, proxies, cookies, retries, write-capable route, or fallback authentication path.
+
+Operational handling and restoration:
+
+- Created an add-on-only temporary Supervisor backup to obtain a consistent state copy outside the repository.
+- Stopped the add-on immediately around the two cloud reads and restarted it in the orchestration's unconditional recovery path.
+- Verified afterward that the add-on was `started`, automatic boot remained enabled, and the active Home Assistant config entry was `loaded`.
+- Removed the exact temporary Supervisor backup and the local backup, nested add-on archive, and extracted state file. No live credential, issued certificate/key, vehicle identifier, location, or cloud response remains in the worktree or temporary evidence.
+
+Validation:
+
+```text
+python -m pytest tests/python/client
+104 passed
+
+python -m ruff check gwm_ora_client custom_components tests/python
+All checks passed!
+
+python -m compileall -q gwm_ora_client custom_components tests/python
+# no output; exit 0
+
+python -m pytest tests/python
+141 passed, 1 warning
+
+dotnet test --no-restore --configuration Release
+128 passed, 0 failed, 0 skipped
+```
+
+The Python warning and .NET nullable-annotation warnings are the unchanged baseline warnings. Gate A is passed for direct EU vehicle reads. ANZ and Russia remain offline-parity-only until their later regional checkpoints.
+
 ## Checkpoint Log
 
 ### Task 1 — Branch, baseline, and migration ledger
@@ -403,16 +447,31 @@ Delivered:
 - Extended CI and contributor check scopes to include the standalone client package and made `cryptography` an explicit CI dependency.
 - Made no HA integration/add-on runtime change and performed no network I/O.
 
+### Task 3 — Live read-only direct-cloud POC
+
+Status: complete on 2026-08-24; Gate A passed for EU.
+
+Delivered:
+
+- Added a disposable, HA-independent, reuse-only live runner with exactly two post-signing allowlisted GET routes.
+- Added fail-closed regional host, method, path, query, country, header, response-size, redirect, proxy, retry, and error-category boundaries.
+- Kept ordinary TLS for ANZ and restricted the legacy mutual-TLS context to EU/Russia on a POSIX runtime with protected temporary identity files.
+- Added offline tests for all three regional routes/signatures/TLS policies, state isolation, opaque vehicle identifiers, canonical encoding, certificate-chain selection, temporary-key cleanup, redaction, malformed responses, and mutation/session endpoint rejection.
+- Completed a sanitized live EU discovery and last-status read using existing add-on state, without login, refresh, enrollment, commands, or user-profile retrieval.
+- Restored the running add-on and loaded integration entry and removed all temporary live material.
+- Replaced captured or real-looking vehicle identifiers in existing vectors, regional tests, and service examples with explicit synthetic fixtures.
+- Made no released add-on or integration runtime-path change.
+
 ### Next checkpoint (requires explicit approval)
 
-Task 3 will perform a narrowly bounded live, read-only direct-cloud POC in one available region using user-supplied credentials outside the repository. Before starting, agree on the available region/account, credential-handling method, sanitized evidence, and how to avoid disrupting ANZ's single-active-session behavior. Task 3 will not change HA runtime behavior, send vehicle commands, publish anything, or commit credentials or cloud responses.
+Task 4 will turn the disposable proof into an async, typed, HA-independent client foundation. It will define production transport, regional strategy, models, exception taxonomy, cancellation/timeouts, and test fixtures while retaining the existing add-on/integration runtime path. Task 4 will not yet implement production login flows, switch Home Assistant to direct cloud access, send vehicle commands, publish anything, or remove the Task 3 safety evidence.
 
 ## Open Risks and Questions
 
 - Cross-architecture confirmation of the scoped GWM SSL context; Linux x86-64/OpenSSL 3.5.6 is proven offline, while supported ARM architectures remain untested.
 - The bundled EU general bootstrap certificate expires on 2027-01-04 and needs a renewal/provenance plan before production cutover.
 - Modern `cryptography` rejects invalid PrintableString characters in the legacy OEM CA subjects; the POC validates their envelopes and lets OpenSSL consume the original signed bytes instead.
-- Exact live parity of undocumented authentication and response behavior across EU, ANZ, and Russia.
+- Exact live parity of undocumented authentication and response behavior in ANZ and Russia; EU read transport is now proven live, while production EU authentication remains unimplemented.
 - Availability of safe test accounts/vehicles for every regional read and write matrix.
 - ANZ’s single-active-session behavior during side-by-side migration testing.
 - Safe handling and future renewal of bundled bootstrap certificates and OEM-derived key material.

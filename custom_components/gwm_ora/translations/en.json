@@ -180,7 +180,7 @@
       "name": "Set charging plan",
       "description": "Set the vehicle's charging schedule. The car charges only inside the window; a window that starts in the future pauses charging until then. Requires enable_charging_control in the add-on.",
       "fields": {
-        "vin": { "name": "VIN", "description": "The vehicle VIN as shown on the device (the readable serial, e.g. LGWEEUA57TR603334)." },
+        "vin": { "name": "VIN", "description": "The vehicle VIN as shown on the device (the readable serial, e.g. LGWTEST00XX000001)." },
         "start_time": { "name": "Start time", "description": "When charging may start. Set a future time to pause charging until then." },
         "end_time": { "name": "End time", "description": "When charging stops. The window must be at least 5 minutes." }
       }

@@ -14,6 +14,10 @@ from gwm_ora_client.signing import (
 )
 
 SYNTHETIC_TIMESTAMP = "1721462400123"
+SYNTHETIC_EU_VEHICLE_ID = (
+    # Hex-encoded ``SYNTHETIC-OPAQUE-VEHICLE-ID-001``.
+    "53594e5448455449432d4f50415155452d56454849434c452d49442d303031"
+)
 
 
 @pytest.mark.parametrize(
@@ -65,16 +69,16 @@ SYNTHETIC_TIMESTAMP = "1721462400123"
             EU_BT_AUTH,
             "GET",
             "https://eu-app-gateway.gwmcloud.com/app-api/api/v1.0/vehicle/getLastStatus"
-            "?vin=364b543434447861582f66744a743231636d64577035716b727a346863424a5344475458585045314343733d"
+            f"?vin={SYNTHETIC_EU_VEHICLE_ID}"
             "&seqNo=&modelId=",
             None,
             "1786119094170",
             "38AA045BAECB0A9B",
-            "3a96df99215e51f70218b6e8a0004d26174a5f727715d371d225615d50e7b081",
+            "72e02850d26c284a0a409e0468c9dc635bd93e549cf440fbe6c945e3811fb82e",
             "https://eu-app-gateway.gwmcloud.com/app-api/api/v1.0/vehicle/getLastStatus"
-            "?vin=364b543434447861582f66744a743231636d64577035716b727a346863424a5344475458585045314343733d"
+            f"?vin={SYNTHETIC_EU_VEHICLE_ID}"
             "&seqNo=&modelId=",
-            id="eu-bt-auth-keeps-empty-parameters",
+            id="eu-bt-auth-synthetic-vehicle-keeps-empty-parameters",
         ),
         pytest.param(
             EU_BT_AUTH,

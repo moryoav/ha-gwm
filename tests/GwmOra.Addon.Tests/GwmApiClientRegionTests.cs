@@ -145,6 +145,7 @@ public class GwmApiClientRegionTests
     [Fact]
     public async Task RusAcceptsNumericVehicleIdAsString()
     {
+        // 2^53 + 1 proves number-to-string conversion does not lose precision.
         const string response = """
         {
           "code": "000000",
@@ -152,7 +153,7 @@ public class GwmApiClientRegionTests
           "data": [
             {
               "vin": "TESTVIN1234567890",
-              "vehicleId": 9049777052258173853,
+              "vehicleId": 9007199254740993,
               "modelName": "Jolion"
             }
           ]
@@ -166,7 +167,7 @@ public class GwmApiClientRegionTests
 
         Assert.Single(vehicles);
         Assert.Equal("TESTVIN1234567890", vehicles[0].Vin);
-        Assert.Equal("9049777052258173853", vehicles[0].VehicleId);
+        Assert.Equal("9007199254740993", vehicles[0].VehicleId);
     }
 
     [Fact]

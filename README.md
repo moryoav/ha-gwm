@@ -139,7 +139,7 @@ For an exact window, call `gwm_ora.set_charging_plan` from **Developer tools** >
 ```yaml
 action: gwm_ora.set_charging_plan
 data:
-  vin: "LGWEEUA57TR603334"
+  vin: "LGWTEST00XX000001"
   start_time: "2026-08-22 23:00:00+03:00"
   end_time: "2026-08-23 06:00:00+03:00"
 ```
@@ -149,7 +149,7 @@ A future start time leaves the car waiting until the window begins. GWM keeps on
 ```yaml
 action: gwm_ora.clear_charging_plan
 data:
-  vin: "LGWEEUA57TR603334"
+  vin: "LGWTEST00XX000001"
 ```
 
 The add-on records the exact plan it writes. If charging control is later disabled, it retries cleanup of that plan, but leaves a schedule alone when the official GWM app has replaced or changed it. The feature was live-tested on an ANZ ORA 5. Other regions use the same API path but have not yet been independently verified.

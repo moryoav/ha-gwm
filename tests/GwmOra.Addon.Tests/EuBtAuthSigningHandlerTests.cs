@@ -54,10 +54,11 @@ public class EuBtAuthSigningHandlerTests
     }
 
     [Fact]
-    public async Task CapturedGetLastStatusVectorKeepsAndSignsEmptyParameters()
+    public async Task SyntheticGetLastStatusVectorKeepsAndSignsEmptyParameters()
     {
+        // Hex-encoded "SYNTHETIC-OPAQUE-VEHICLE-ID-001".
         const string vin =
-            "364b543434447861582f66744a743231636d64577035716b727a346863424a5344475458585045314343733d";
+            "53594e5448455449432d4f50415155452d56454849434c452d49442d303031";
         var signer = new EuBtAuthSigningHandler(
             () => "1786119094170",
             () => "38AA045BAECB0A9B");
@@ -69,7 +70,7 @@ public class EuBtAuthSigningHandlerTests
 
         Assert.Equal($"?vin={vin}&seqNo=&modelId=", sent.RequestUri!.Query);
         Assert.Equal(
-            "3a96df99215e51f70218b6e8a0004d26174a5f727715d371d225615d50e7b081",
+            "72e02850d26c284a0a409e0468c9dc635bd93e549cf440fbe6c945e3811fb82e",
             sent.Headers.GetValues("bt-auth-sign").Single());
     }
 
