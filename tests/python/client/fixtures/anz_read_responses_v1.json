@@ -1,0 +1,48 @@
+{
+  "schema_version": 1,
+  "identifier": "SYNTHETIC+ANZ/OPAQUE=",
+  "responses": {
+    "acquire_vehicles": [
+      {
+        "vin": "SYNTHETIC+ANZ/OPAQUE=",
+        "defaultVehicle": true,
+        "appShowSeriesName": "Synthetic ANZ series",
+        "vehicleNick": null,
+        "modelName": "Synthetic ANZ model",
+        "brandName": "Synthetic brand",
+        "otBrandName": null,
+        "vtype": "BEV",
+        "vTypeName": "Battery electric",
+        "vehicleId": "SYNTHETIC-VEHICLE-ID",
+        "email": "SYNTHETIC-owner@example.invalid",
+        "licenseNumber": "SYNTHETIC-LICENSE-NOT-RETAINED"
+      }
+    ],
+    "get_last_status": {
+      "deviceId": "SYNTHETIC-TELEMATICS-ID",
+      "acquisitionTime": "1787661296789",
+      "updateTime": "1787661297890",
+      "latitude": "-33.8688",
+      "longitude": "151.2093",
+      "items": [
+        null,
+        {"code": "", "value": "ignored"},
+        {"code": "SOC", "value": 67, "unit": "%"},
+        {
+          "code": "NESTED",
+          "value": {"flag": true, "levels": [7, null, "synthetic"]},
+          "unit": null
+        }
+      ],
+      "email": "SYNTHETIC-owner@example.invalid"
+    },
+    "get_vehicle_basics": {
+      "config": {
+        "airConditionerTemperature": "21.5",
+        "airConditionerStatusTime": "7",
+        "engineStatusTime": "9",
+        "email": "SYNTHETIC-owner@example.invalid"
+      }
+    }
+  }
+}

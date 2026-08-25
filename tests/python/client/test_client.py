@@ -28,6 +28,7 @@ from gwm_ora_client.errors import (
     GwmDeadlineExceededError,
     GwmHttpError,
     GwmNetworkError,
+    GwmOptionalEndpointError,
     GwmRateLimitError,
     GwmRoutePolicyError,
     GwmSchemaError,
@@ -296,6 +297,7 @@ def test_only_closed_operation_surfaces_and_typed_public_methods_exist() -> None
     assert public_coroutines == {
         "aclose",
         "acquire_vehicles",
+        "authenticate_anz",
         "authenticate_eu",
         "get_last_status",
         "get_vehicle_basics",
@@ -847,3 +849,158 @@ def test_region_fixture_tls_role_matches_protocol() -> None:
     for value, case in fixture["regions"].items():
         protocol = get_region_protocol(value)
         assert protocol.gateway(GatewayRole.APP_V1).tls_mode.value == case["tls_mode"]
+
+
+def _api_failure(code: str) -> _TransportResponse:
+    return _TransportResponse(
+        status=200,
+        headers={"Content-Type": "application/json"},
+        body=json.dumps(
+            {"code": code, "description": SENSITIVE, "data": {"raw": SENSITIVE}},
+            separators=(",", ":"),
+        ).encode(),
+    )
+
+
+@pytest.mark.asyncio
+async def test_exact_anz_basics_607099_is_typed_optional_endpoint_failure() -> None:
+    transport = _RecordingTransport([_api_failure("607099")])
+    client = GwmClient(
+        GwmClientConfig(region=Region.ANZ),
+        _session(Region.ANZ),
+        transport=transport,
+    )
+
+    with pytest.raises(GwmOptionalEndpointError) as raised:
+        await client.get_vehicle_basics(VehicleIdentifier(_fixture()["identifier"]))
+    assert raised.value.api_code == "607099"
+    assert raised.value.operation == "get_vehicle_basics"
+    assert SENSITIVE not in repr(raised.value)
+    assert client.authenticated
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("region", "operation", "code"),
+    [
+        (Region.ANZ, "get_vehicle_basics", "607098"),
+        (Region.ANZ, "acquire_vehicles", "607099"),
+        (Region.ANZ, "get_last_status", "607099"),
+        (Region.EU, "get_vehicle_basics", "607099"),
+        (Region.RUSSIA, "get_vehicle_basics", "607099"),
+    ],
+)
+async def test_optional_basics_classification_is_exactly_region_operation_and_code_scoped(
+    region: Region,
+    operation: str,
+    code: str,
+) -> None:
+    transport = _RecordingTransport([_api_failure(code)])
+    client = GwmClient(GwmClientConfig(region=region), _session(region), transport=transport)
+
+    with pytest.raises(GwmApiError) as raised:
+        await _invoke(client, operation)
+    assert type(raised.value) is GwmApiError
+    assert raised.value.api_code == code
+    assert client.authenticated
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("operation", "code"),
+    [
+        ("get_vehicle_basics", " 607099 "),
+        ("acquire_vehicles", " 607501 "),
+    ],
+)
+async def test_anz_regional_application_codes_require_an_exact_raw_string(
+    operation: str,
+    code: str,
+) -> None:
+    transport = _RecordingTransport([_api_failure(code)])
+    client = GwmClient(
+        GwmClientConfig(region=Region.ANZ),
+        _session(Region.ANZ),
+        transport=transport,
+    )
+
+    with pytest.raises(GwmApiError) as raised:
+        await _invoke(client, operation)
+    assert type(raised.value) is GwmApiError
+    assert raised.value.api_code == code.strip()
+    assert client.authenticated
+
+
+@pytest.mark.asyncio
+async def test_exact_anz_read_607501_retires_matching_session() -> None:
+    transport = _RecordingTransport([_api_failure("607501")])
+    client = GwmClient(
+        GwmClientConfig(region=Region.ANZ),
+        _session(Region.ANZ),
+        transport=transport,
+    )
+
+    with pytest.raises(GwmAuthenticationError) as raised:
+        await client.acquire_vehicles()
+    assert raised.value.api_code == "607501"
+    assert SENSITIVE not in repr(raised.value)
+    assert not client.authenticated
+
+    with pytest.raises(GwmAuthenticationError):
+        await client.acquire_vehicles()
+    assert len(transport.requests) == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("region", "code"),
+    [(Region.ANZ, "607502"), (Region.EU, "607501")],
+)
+async def test_read_authentication_retirement_is_exactly_anz_607501(
+    region: Region,
+    code: str,
+) -> None:
+    transport = _RecordingTransport([_api_failure(code)])
+    client = GwmClient(GwmClientConfig(region=region), _session(region), transport=transport)
+
+    with pytest.raises(GwmApiError) as raised:
+        await client.acquire_vehicles()
+    assert type(raised.value) is GwmApiError
+    assert raised.value.api_code == code
+    assert client.authenticated
+
+
+@pytest.mark.asyncio
+async def test_rejected_anz_read_cannot_erase_newer_session_replacement() -> None:
+    replacement_token = "SYNTHETIC-CONCURRENT-READ-TOKEN"
+    replacement_context = _tls_context(Region.ANZ)
+    transport = _RecordingTransport(
+        [_api_failure("607501"), _operation_response("acquire_vehicles")],
+        delay=0.02,
+    )
+    client = GwmClient(
+        GwmClientConfig(region=Region.ANZ),
+        _session(Region.ANZ),
+        transport=transport,
+    )
+    reading = asyncio.create_task(client.acquire_vehicles())
+    async with asyncio.timeout(1):
+        await transport.entered.wait()
+
+    original = _session(Region.ANZ)
+    client.replace_session(
+        GwmSession(
+            original.country,
+            original.device_id,
+            replacement_token,
+            replacement_context,
+        )
+    )
+    with pytest.raises(GwmAuthenticationError):
+        await reading
+
+    assert client.authenticated
+    await client.acquire_vehicles()
+    replacement_request = transport.requests[-1]
+    assert replacement_request.headers["accessToken"] == replacement_token
+    assert replacement_request.ssl_context is replacement_context

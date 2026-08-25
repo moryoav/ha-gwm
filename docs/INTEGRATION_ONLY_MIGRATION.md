@@ -6,8 +6,8 @@ This document is the durable plan, behavior contract, decision log, and test led
 
 - Working branch: `feature/integration-only`
 - Branch point: `1184737` (`Update README GWM logo to SVG`)
-- Current checkpoint: Task 5 complete; Gate A remains passed
-- Next checkpoint: Task 6 — ANZ production authentication and read parity (not yet approved)
+- Current checkpoint: Task 6 complete; Gate A remains passed
+- Next checkpoint: Task 7 — Russia production authentication and read parity (not yet approved)
 - Released add-on and integration runtime behavior changed so far: none
 
 Work proceeds one explicitly approved task at a time. At the end of every task, update this document, run the checks appropriate to that checkpoint, create one focused local commit, report the result, and stop. Do not begin the next task without a new user green light.
@@ -243,7 +243,7 @@ After Task 18, packaging, installation migration, documentation, complete tests,
 - [x] Task 3 — Run a live read-only direct-cloud POC in an available region.
 - [x] Task 4 — Harden the POC into an async, typed, HA-independent client foundation.
 - [x] Task 5 — Implement EU production authentication and read parity.
-- [ ] Task 6 — Implement ANZ production authentication and read parity.
+- [x] Task 6 — Implement ANZ production authentication and read parity.
 - [ ] Task 7 — Implement Russia production authentication and read parity.
 - [ ] Task 8 — Port and fixture-test normalized snapshot/model mapping.
 - [ ] Task 9 — Add direct-cloud config, verification, reauth, reconfigure, and options flows.
@@ -282,6 +282,9 @@ After Task 18, packaging, installation migration, documentation, complete tests,
 | D-019 | 2026-08-24 | Model EU login, verification, refresh, and certificate enrollment as a finite immutable continuation that publishes a read session only after complete validation. | Task 9 can drive native config and reauthentication flows without persisting partial tokens, identities, passwords, or verification codes, while Task 11 remains the sole owner of durable state writes. |
 | D-020 | 2026-08-24 | Classify EU authentication failures conservatively from closed evidence-backed conditions. | HTTP 401/403 retires rejected state, 429 remains rate limiting, other non-2xx responses remain HTTP failures, exact known verification challenges drive continuation, and unknown application codes propagate instead of causing login or code-request side effects. |
 | D-021 | 2026-08-24 | Validate required bootstrap material before fresh-auth network traffic and renew stored identities only for identity-specific failures. | Known local CA/bootstrap errors must fail before login or verification side effects; malformed or expiring issued identities can be replaced without treating local TLS configuration failures as a reason to enroll another certificate. |
+| D-022 | 2026-08-25 | Require an explicit one-shot caller opt-in before every ANZ password login and retain that requirement through verification continuation. | ANZ permits only one active session; even a first or fallback login can supersede the official app or add-on. Validation and safe refresh may proceed without consent, while detected `607501` conflicts retire only the rejected revision and never trigger an automatic login loop. |
+| D-023 | 2026-08-25 | Keep ANZ application-code side effects exact, endpoint-scoped, and conservative. | Only exact raw `309702`/`110641` challenges, historical captured-R&D `308011` code rejection, `607501` session conflict, and basics-only `607099` have special meanings. Unknown, whitespace-mutated, transient, HTTP, schema, and transport failures cannot trigger login, code delivery, reclaim, or optional-endpoint fallback. |
+| D-024 | 2026-08-25 | Expose ANZ basics `607099` as `GwmOptionalEndpointError` at the raw client boundary. | The future coordinator can reproduce the add-on polling service's empty-basics fallback without hiding the regional protocol outcome from direct client callers; every other region, operation, and code still propagates. |
 
 ## Baseline Evidence
 
@@ -516,6 +519,49 @@ dotnet test --no-restore --configuration Release
 
 The Python warning and .NET nullable-annotation warnings are the unchanged baseline warnings. Linux-specific protected-file creation and cleanup are also covered. Live EU read transport remains proven by Task 3, while Task 5's undocumented login, token-rejection, verification, refresh, and enrollment response semantics remain explicitly offline-unverified.
 
+## Task 6 ANZ Authentication and Read-Parity Evidence
+
+Evidence captured on 2026-08-25 from `feature/integration-only`. Task 6 was entirely offline: no GWM endpoint, account, credential, token, Home Assistant instance, add-on, phone-app session, vehicle, or command was contacted or changed. In particular, no ANZ password login, verification-code delivery, refresh, session reclaim, or vehicle read was attempted live.
+
+Delivered:
+
+- Added the five closed ANZ authentication endpoints for password login, verification-code request and check, token refresh, and session/profile validation. Every operation is restricted to the ANZ H5 v1 origin, ordinary verified TLS, ANZ `bt-auth`, the regional header profile, exact 16-character API device identity, and versioned synthetic request bytes with the legacy null placeholders and property order.
+- Added immutable, redaction-safe ANZ credentials, account-bound continuation state, authenticated, verification-required, and session-reclaim-required results. State retains only the normalized account binding, country, device ID, token pair, verification throttle timestamp, and a non-secret single-session consent marker; profile/login PII is discarded.
+- Required explicit one-shot consent before every fresh ANZ password login. Existing-token validation and successful refresh remain non-disruptive, but state-less setup, account changes, rejected-token fallback, and exact `607501` conflicts return a typed continuation before login. The marker survives verification, and an immediate post-login `607501` returns without another login, preventing add-on/phone/Home Assistant eviction loops.
+- Preserved the ANZ refresh wire quirk that sends the old access token in both the request header and body. Rotated tokens remain unpublished until a follow-up profile probe accepts them, and revision guards prevent an older attempt from erasing or overwriting a concurrently replaced session.
+- Classified only exact raw evidence-backed application codes: `309702` and offline-unverified `110641` request verification, historical contributor R&D identifies `308011` as a wrong/expired code, and `607501` denotes a single-session conflict only on token-gated operations. Unknown and whitespace-mutated codes, `302000`, `607099` outside optional basics, `607124`, rate limits, HTTP failures, and malformed/transport failures produce no authentication side effect.
+- Added a versioned sanitized ANZ discovery/status/basics fixture, including ANZ numeric-string tolerance with strict string fields, exact ANZ query canonicalization, ordinary TLS, and PII discard. Exact ANZ basics `607099` becomes `GwmOptionalEndpointError`; exact ANZ read `607501` retires only the matching read session and never logs in.
+- Kept the polling-layer empty-basics fallback, persistence, Home Assistant flows/coordinator/entities, normalized snapshot mapping, Russia authentication, commands, charging, packaging, and migration deferred to their planned checkpoints. No existing add-on or integration runtime path changed.
+
+Validation:
+
+```text
+# Dependency-minimal HA-independent client suite (Windows, CPython 3.13.13)
+python -m pytest tests/python/client
+487 passed
+
+# Linux/WSL CI-equivalent dependency-minimal client suite (CPython 3.13.13)
+python -m pytest tests/python/client
+487 passed
+
+python -m mypy gwm_ora_client
+Success: no issues found in 15 source files
+
+python -m ruff check gwm_ora_client custom_components tests/python
+All checks passed!
+
+python -m compileall -q gwm_ora_client custom_components tests/python
+# no output; exit 0
+
+python -m pytest tests/python
+524 passed, 1 warning
+
+dotnet test --no-restore --configuration Release
+128 passed, 0 failed, 0 skipped
+```
+
+Ruff, mypy, compile, and the 487-test client gate also passed under WSL/Linux. The Python warning and .NET nullable-annotation warnings are the unchanged baseline warnings. Current live ANZ authentication, exact token-expiry codes, `110641`, verification delivery/expiry, `607099`, AU-versus-NZ response differences, and concurrent phone-session effects remain deliberately unverified; the implementation fails closed around those gaps.
+
 ## Checkpoint Log
 
 ### Task 1 — Branch, baseline, and migration ledger
@@ -586,9 +632,22 @@ Delivered:
 - Preserved conservative error classification: no undocumented application code triggers token fallback, verification delivery, or credential rejection without evidence.
 - Made no live request and no add-on or integration runtime-path change.
 
+### Task 6 — ANZ production authentication and read parity
+
+Status: complete on 2026-08-25.
+
+Delivered:
+
+- Implemented exact ANZ password-login, verification, refresh-with-old-token-header, profile-validation, and default-TLS session publication contracts.
+- Added an immutable account-bound continuation with explicit consent before every password login that could claim ANZ's single active session; exact `607501` retires matching state without automatic reclaim or loops.
+- Added exact-code-only verification/rejection policy, post-login and post-refresh validation, revision-safe session retirement/publication, and secret-safe failure handling.
+- Added versioned synthetic ANZ auth and discovery/status/basics fixtures plus regional response, scalar-tolerance, optional-basics, read-conflict, deadline, concurrency, mutation, and redaction tests.
+- Kept `607099` as a typed raw-client optional-endpoint outcome; the future coordinator remains responsible for the add-on polling path's empty-basics fallback.
+- Made no live request and no add-on or integration runtime-path change.
+
 ### Next checkpoint (requires explicit approval)
 
-Task 6 will implement ANZ production authentication, its regional session behavior, and sanitized ANZ discovery/status/basics response parity on top of the shared client foundation. It will remain HA-independent and read-only: it will not switch Home Assistant to direct cloud access, implement Russia authentication, send vehicle commands, change charging plans, publish anything, or remove the existing add-on path. Any Task 6 live authentication or read will require explicit approval and a separately agreed credential/evidence procedure, with special care for ANZ's single-active-session behavior.
+Task 7 will implement Russia production authentication, certificate/TLS/session behavior, and sanitized Russia discovery/status/basics response parity on top of the shared client foundation. It will remain HA-independent and read-only: it will not switch Home Assistant to direct cloud access, add persistence or Home Assistant flows, send vehicle commands, change charging plans, publish anything, or remove the existing add-on path. Any Task 7 live authentication or read will require explicit approval and a separately agreed credential/evidence procedure.
 
 ## Open Risks and Questions
 
@@ -596,12 +655,13 @@ Task 6 will implement ANZ production authentication, its regional session behavi
 - The bundled EU general bootstrap certificate expires on 2027-01-04 and needs a renewal/provenance plan before production cutover.
 - Modern `cryptography` rejects invalid PrintableString characters in the legacy OEM CA subjects; the POC validates their envelopes and lets OpenSSL consume the original signed bytes instead.
 - EU authentication is implemented and exhaustively fixture-tested offline, but its undocumented application-level token-expiry and wrong-verification-code values remain unverified. Until sanitized evidence establishes those codes, only HTTP 401/403 retires token state and unknown application errors propagate without fallback side effects.
-- Exact live parity of undocumented authentication and response behavior in ANZ and Russia remains unverified; EU read transport is proven live, while Task 5 login, verification, refresh, and enrollment were deliberately not exercised live.
-- The cloud DTOs intentionally retain only the fields required to establish the protocol boundary. EU now has sanitized regional response fixtures; ANZ/Russia response parity and Task 8's complete normalized-snapshot mapping remain outstanding.
-- ANZ's optional vehicle-basics `607099` response semantics remain explicitly deferred to Task 6 regional read parity.
+- Exact live parity of undocumented authentication and response behavior in ANZ and Russia remains unverified; EU read transport is proven live, while Task 5 EU auth and Task 6 ANZ auth/read semantics were deliberately not exercised live.
+- The cloud DTOs intentionally retain only the fields required to establish the protocol boundary. EU and ANZ now have sanitized regional response fixtures; Russia response parity and Task 8's complete normalized-snapshot mapping remain outstanding.
+- ANZ's exact basics `607099` response is now a typed raw-client optional-endpoint failure. The Task 10 coordinator must deliberately map it to empty basics to preserve the add-on polling service's nonfatal behavior.
 - Whether Task 9 should use one dedicated cookie-free client session per config entry or a policy-validated HA-owned session while preserving scoped TLS and unload ownership.
 - Availability of safe test accounts/vehicles for every regional read and write matrix.
-- ANZ’s single-active-session behavior during side-by-side migration testing.
+- ANZ side-by-side session effects remain untested. Task 6 prevents every password login without explicit one-shot consent and prevents automatic `607501` reclaim loops, but Task 9 must explain that consent clearly and the project still recommends a dedicated shared vehicle account.
+- ANZ `110641`, current token-expiry/rotation behavior, verification delivery/expiry, AU-versus-NZ differences, and unknown `checkSMSCode` failures lack sanitized current-service evidence; unknown errors stop without attempting the final login.
 - Safe handling and future renewal of bundled bootstrap certificates and OEM-derived key material.
 - Licensing/provenance of code and resources derived from earlier reverse-engineering work.
 - Whether the final client is bundled for HACS or published as a separately versioned Python dependency.

@@ -1,0 +1,66 @@
+{
+  "schema_version": 1,
+  "credentials": {
+    "account": "SYNTHETIC-owner+tag@example.invalid",
+    "password": "SYNTHETIC-PASSWORD",
+    "country": "AU",
+    "device_id": "0123456789abcdef0123456789abcdef",
+    "api_device_id": "0123456789abcdef"
+  },
+  "operations": {
+    "login": {
+      "method": "POST",
+      "host": "aus-h5-gateway.gwmcloud.com",
+      "path": "/app-api/api/v1.0/userAuth/loginAccount",
+      "signing_prefix": "bt-auth-",
+      "tls_mode": "default",
+      "access_token_header": false,
+      "body": "{\"account\":\"SYNTHETIC-owner\\u002Btag@example.invalid\",\"password\":\"SYNTHETIC-PASSWORD\",\"agreement\":[1,2],\"deviceId\":\"0123456789abcdef\",\"appType\":\"0\",\"country\":\"AU\",\"accountId\":null,\"uid\":null,\"smsCode\":null,\"pushToken\":\"\",\"loginEmail\":null}"
+    },
+    "verified_login": {
+      "method": "POST",
+      "host": "aus-h5-gateway.gwmcloud.com",
+      "path": "/app-api/api/v1.0/userAuth/loginAccount",
+      "signing_prefix": "bt-auth-",
+      "tls_mode": "default",
+      "access_token_header": false,
+      "body": "{\"account\":\"SYNTHETIC-owner\\u002Btag@example.invalid\",\"password\":\"SYNTHETIC-PASSWORD\",\"agreement\":[1,2],\"deviceId\":\"0123456789abcdef\",\"appType\":\"0\",\"country\":\"AU\",\"accountId\":null,\"uid\":null,\"smsCode\":null,\"pushToken\":\"\",\"loginEmail\":null,\"verifyCode\":\"SYNTHETIC-246810\"}"
+    },
+    "request_verification": {
+      "method": "POST",
+      "host": "aus-h5-gateway.gwmcloud.com",
+      "path": "/app-api/api/v1.0/userAuth/getSMSCode",
+      "signing_prefix": "bt-auth-",
+      "tls_mode": "default",
+      "access_token_header": false,
+      "body": "{\"type\":\"17\",\"email\":\"SYNTHETIC-owner\\u002Btag@example.invalid\",\"accountId\":null,\"uid\":null}"
+    },
+    "verify_code": {
+      "method": "POST",
+      "host": "aus-h5-gateway.gwmcloud.com",
+      "path": "/app-api/api/v1.0/userAuth/checkSMSCode",
+      "signing_prefix": "bt-auth-",
+      "tls_mode": "default",
+      "access_token_header": false,
+      "body": "{\"email\":\"SYNTHETIC-owner\\u002Btag@example.invalid\",\"smsCode\":\"SYNTHETIC-246810\",\"type\":\"17\"}"
+    },
+    "refresh": {
+      "method": "POST",
+      "host": "aus-h5-gateway.gwmcloud.com",
+      "path": "/app-api/api/v1.0/userAuth/refreshToken",
+      "signing_prefix": "bt-auth-",
+      "tls_mode": "default",
+      "access_token_header": true,
+      "body": "{\"accessToken\":\"SYNTHETIC-OLD-ACCESS\",\"refreshToken\":\"SYNTHETIC-OLD-REFRESH\",\"deviceId\":\"0123456789abcdef\"}"
+    },
+    "get_user_info": {
+      "method": "GET",
+      "host": "aus-h5-gateway.gwmcloud.com",
+      "path": "/app-api/api/v1.0/user/getUserBaseInfo",
+      "signing_prefix": "bt-auth-",
+      "tls_mode": "default",
+      "access_token_header": true,
+      "body": null
+    }
+  }
+}

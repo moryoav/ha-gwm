@@ -14,6 +14,14 @@ from typing import Self, cast
 from urllib.parse import urlsplit
 
 from ._protocol import _AsyncTransport, _Deadline, _TransportRequest, _TransportResponse
+from .anz_auth import (
+    AnzAuthenticated,
+    AnzAuthenticationResult,
+    AnzAuthState,
+    AnzCredentials,
+    _AnzAuthProgress,
+)
+from .anz_auth import authenticate_anz as _run_anz_authentication
 from .config import GwmClientConfig
 from .errors import (
     GwmApiError,
@@ -104,7 +112,7 @@ _READ_ENDPOINTS = MappingProxyType(
 
 
 class GwmClient:
-    """A lifecycle-managed client for EU authentication and proven vehicle reads."""
+    """A lifecycle-managed regional authentication and read-only vehicle client."""
 
     def __init__(
         self,
@@ -278,6 +286,100 @@ class GwmClient:
             raise failure
         raise GwmNetworkError(operation=operation)
 
+    async def authenticate_anz(
+        self,
+        credentials: AnzCredentials,
+        *,
+        state: AnzAuthState | None = None,
+        verification_code: str | None = None,
+        allow_session_reclaim: bool = False,
+        timeout: float | None = None,
+    ) -> AnzAuthenticationResult:
+        """Authenticate ANZ, requiring opt-in before any single-session login."""
+
+        operation = "login"
+        if (
+            self._protocol.region is not Region.ANZ
+            or type(credentials) is not AnzCredentials
+            or (state is not None and type(state) is not AnzAuthState)
+            or type(allow_session_reclaim) is not bool
+        ):
+            raise GwmConfigurationError(operation=operation)
+        if self._closed or self._closing:
+            raise GwmClosedError(operation=operation)
+        total_timeout = self._validated_timeout(timeout, operation=operation)
+        loop = asyncio.get_running_loop()
+        deadline = _Deadline(loop.time() + total_timeout)
+        failure: GwmClientError | None = None
+        progress = _AnzAuthProgress()
+
+        try:
+            async with asyncio.timeout_at(deadline.expires_at):
+                async with self._request_lock:
+                    if self._closed or self._closing:
+                        raise GwmClosedError(operation=operation)
+                    reusable = state is not None and state.matches(credentials)
+                    current = self._session
+                    attempt_revision = self._session_revision
+                    if reusable and state is not None and current is not None:
+                        reusable = (
+                            current.country == state.country
+                            and current.device_id == state.device_id
+                            and current.access_token == state.access_token
+                        )
+                    if not reusable:
+                        self._session = None
+                        self._session_revision += 1
+                        attempt_revision = self._session_revision
+                    try:
+                        result = await _run_anz_authentication(
+                            config=self._config,
+                            transport=self._transport,
+                            credentials=credentials,
+                            state=state,
+                            verification_code=verification_code,
+                            allow_session_reclaim=allow_session_reclaim,
+                            deadline=deadline,
+                            progress=progress,
+                        )
+                        replacement = (
+                            self._validated_session(result.session)
+                            if type(result) is AnzAuthenticated
+                            else None
+                        )
+                        self._replace_session_if_revision(
+                            expected_revision=attempt_revision,
+                            session=replacement,
+                        )
+                        return result
+                    except BaseException:
+                        if progress.existing_session_rejected:
+                            self._replace_session_if_revision(
+                                expected_revision=attempt_revision,
+                                session=None,
+                            )
+                        raise
+        except asyncio.CancelledError:
+            raise
+        except GwmClientError as error:
+            failure = (
+                GwmDeadlineExceededError(operation=operation)
+                if deadline.remaining(loop.time()) <= 0
+                else _sanitized_client_error(error, operation=error.operation)
+            )
+        except TimeoutError:
+            failure = GwmDeadlineExceededError(operation=operation)
+        except Exception:
+            failure = (
+                GwmDeadlineExceededError(operation=operation)
+                if deadline.remaining(loop.time()) <= 0
+                else GwmNetworkError(operation=operation)
+            )
+
+        if failure is not None:
+            raise failure
+        raise GwmNetworkError(operation=operation)
+
     def _replace_session_if_revision(
         self,
         *,
@@ -332,6 +434,7 @@ class GwmClient:
         loop = asyncio.get_running_loop()
         deadline = _Deadline(loop.time() + total_timeout)
         failure: GwmClientError | None = None
+        attempt_revision: int | None = None
 
         try:
             async with asyncio.timeout_at(deadline.expires_at):
@@ -340,6 +443,7 @@ class GwmClient:
                         raise GwmClosedError(operation=operation)
                     if self._session is None:
                         raise GwmAuthenticationError(operation=operation)
+                    attempt_revision = self._session_revision
                     session = self._validated_session(self._session)
                     request = self._prepare_read_request(endpoint, session, identifier)
                     response = await self._transport.execute(
@@ -352,6 +456,23 @@ class GwmClient:
                         raise GwmProtocolError(operation=operation)
                     if deadline.remaining(loop.time()) <= 0:
                         raise GwmDeadlineExceededError(operation=operation)
+                    regional_error = _classify_regional_read_error(
+                        response,
+                        endpoint=endpoint,
+                        region=self._protocol.region,
+                    )
+                    if deadline.remaining(loop.time()) <= 0:
+                        raise GwmDeadlineExceededError(operation=operation)
+                    if regional_error == "authentication":
+                        raise GwmAuthenticationError(
+                            operation=operation,
+                            api_code="607501",
+                        )
+                    if regional_error == "optional":
+                        raise GwmOptionalEndpointError(
+                            operation=operation,
+                            api_code="607099",
+                        )
                     data = _decode_envelope(response, operation=operation)
                     if deadline.remaining(loop.time()) <= 0:
                         raise GwmDeadlineExceededError(operation=operation)
@@ -371,6 +492,15 @@ class GwmClient:
         except asyncio.CancelledError:
             raise
         except GwmClientError as error:
+            if (
+                self._protocol.region is Region.ANZ
+                and attempt_revision is not None
+                and type(error) is GwmAuthenticationError
+            ):
+                self._replace_session_if_revision(
+                    expected_revision=attempt_revision,
+                    session=None,
+                )
             failure = (
                 GwmDeadlineExceededError(operation=operation)
                 if deadline.remaining(loop.time()) <= 0
@@ -580,6 +710,35 @@ def _validate_app_tls_context(protocol: RegionProtocol, context: object) -> None
             raise ValueError("tls_context_invalid")
     elif context.security_level != 0:
         raise ValueError("tls_context_invalid")
+
+
+def _classify_regional_read_error[T](
+    response: _TransportResponse,
+    *,
+    endpoint: _ReadEndpoint[T],
+    region: Region,
+) -> str | None:
+    """Classify only exact, evidence-backed ANZ application codes."""
+
+    if region is not Region.ANZ or not 200 <= response.status <= 299:
+        return None
+    try:
+        envelope = json.loads(
+            response.body.decode("utf-8", errors="strict"),
+            object_pairs_hook=_unique_object,
+            parse_constant=_reject_json_constant,
+        )
+        _validate_json_depth(envelope)
+    except (UnicodeDecodeError, json.JSONDecodeError, RecursionError, ValueError):
+        return None
+    if not isinstance(envelope, Mapping):
+        return None
+    code = envelope.get("code")
+    if code == "607501":
+        return "authentication"
+    if endpoint is _VEHICLE_BASICS and code == "607099":
+        return "optional"
+    return None
 
 
 def _decode_envelope(response: _TransportResponse, *, operation: str) -> object:
