@@ -13,20 +13,20 @@
 
 | Option | Required | Description |
 | --- | --- | --- |
-| `region` | yes | GWM cloud gateway to use: `eu` for Europe/Israel accounts, `aus` for Australia/New Zealand accounts, or `rus` for Russia accounts. Defaults to `eu`. |
-| `country` | yes | Two-letter GWM account country. It must match the country the account was **registered** in — e.g. `DE` or `GB` for `eu`, `NZ` or `AU` for `aus`, and `RU` for `rus`. A mismatch (for example `AU` for an account registered in New Zealand) fails login with *"Incorrect email or password"*. |
-| `username` | yes | GWM account e-mail address. |
-| `password` | yes | GWM account password. |
-| `verification_code` | no | One-time SMS/e-mail verification code sent by GWM during first login or when this add-on device must be trusted. Fill it only after GWM sends a code. |
-| `security_pin` | no | Vehicle remote control PIN from the official app. |
+| `region` | yes | GWM cloud gateway to use: `eu` for Europe/Israel, `aus` for Australia/New Zealand, `rus` for Russia, or experimental `cn` for mainland China. Defaults to `eu`. |
+| `country` | yes | Two-letter GWM account country. It must match the country the account was **registered** in, for example `DE` or `GB` for `eu`, `NZ` or `AU` for `aus`, `RU` for `rus`, and `CN` for `cn`. A mismatch (for example `AU` for an account registered in New Zealand) fails login with *"Incorrect email or password"*. |
+| `username` | yes | GWM account e-mail address, or the registered phone number for `cn`. |
+| `password` | except `cn` | GWM account password. Ignored for `cn`, which uses SMS login. |
+| `verification_code` | no | One-time SMS/e-mail verification code sent by GWM. China login always uses an SMS code; leave this empty on the first China start so the add-on can request one. |
+| `security_pin` | no | Vehicle remote control PIN from the official app. Required for remote commands except in `cn`, whose app protocol does not send a PIN. |
 | `enable_remote_commands` | yes | Enables A/C, lock, unlock, and close-window commands. |
-| `enable_charging_control` | yes | Enables the **Scheduled charging** switch and the `gwm_ora.set_charging_plan` / `gwm_ora.clear_charging_plan` actions. Default `false`. Independent of `enable_remote_commands` and needs no security PIN. Validated on an ANZ vehicle; the same H5 gateway API is used for all regions. |
+| `enable_charging_control` | yes | Enables the **Scheduled charging** switch and the `gwm_ora.set_charging_plan` / `gwm_ora.clear_charging_plan` actions. Default `false`. Independent of `enable_remote_commands` and needs no security PIN. Validated on an ANZ vehicle; the experimental China implementation uses the corresponding China-app command and is untested on a live vehicle. |
 | `poll_interval_seconds` | yes | GWM cloud polling interval from 30 to 3600 seconds. |
 | `log_level` | yes | One of `trace`, `debug`, `info`, `warning`, or `error`. |
 
 ## First-login verification
 
-When the add-on logs in for the first time, GWM sends a one-time verification code by SMS or e-mail. The add-on log and Web UI will report `verification_required` while it is waiting for that code.
+When the add-on logs in for the first time, GWM may send a one-time verification code by SMS or e-mail. China always uses SMS login. The add-on log and Web UI will report `verification_required` while it is waiting for that code.
 
 Check the phone messages and e-mail inbox for your GWM account, including spam or junk folders. For European accounts, the e-mail will most likely come from `noreply@gwm-eu.com` with the subject `GWM Verification Code`.
 
@@ -70,6 +70,28 @@ For GWM Russia accounts (the Russian *GWM* Android app), set:
 - `country`: `RU`
 
 Russia uses its own GWM request signing, gateways, and bundled client certificate from the official Russian app. First-login SMS/e-mail verification follows the same add-on setup as the other regions.
+
+Russia support has been live-tested, confirmed working, and merged as a supported region. It is not part of the experimental China work.
+
+## Mainland China (`cn` region, experimental)
+
+China support in version 0.11.0 is based on reverse engineering of the mainland-China GWM Android app and offline protocol fixtures. It has not yet been tested against a live China account or vehicle. It currently targets vehicles reported by the account as using the `navinfo` / AutoAI platform, including the contributed WEY VV6 case. Other China vehicle platforms will stop with an explicit unsupported-platform error instead of sending guessed requests.
+
+Start with read-only testing:
+
+1. Set `region` to `cn` and `country` to `CN`.
+2. Put the phone number registered to the China GWM account in `username`.
+3. Leave `password`, `verification_code`, and `security_pin` empty.
+4. Keep `enable_remote_commands` and `enable_charging_control` set to `false`.
+5. Save and start the add-on. It should request an SMS code and stop with `verification_required`.
+6. Enter the newest SMS code in `verification_code`, save, and restart the add-on.
+7. Confirm that authentication and vehicle discovery succeed, then compare every available sensor with the official app.
+
+The add-on stores the three China service sessions under `/data` and tries to clear the one-time code after a successful login. If GWM returns risk-control code `1013`, complete the requested challenge in the official app, clear `verification_code`, and restart the add-on to request a new code.
+
+Only after vehicle discovery and the read-only entities look correct should a tester enable controls. Set `enable_remote_commands: true` to expose A/C, lock, unlock, and close-window commands. The China app protocol does not send the vehicle security PIN, so `security_pin` remains empty. Set `enable_charging_control: true` separately to test charging schedules on a compatible plug-in vehicle. Test one command at a time while the vehicle is visible and in a safe state, and compare both the physical result and the **Remote command status** sensor with the official app.
+
+Please report the add-on version, vehicle model, `belongPlatform`, which sensors matched or differed, and the result of each command. Do not post phone numbers, VINs, tokens, SMS codes, or complete debug logs publicly.
 
 ## Model-specific vehicle data
 

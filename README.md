@@ -60,19 +60,19 @@ poll_interval_seconds: 60
 log_level: info
 ```
 
-- `region`: Cloud gateway for the account. Use `eu` for Europe/Israel, `aus` for Australia/New Zealand, or `rus` for Russia.
-- `country`: Two-letter country where the GWM account was registered, such as `DE`, `GB`, `AU`, `NZ`, or `RU`. It must match the account registration country.
-- `username`: E-mail address for your GWM account.
-- `password`: Password for your GWM account.
+- `region`: Cloud gateway for the account. Use `eu` for Europe/Israel, `aus` for Australia/New Zealand, `rus` for Russia, or experimental `cn` for mainland China.
+- `country`: Two-letter country where the GWM account was registered, such as `DE`, `GB`, `AU`, `NZ`, `RU`, or `CN`. It must match the account registration country.
+- `username`: E-mail address for the account, or its registered phone number when using `cn`.
+- `password`: Password for `eu`, `aus`, and `rus`. China uses SMS login and ignores this field.
 - `enable_remote_commands`: Enables A/C, lock, unlock, and close-window controls. Use `false` for read-only entities.
-- `enable_charging_control`: Enables the **Scheduled charging** switch and the `gwm_ora.set_charging_plan` / `gwm_ora.clear_charging_plan` actions. Default `false`, independent of `enable_remote_commands`, and needs no security PIN. Validated on an ANZ vehicle; the same H5 gateway API is used for every region.
-- `security_pin`: The remote-control PIN configured in the official GWM app. Setting up that PIN in the official app is a prerequisite for remote commands.
+- `enable_charging_control`: Enables the **Scheduled charging** switch and the `gwm_ora.set_charging_plan` / `gwm_ora.clear_charging_plan` actions. Default `false`, independent of `enable_remote_commands`, and needs no security PIN. Validated on an ANZ vehicle; the experimental China implementation uses the corresponding China-app command and is untested on a live vehicle.
+- `security_pin`: The remote-control PIN configured in the official GWM app. It is a prerequisite for remote commands outside China. The China app protocol does not send it.
 - `poll_interval_seconds`: How often the add-on refreshes vehicle data from GWM.
 - `log_level`: Add-on logging verbosity.
 
 #### First-login GWM verification
 
-When the add-on logs in for the first time, GWM will send a one-time verification code by SMS or e-mail. Check the phone messages and e-mail inbox for your GWM account, including spam or junk folders. For European accounts, the e-mail will most likely come from `noreply@gwm-eu.com` with the subject `GWM Verification Code`.
+When the add-on logs in for the first time, GWM may send a one-time verification code by SMS or e-mail. China always uses SMS login. Check the phone messages and e-mail inbox for your GWM account, including spam or junk folders. For European accounts, the e-mail will most likely come from `noreply@gwm-eu.com` with the subject `GWM Verification Code`.
 
 <img src="https://raw.githubusercontent.com/moryoav/ha-gwm/main/docs/images/gwm-verification-code-email.jpeg" alt="Example GWM Verification Code e-mail" width="320">
 
@@ -120,7 +120,7 @@ You do not enter your GWM username or password in the integration.
 - Button: close all windows.
 - Switch: enable an eight-hour charging window now or clear the vehicle's charging schedule.
 
-Remote command entities are unavailable until remote commands are enabled and a security PIN is configured in the add-on.
+Remote command entities are unavailable until remote commands are enabled and, outside China, a security PIN is configured in the add-on.
 The **Scheduled charging** switch is unavailable until charging control is enabled separately.
 
 GWM models and regions do not all return the same status signals. Model-specific fuel, comfort, and diagnostic entities are disabled by default where appropriate and can be enabled from the Home Assistant entity list. If a car does not return a value, that entity remains unknown without affecting polling or the other entities. Front doors, windows, seat heating, and seat ventilation use driver/passenger naming so their labels stay correct on both left-hand-drive and right-hand-drive cars.
@@ -152,7 +152,7 @@ data:
   vin: "LGWEEUA57TR603334"
 ```
 
-The add-on records the exact plan it writes. If charging control is later disabled, it retries cleanup of that plan, but leaves a schedule alone when the official GWM app has replaced or changed it. The feature was live-tested on an ANZ ORA 5. Other regions use the same API path but have not yet been independently verified.
+The add-on records the exact plan it writes. If charging control is later disabled, it retries cleanup of that plan, but leaves a schedule alone when the official GWM app has replaced or changed it. The feature was live-tested on an ANZ ORA 5. The separate China charging implementation remains experimental and untested.
 
 ### Use the charging status with evcc
 
@@ -192,7 +192,15 @@ This project is designed for vehicles that can be managed through the official G
 
 Regional GWM services and vehicle firmware can differ, so some entities may be unavailable on some cars.
 
-This integration supports accounts on the European GWM cloud (`region: eu`), including EU countries and Israel; the Australia/New Zealand cloud (`region: aus`); and the Russia cloud (`region: rus`).
+This integration supports accounts on the European GWM cloud (`region: eu`), including EU countries and Israel; the Australia/New Zealand cloud (`region: aus`); and the live-tested Russia cloud (`region: rus`). Version 0.11.0 also adds experimental, untested mainland-China support (`region: cn`) for NavInfo/AutoAI vehicles.
+
+### Mainland China experimental testing
+
+China support was derived from the mainland-China GWM Android app and has offline coverage for authentication, vehicle discovery, sensor translation, A/C, lock, unlock, close windows, command-result polling, and charging schedules. It still needs its first live account and vehicle validation.
+
+For a China account, set `region: cn`, `country: CN`, and put the registered phone number in `username`. Leave `password`, `verification_code`, and `security_pin` empty on the first start. The add-on requests an SMS code and reports `verification_required`; enter that code in `verification_code`, save, and restart. Keep both command opt-ins off until vehicle discovery and sensor values have been compared with the official app.
+
+The first implementation only supports vehicles whose account data reports `belongPlatform: navinfo`. After read-only validation, enable and test one control at a time with the vehicle visible and in a safe state. See the [detailed China test procedure](addons/gwm_ora/DOCS.md#mainland-china-cn-region-experimental). Never post phone numbers, VINs, tokens, SMS codes, or complete debug logs publicly.
 
 ### Australia/New Zealand account sessions
 
@@ -216,15 +224,15 @@ The ANZ backend permits one active session per account. Using the same account i
 ### GWM Login Fails
 
 - Verify the same account works in the official GWM app.
-- Confirm `region`, `country`, `username`, and `password`. For `aus`, `country` must match the country where the account was registered.
+- Confirm `region`, `country`, `username`, and, outside China, `password`. For `aus`, `country` must match the country where the account was registered. For `cn`, use `country: CN` and the registered phone number as `username`.
 - When the add-on reports `verification_required`, follow the [first-login verification steps](#first-login-gwm-verification), enter the received one-time code, and restart the add-on.
 
 ### Remote Commands Are Unavailable
 
-Remote commands require both:
+Remote commands require:
 
 - `enable_remote_commands: true`
-- `security_pin` configured in the add-on
+- `security_pin` configured in the add-on, except for `region: cn`
 
 After changing either option, restart the add-on and reload the integration.
 

@@ -6,6 +6,18 @@ This project follows semantic versioning. HACS uses the latest GitHub release ta
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-08-25
+
+### Added
+
+- Added experimental, untested mainland-China cloud support with `region: cn` and `country: CN`, using the account's registered phone number and SMS login.
+- Added isolated China G-App, BeanTech, and AutoAI authentication, signing, token persistence, vehicle discovery, and NavInfo/AutoAI status polling based on the mainland-China GWM Android app.
+- Translated China vehicle status into the existing Home Assistant battery, range, odometer, charging, tire, lock, window, door, trunk, A/C, comfort, and location entities where the vehicle supplies those fields.
+- Added experimental China A/C, lock, unlock, close-window, command-result, and charging-schedule support behind the existing command opt-ins. The China app protocol does not send the vehicle security PIN.
+- Added offline signing vectors and an end-to-end fake-service test covering China login, discovery, status mapping, controls, and charging without contacting a GWM account or vehicle.
+
+China support currently accepts only vehicles reported as using the `navinfo` platform. It must be validated by a mainland-China user before it can be considered supported. Europe, Australia/New Zealand, and the already verified Russia implementation remain unchanged.
+
 ## [0.10.0] - 2026-08-22
 
 ### Added

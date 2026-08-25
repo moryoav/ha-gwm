@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using libgwmapi.DTO.China;
 
 namespace GwmOra.Addon.Configuration;
 
@@ -35,6 +36,9 @@ public sealed class AddonState
 
     [JsonPropertyName("verification_code_requested_at")]
     public DateTimeOffset? VerificationCodeRequestedAt { get; set; }
+
+    [JsonPropertyName("china_session")]
+    public ChinaSession? ChinaSession { get; set; }
 
     // Track the exact plan written for each vehicle. On a later configuration change this
     // lets the add-on distinguish its own leftover plan from one replaced in the GWM app.

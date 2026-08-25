@@ -1,5 +1,5 @@
 name: GWM
-version: "0.10.0"
+version: "0.11.0"
 slug: gwm_ora
 description: Native Home Assistant add-on for GWM vehicles
 url: https://github.com/moryoav/ha-gwm
@@ -32,8 +32,8 @@ options:
   log_level: info
 schema:
   country: "match(^[A-Za-z]{2}$)"
-  region: "list(eu|aus|rus)"
-  username: email
+  region: "list(eu|aus|rus|cn)"
+  username: str
   password: password
   verification_code: password?
   security_pin: password?
@@ -43,4 +43,4 @@ schema:
   log_level: "list(trace|debug|info|warning|error)"
 environment:
   ASPNETCORE_HTTP_PORTS: "8099"
-  GWM_ORA_ADDON_VERSION: "0.10.0"
+  GWM_ORA_ADDON_VERSION: "0.11.0"

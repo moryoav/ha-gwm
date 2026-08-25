@@ -96,6 +96,51 @@ public class AddonOptionsLoaderTests
     }
 
     [Fact]
+    public void LoadAcceptsChinaPhoneLoginWithoutPassword()
+    {
+        var path = Path.GetTempFileName();
+        File.WriteAllText(path, """
+        {
+          "country": "CN",
+          "region": "cn",
+          "username": "13800138000",
+          "password": "",
+          "verification_code": "123456",
+          "poll_interval_seconds": 60,
+          "log_level": "info"
+        }
+        """);
+
+        var options = AddonOptionsLoader.Load(path);
+
+        Assert.Equal("CN", options.Country);
+        Assert.Equal("cn", options.Region);
+        Assert.Equal("13800138000", options.Username);
+        Assert.Equal("123456", options.VerificationCode);
+        Assert.Empty(options.Password);
+    }
+
+    [Fact]
+    public void LoadRequiresChinaCountryForChinaRegion()
+    {
+        var path = Path.GetTempFileName();
+        File.WriteAllText(path, """
+        {
+          "country": "DE",
+          "region": "cn",
+          "username": "13800138000",
+          "password": "",
+          "poll_interval_seconds": 60,
+          "log_level": "info"
+        }
+        """);
+
+        var error = Assert.Throws<InvalidOperationException>(() => AddonOptionsLoader.Load(path));
+
+        Assert.Contains("must be 'CN'", error.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void LoadRejectsUnsupportedRegion()
     {
         var path = Path.GetTempFileName();
@@ -112,7 +157,7 @@ public class AddonOptionsLoaderTests
 
         var error = Assert.Throws<InvalidOperationException>(() => AddonOptionsLoader.Load(path));
 
-        Assert.Contains("'eu', 'aus', or 'rus'", error.Message);
+        Assert.Contains("'eu', 'aus', 'rus', or 'cn'", error.Message);
     }
 
     [Fact]

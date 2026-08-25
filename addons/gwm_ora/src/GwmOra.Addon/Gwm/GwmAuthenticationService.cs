@@ -33,6 +33,12 @@ public sealed class GwmAuthenticationService
         GwmApiClient client,
         CancellationToken cancellationToken)
     {
+        if (IsChinaRegion())
+        {
+            await EnsureChinaAuthenticatedAsync(client, cancellationToken);
+            return;
+        }
+
         var isAus = String.Equals(
             _options.Region,
             "aus",
@@ -124,6 +130,139 @@ public sealed class GwmAuthenticationService
             await EnsureEuClientCertificateAsync(client, cancellationToken);
         }
     }
+
+    private async Task EnsureChinaAuthenticatedAsync(
+        GwmApiClient client,
+        CancellationToken cancellationToken)
+    {
+        client.SetChinaSession(_stateStore.State.ChinaSession);
+        var storedSession = _stateStore.State.ChinaSession;
+        if (storedSession?.IsComplete == true)
+        {
+            try
+            {
+                await client.ValidateChinaSessionAsync(cancellationToken);
+                return;
+            }
+            catch (GwmApiException ex)
+            {
+                _logger.LogInformation(
+                    "Stored experimental GWM China session was rejected: {Code} {Message}",
+                    ex.Code,
+                    ex.Message);
+            }
+        }
+
+        if (storedSession?.HasGAppTokens == true)
+        {
+            try
+            {
+                var refreshed = await client.RefreshChinaSessionAsync(cancellationToken);
+                await StoreChinaSessionAsync(refreshed, cancellationToken);
+                await client.ValidateChinaSessionAsync(cancellationToken);
+                return;
+            }
+            catch (GwmApiException ex)
+            {
+                _logger.LogWarning(
+                    "Experimental GWM China session refresh failed: {Code} {Message}",
+                    ex.Code,
+                    ex.Message);
+            }
+        }
+
+        if (String.IsNullOrWhiteSpace(_options.VerificationCode))
+        {
+            await RequestVerificationCodeChinaAsync(client, cancellationToken);
+            throw new GwmVerificationRequiredException(
+                "GWM China uses SMS sign-in. A verification code was requested for the configured " +
+                "phone number; enter it in 'verification_code', save, and restart the add-on.");
+        }
+
+        try
+        {
+            var session = await client.LoginChinaWithSmsAsync(
+                _options.Username,
+                _options.VerificationCode.Trim(),
+                cancellationToken);
+            await StoreChinaSessionAsync(session, cancellationToken);
+            await _supervisorOptions.ClearVerificationCodeAsync(cancellationToken);
+            _logger.LogInformation(
+                "Experimental GWM China SMS code accepted and vehicle-service tokens stored");
+        }
+        catch (GwmApiException ex)
+        {
+            if (ex.Code == "CN_TSP_LOGIN")
+            {
+                var partialSession = client.GetChinaSession();
+                if (partialSession.HasGAppTokens)
+                {
+                    await StoreChinaSessionAsync(partialSession, cancellationToken);
+                    await _supervisorOptions.ClearVerificationCodeAsync(cancellationToken);
+                }
+
+                throw new GwmVerificationRequiredException(
+                    "GWM China accepted the SMS code, but initialization of the vehicle services failed. " +
+                    "The partial session was saved, so restart the add-on once to retry without requesting " +
+                    $"another code. If it repeats, report this response: {ex.Message} [{ex.Code}]",
+                    ex);
+            }
+
+            await _stateStore.UpdateAsync(
+                state => state.VerificationCodeRequestedAt = null,
+                cancellationToken);
+            throw new GwmVerificationRequiredException(
+                "GWM China rejected the configured verification_code. Clear it, restart the add-on " +
+                "to request a fresh SMS code, then enter the new code and restart again. " +
+                $"GWM response: {ex.Message} [{ex.Code}]",
+                ex);
+        }
+    }
+
+    private async Task RequestVerificationCodeChinaAsync(
+        GwmApiClient client,
+        CancellationToken cancellationToken)
+    {
+        var now = DateTimeOffset.UtcNow;
+        var lastRequest = _stateStore.State.VerificationCodeRequestedAt;
+        if (lastRequest.HasValue && now - lastRequest.Value < VerificationCodeRequestInterval)
+        {
+            return;
+        }
+
+        try
+        {
+            await client.RequestChinaSmsCodeAsync(_options.Username, cancellationToken);
+            await _stateStore.UpdateAsync(
+                state => state.VerificationCodeRequestedAt = now,
+                cancellationToken);
+            _logger.LogWarning(
+                "Experimental GWM China login: an SMS code was sent to the configured phone number");
+        }
+        catch (GwmApiException ex)
+        {
+            throw new GwmVerificationRequiredException(
+                $"GWM China requires SMS verification, but requesting a code failed: " +
+                $"{ex.Message} [{ex.Code}]",
+                ex);
+        }
+    }
+
+    private Task StoreChinaSessionAsync(
+        libgwmapi.DTO.China.ChinaSession session,
+        CancellationToken cancellationToken) =>
+        _stateStore.UpdateAsync(state =>
+        {
+            state.ChinaSession = session.Clone();
+            state.VerificationCodeRequestedAt = null;
+            // Prevent an old overseas token from looking authoritative if the user
+            // changes the same add-on installation to the China region.
+            state.AccessToken = null;
+            state.RefreshToken = null;
+        }, cancellationToken);
+
+    private bool IsChinaRegion() =>
+        String.Equals(_options.Region, "cn", StringComparison.OrdinalIgnoreCase);
 
     private async Task RefreshTokenAsync(
         GwmApiClient client,
@@ -641,7 +780,8 @@ public sealed class GwmAuthenticationService
     private bool RequiresPerDeviceClientCertificate()
     {
         return !String.Equals(_options.Region, "aus", StringComparison.OrdinalIgnoreCase) &&
-               !String.Equals(_options.Region, "rus", StringComparison.OrdinalIgnoreCase);
+               !String.Equals(_options.Region, "rus", StringComparison.OrdinalIgnoreCase) &&
+               !String.Equals(_options.Region, "cn", StringComparison.OrdinalIgnoreCase);
     }
 
     private static string EnrollmentDeviceId(

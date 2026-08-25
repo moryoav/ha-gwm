@@ -512,7 +512,7 @@ public sealed class RemoteCommandService
             throw new RemoteCommandUnavailableException("Remote commands are disabled in the add-on configuration.");
         }
 
-        if (String.IsNullOrWhiteSpace(_options.SecurityPin))
+        if (!IsChinaRegion && String.IsNullOrWhiteSpace(_options.SecurityPin))
         {
             throw new RemoteCommandUnavailableException("Remote commands require security_pin in the add-on configuration.");
         }
@@ -527,10 +527,15 @@ public sealed class RemoteCommandService
         }
     }
 
-    private string SecurityPassword => new CheckSecurityPassword(_options.SecurityPin!).Md5Hash;
+    private string SecurityPassword => IsChinaRegion
+        ? String.Empty
+        : new CheckSecurityPassword(_options.SecurityPin!).Md5Hash;
 
     private bool IsRussianRegion =>
         String.Equals(_options.Region, "rus", StringComparison.OrdinalIgnoreCase);
+
+    private bool IsChinaRegion =>
+        String.Equals(_options.Region, "cn", StringComparison.OrdinalIgnoreCase);
 
     private void FailCommand(string id, string commandName, Exception exception)
     {

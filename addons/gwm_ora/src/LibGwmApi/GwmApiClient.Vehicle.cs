@@ -8,6 +8,11 @@ public partial class GwmApiClient
 {
     public Task<Vehicle[]> AcquireVehiclesAsync(CancellationToken cancellationToken)
     {
+        if (_chinaClient is not null)
+        {
+            return _chinaClient.AcquireVehiclesAsync(cancellationToken);
+        }
+
         return GetAppAsync<Vehicle[]>("globalapp/vehicle/acquireVehicles", cancellationToken);
     }
 
@@ -20,6 +25,11 @@ public partial class GwmApiClient
         string vin,
         CancellationToken cancellationToken)
     {
+        if (_chinaClient is not null)
+        {
+            return _chinaClient.GetVehicleBasicsInfoOrDefault(vin);
+        }
+
         try
         {
             return await GetVehicleBasicsInfoAsync(vin, cancellationToken);
@@ -39,11 +49,22 @@ public partial class GwmApiClient
 
     public Task<VehicleStatus> GetLastVehicleStatusAsync(string vin, CancellationToken cancellationToken)
     {
+        if (_chinaClient is not null)
+        {
+            return _chinaClient.GetLastVehicleStatusAsync(vin, cancellationToken);
+        }
+
         return GetAppAsync<VehicleStatus>($"vehicle/getLastStatus?vin={vin}&seqNo=", cancellationToken);
     }
 
     public Task ModifyVehicleRemoteCtlInfoAsync(ModifyVecicleRemoteCtl request, CancellationToken cancellationToken)
     {
+        if (_chinaClient is not null)
+        {
+            _chinaClient.SetClimateDefaults(request);
+            return Task.CompletedTask;
+        }
+
         if (_region == "rus")
         {
             return PostH5Async(
@@ -58,6 +79,12 @@ public partial class GwmApiClient
 
     public async Task SendCmdAsync(SendCmd request, CancellationToken cancellationToken)
     {
+        if (_chinaClient is not null)
+        {
+            await _chinaClient.SendCommandAsync(request, cancellationToken);
+            return;
+        }
+
         if (_region == "rus")
         {
             await CheckSecurityPasswordAsync(
@@ -91,6 +118,11 @@ public partial class GwmApiClient
         string vin,
         CancellationToken cancellationToken)
     {
+        if (_chinaClient is not null)
+        {
+            return _chinaClient.GetRemoteCommandResultAsync(seqNo, vin, cancellationToken);
+        }
+
         // AU/NZ and Russia require the VIN as a request header on this endpoint. The VIN is a
         // header rather than a signed query parameter, so it does not change the overseas
         // request signature. Keep EU on its existing header-less request path.
@@ -107,6 +139,11 @@ public partial class GwmApiClient
 
     public Task<ChargingInfos> GetChargingInfosAsync(string vin, CancellationToken cancellationToken)
     {
+        if (_chinaClient is not null)
+        {
+            return _chinaClient.GetChargingInfosAsync(vin, cancellationToken);
+        }
+
         // The charging API belongs to the h5-gateway family in the official apps. AU/NZ's
         // self-developed request variant additionally requires the VIN header.
         var url = $"vehicleCharge/getChargingInfos?vin={vin}";
@@ -117,6 +154,11 @@ public partial class GwmApiClient
 
     public Task SetChargingPlanAsync(SetChargingPlan request, CancellationToken cancellationToken)
     {
+        if (_chinaClient is not null)
+        {
+            return _chinaClient.SetChargingPlanAsync(request, cancellationToken);
+        }
+
         // Sets/clears the vehicle's charging-schedule window (startTime/endTime = epoch-ms strings,
         // planType 0 = one-off, minimum 5-minute window). A plan window gates charging (start/stop);
         // clearing it (enable=false) reverts to charge-on-plug. No security PIN is required.

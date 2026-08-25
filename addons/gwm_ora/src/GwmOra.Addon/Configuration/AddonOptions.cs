@@ -79,9 +79,14 @@ public static class AddonOptionsLoader
         }
 
         var region = (options.Region ?? "eu").Trim().ToLowerInvariant();
-        if (region is not ("eu" or "aus" or "rus"))
+        if (region is not ("eu" or "aus" or "rus" or "cn"))
         {
-            throw new InvalidOperationException("Option 'region' must be 'eu', 'aus', or 'rus'.");
+            throw new InvalidOperationException("Option 'region' must be 'eu', 'aus', 'rus', or 'cn'.");
+        }
+
+        if (region == "cn" && country != "CN")
+        {
+            throw new InvalidOperationException("Option 'country' must be 'CN' when region is 'cn'.");
         }
 
         if (String.IsNullOrWhiteSpace(options.Username))
@@ -89,7 +94,7 @@ public static class AddonOptionsLoader
             throw new InvalidOperationException("Option 'username' is required.");
         }
 
-        if (String.IsNullOrWhiteSpace(options.Password))
+        if (region != "cn" && String.IsNullOrWhiteSpace(options.Password))
         {
             throw new InvalidOperationException("Option 'password' is required.");
         }

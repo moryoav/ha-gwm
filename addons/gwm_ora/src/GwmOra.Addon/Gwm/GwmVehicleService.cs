@@ -120,5 +120,7 @@ public sealed class GwmVehicleService
     }
 
     private bool RemoteCommandsAvailable =>
-        _options.EnableRemoteCommands && !String.IsNullOrWhiteSpace(_options.SecurityPin);
+        _options.EnableRemoteCommands
+        && (String.Equals(_options.Region, "cn", StringComparison.OrdinalIgnoreCase)
+            || !String.IsNullOrWhiteSpace(_options.SecurityPin));
 }
