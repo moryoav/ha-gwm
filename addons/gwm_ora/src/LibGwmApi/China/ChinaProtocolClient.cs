@@ -677,7 +677,7 @@ public sealed class ChinaProtocolClient
         string mobileId,
         CancellationToken cancellationToken)
     {
-        var chinaNow = TimeZoneInfo.ConvertTime(DateTimeOffset.UtcNow, ChinaTimeZone());
+        var chinaNow = ChinaTime.Convert(DateTimeOffset.UtcNow);
         var wrapper = new JsonObject
         {
             ["body"] = body,
@@ -878,9 +878,7 @@ public sealed class ChinaProtocolClient
         {
             return "00:00";
         }
-        var local = TimeZoneInfo.ConvertTime(
-            DateTimeOffset.FromUnixTimeMilliseconds(milliseconds),
-            ChinaTimeZone());
+        var local = ChinaTime.Convert(DateTimeOffset.FromUnixTimeMilliseconds(milliseconds));
         return local.ToString("HH:mm", CultureInfo.InvariantCulture);
     }
 
@@ -898,7 +896,7 @@ public sealed class ChinaProtocolClient
         {
             return "0000000";
         }
-        var local = TimeZoneInfo.ConvertTime(DateTimeOffset.FromUnixTimeMilliseconds(start), ChinaTimeZone());
+        var local = ChinaTime.Convert(DateTimeOffset.FromUnixTimeMilliseconds(start));
         // AutoAI order is Sunday, Saturday, Friday, Thursday, Wednesday, Tuesday, Monday.
         var index = local.DayOfWeek switch
         {
@@ -917,18 +915,6 @@ public sealed class ChinaProtocolClient
 
     private static long StablePlanId(string vin) =>
         Int64.Parse(ChinaCrypto.Sha256Hex(vin ?? String.Empty)[..15], NumberStyles.HexNumber, CultureInfo.InvariantCulture);
-
-    private static TimeZoneInfo ChinaTimeZone()
-    {
-        try
-        {
-            return TimeZoneInfo.FindSystemTimeZoneById("Asia/Shanghai");
-        }
-        catch (TimeZoneNotFoundException)
-        {
-            return TimeZoneInfo.FindSystemTimeZoneById("China Standard Time");
-        }
-    }
 
     private static string FirstNonEmpty(params string?[] values) =>
         values.FirstOrDefault(value => !String.IsNullOrWhiteSpace(value)) ?? String.Empty;

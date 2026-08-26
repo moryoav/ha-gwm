@@ -6,6 +6,14 @@ This project follows semantic versioning. HACS uses the latest GitHub release ta
 
 ## [Unreleased]
 
+## [0.11.1] - 2026-08-26
+
+### Fixed
+
+- Fixed experimental China vehicle-service login in the Alpine add-on image by generating mainland-China timestamps with a fixed UTC+08:00 offset instead of depending on operating-system time-zone data.
+- Preserved rotated China account tokens when later BeanTech or AutoAI initialization fails, so a recoverable vehicle-service error does not leave an obsolete refresh token on disk.
+- Prevented the add-on from submitting the same one-time China SMS verification code again on a later polling cycle after it has already been accepted or rejected.
+
 ## [0.11.0] - 2026-08-25
 
 ### Added

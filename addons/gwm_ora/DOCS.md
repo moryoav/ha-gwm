@@ -75,7 +75,7 @@ Russia support has been live-tested, confirmed working, and merged as a supporte
 
 ## Mainland China (`cn` region, experimental)
 
-China support in version 0.11.0 is based on reverse engineering of the mainland-China GWM Android app and offline protocol fixtures. It has not yet been tested against a live China account or vehicle. It currently targets vehicles reported by the account as using the `navinfo` / AutoAI platform, including the contributed WEY VV6 case. Other China vehicle platforms will stop with an explicit unsupported-platform error instead of sending guessed requests.
+China support is based on reverse engineering of the mainland-China GWM Android app and offline protocol fixtures. It has not yet completed live validation against a China vehicle. It currently targets vehicles reported by the account as using the `navinfo` / AutoAI platform, including the contributed WEY VV6 case. Other China vehicle platforms will stop with an explicit unsupported-platform error instead of sending guessed requests.
 
 Start with read-only testing:
 

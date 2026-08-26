@@ -1,7 +1,14 @@
+using System.Net;
+using System.Text;
 using System.Text.Json;
 using GwmOra.Addon.Configuration;
 using GwmOra.Addon.Gwm;
+using GwmOra.Addon.Supervisor;
+using libgwmapi;
+using libgwmapi.China;
+using libgwmapi.DTO.China;
 using libgwmapi.DTO.UserAuth;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace GwmOra.Addon.Tests;
 
@@ -83,5 +90,162 @@ public class GwmAuthenticationServiceTests
 
         var json = JsonSerializer.Serialize(request);
         Assert.DoesNotContain("countryCode", json);
+    }
+
+    [Fact]
+    public async Task ChinaRefreshFailurePersistsRotatedTokensWithoutReusingSmsCode()
+    {
+        var statePath = Path.Combine(Path.GetTempPath(), $"gwm-auth-{Guid.NewGuid():N}.json");
+        try
+        {
+            var store = AddonStateStore.Load(statePath);
+            await store.UpdateAsync(state => state.ChinaSession = new ChinaSession
+            {
+                GToken = "old-g-token",
+                GRefreshToken = "old-g-refresh",
+                SsoToken = "old-sso-token",
+                UserId = "g-user",
+                Phone = "13800138000"
+            }, CancellationToken.None);
+
+            var smsLoginCalls = 0;
+            using var gApp = new HttpClient(new DelegateHandler(request =>
+            {
+                switch (request.RequestUri!.AbsolutePath)
+                {
+                    case "/api-guser/v5/token/refresh":
+                        return Json("""
+                            {"code":"000000","data":{"gToken":"new-g-token","gRefreshToken":"new-g-refresh","ssoToken":"new-sso-token"}}
+                            """);
+                    case "/tsp/v1/proxy/navinfo/GW.M.APP_LOGIN":
+                        return Json("""
+                            {"code":"000000","data":{"header":{"c":"500","m":"vehicle login unavailable"},"body":{}}}
+                            """);
+                    case "/api-guser/v5/user/sms-login":
+                        smsLoginCalls++;
+                        return Json("{\"code\":\"7000000\",\"description\":\"expired\"}");
+                    default:
+                        throw new Xunit.Sdk.XunitException(
+                            $"Unexpected G-App request {request.RequestUri.AbsolutePath}");
+                }
+            }));
+            using var beanTech = new HttpClient(new DelegateHandler(_ => Json("""
+                {"code":"000000","data":{"accessToken":"bt-access","refreshToken":"bt-refresh","beanId":"bt-bean"}}
+                """)));
+            using var unusedCar = new HttpClient(new DelegateHandler(_ =>
+                throw new Xunit.Sdk.XunitException("Car service should not be called")));
+            using var unusedAutoAi = new HttpClient(new DelegateHandler(_ =>
+                throw new Xunit.Sdk.XunitException("Direct AutoAI service should not be called")));
+            var protocol = new ChinaProtocolClient(
+                gApp,
+                unusedCar,
+                beanTech,
+                unusedAutoAi,
+                NullLoggerFactory.Instance)
+            {
+                DeviceId = "0123456789abcdef0123456789abcdef"
+            };
+            var client = new GwmApiClient(protocol, NullLoggerFactory.Instance);
+            var service = CreateChinaAuthenticationService(store, "654321");
+
+            var exception = await Assert.ThrowsAsync<GwmVerificationRequiredException>(() =>
+                service.EnsureAuthenticatedAsync(client, CancellationToken.None));
+
+            Assert.Contains("refreshed partial session was saved", exception.Message);
+            Assert.Equal(0, smsLoginCalls);
+            Assert.Equal("new-g-token", store.State.ChinaSession!.GToken);
+            Assert.Equal("new-g-refresh", store.State.ChinaSession.GRefreshToken);
+            Assert.Equal("new-sso-token", store.State.ChinaSession.SsoToken);
+        }
+        finally
+        {
+            File.Delete(statePath);
+            File.Delete(statePath + ".tmp");
+        }
+    }
+
+    [Fact]
+    public async Task ChinaSmsCodeIsSubmittedOnlyOncePerAddonProcess()
+    {
+        var statePath = Path.Combine(Path.GetTempPath(), $"gwm-auth-{Guid.NewGuid():N}.json");
+        try
+        {
+            var store = AddonStateStore.Load(statePath);
+            var smsLoginCalls = 0;
+            var smsRequestCalls = 0;
+            using var gApp = new HttpClient(new DelegateHandler(request =>
+            {
+                switch (request.RequestUri!.AbsolutePath)
+                {
+                    case "/api-guser/v5/user/sms-login":
+                        smsLoginCalls++;
+                        return Json("{\"code\":\"7000000\",\"description\":\"expired\"}");
+                    case "/api-guser/v5/user/login-sms/send":
+                        smsRequestCalls++;
+                        return Json("{\"code\":\"000000\",\"data\":{}}");
+                    default:
+                        throw new Xunit.Sdk.XunitException(
+                            $"Unexpected G-App request {request.RequestUri.AbsolutePath}");
+                }
+            }));
+            using var unusedCar = new HttpClient(new DelegateHandler(_ =>
+                throw new Xunit.Sdk.XunitException("Car service should not be called")));
+            using var unusedBeanTech = new HttpClient(new DelegateHandler(_ =>
+                throw new Xunit.Sdk.XunitException("BeanTech should not be called")));
+            using var unusedAutoAi = new HttpClient(new DelegateHandler(_ =>
+                throw new Xunit.Sdk.XunitException("AutoAI should not be called")));
+            var protocol = new ChinaProtocolClient(
+                gApp,
+                unusedCar,
+                unusedBeanTech,
+                unusedAutoAi,
+                NullLoggerFactory.Instance)
+            {
+                DeviceId = "0123456789abcdef0123456789abcdef"
+            };
+            var client = new GwmApiClient(protocol, NullLoggerFactory.Instance);
+            var service = CreateChinaAuthenticationService(store, "654321");
+
+            await Assert.ThrowsAsync<GwmVerificationRequiredException>(() =>
+                service.EnsureAuthenticatedAsync(client, CancellationToken.None));
+            await Assert.ThrowsAsync<GwmVerificationRequiredException>(() =>
+                service.EnsureAuthenticatedAsync(client, CancellationToken.None));
+
+            Assert.Equal(1, smsLoginCalls);
+            Assert.Equal(1, smsRequestCalls);
+        }
+        finally
+        {
+            File.Delete(statePath);
+            File.Delete(statePath + ".tmp");
+        }
+    }
+
+    private static GwmAuthenticationService CreateChinaAuthenticationService(
+        AddonStateStore store,
+        string verificationCode) =>
+        new(
+            new AddonOptions
+            {
+                Region = "cn",
+                Country = "CN",
+                Username = "13800138000",
+                VerificationCode = verificationCode
+            },
+            store,
+            new SupervisorOptionsService(NullLogger<SupervisorOptionsService>.Instance),
+            NullLogger<GwmAuthenticationService>.Instance);
+
+    private static HttpResponseMessage Json(string json) => new(HttpStatusCode.OK)
+    {
+        Content = new StringContent(json, Encoding.UTF8, "application/json")
+    };
+
+    private sealed class DelegateHandler(Func<HttpRequestMessage, HttpResponseMessage> handler) : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request,
+            CancellationToken cancellationToken) =>
+            Task.FromResult(handler(request));
     }
 }

@@ -14,6 +14,16 @@ public sealed class ChinaProtocolClientTests
     private const string Vin = "LGWTEST0000000001";
 
     [Fact]
+    public void ChinaClockUsesUtcPlusEightWithoutSystemTimeZoneLookup()
+    {
+        var china = ChinaTime.Convert(
+            new DateTimeOffset(2026, 8, 26, 16, 30, 0, TimeSpan.Zero));
+
+        Assert.Equal(TimeSpan.FromHours(8), china.Offset);
+        Assert.Equal(new DateTime(2026, 8, 27, 0, 30, 0), china.DateTime);
+    }
+
+    [Fact]
     public void CryptoMatchesAppDerivedSigningVectorsAndGAppRoundTrips()
     {
         var headers = new Dictionary<string, string>

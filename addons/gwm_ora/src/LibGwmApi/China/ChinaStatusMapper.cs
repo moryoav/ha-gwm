@@ -108,8 +108,7 @@ internal static class ChinaStatusMapper
             return new ChargingInfos();
         }
 
-        var chinaZone = ChinaTimeZone();
-        var chinaNow = TimeZoneInfo.ConvertTime(DateTimeOffset.UtcNow, chinaZone);
+        var chinaNow = ChinaTime.Convert(DateTimeOffset.UtcNow);
         var date = DateOnly.FromDateTime(chinaNow.DateTime);
         var startLocal = date.ToDateTime(start, DateTimeKind.Unspecified);
         var endLocal = date.ToDateTime(end, DateTimeKind.Unspecified);
@@ -139,8 +138,8 @@ internal static class ChinaStatusMapper
                 {
                     PlanId = StablePlanId(vin),
                     PlanType = "0",
-                    StartTime = new DateTimeOffset(startLocal, chinaZone.GetUtcOffset(startLocal)).ToUnixTimeMilliseconds(),
-                    EndTime = new DateTimeOffset(endLocal, chinaZone.GetUtcOffset(endLocal)).ToUnixTimeMilliseconds(),
+                    StartTime = new DateTimeOffset(startLocal, ChinaTime.UtcOffset).ToUnixTimeMilliseconds(),
+                    EndTime = new DateTimeOffset(endLocal, ChinaTime.UtcOffset).ToUnixTimeMilliseconds(),
                     Weeks = repeat ?? String.Empty
                 }
             }
@@ -401,18 +400,6 @@ internal static class ChinaStatusMapper
     {
         var hash = ChinaCrypto.Sha256Hex(vin ?? String.Empty);
         return Int64.Parse(hash[..15], NumberStyles.HexNumber, CultureInfo.InvariantCulture);
-    }
-
-    private static TimeZoneInfo ChinaTimeZone()
-    {
-        try
-        {
-            return TimeZoneInfo.FindSystemTimeZoneById("Asia/Shanghai");
-        }
-        catch (TimeZoneNotFoundException)
-        {
-            return TimeZoneInfo.FindSystemTimeZoneById("China Standard Time");
-        }
     }
 
     private static string FirstNonEmpty(params string?[] values) =>

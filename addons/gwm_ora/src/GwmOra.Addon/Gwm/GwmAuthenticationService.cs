@@ -16,6 +16,7 @@ public sealed class GwmAuthenticationService
     private readonly AddonStateStore _stateStore;
     private readonly SupervisorOptionsService _supervisorOptions;
     private readonly ILogger<GwmAuthenticationService> _logger;
+    private bool _chinaVerificationCodeConsumed;
 
     public GwmAuthenticationService(
         AddonOptions options,
@@ -168,10 +169,30 @@ public sealed class GwmAuthenticationService
                     "Experimental GWM China session refresh failed: {Code} {Message}",
                     ex.Code,
                     ex.Message);
+
+                if (ex.Code == "CN_TSP_LOGIN")
+                {
+                    // RefreshSessionAsync updates the G-App tokens before it initializes
+                    // BeanTech and AutoAI. Preserve those potentially rotated tokens even
+                    // when the later vehicle-service login fails.
+                    var partialSession = client.GetChinaSession();
+                    if (partialSession.HasGAppTokens)
+                    {
+                        await StoreChinaSessionAsync(partialSession, cancellationToken);
+                        await _supervisorOptions.ClearVerificationCodeAsync(cancellationToken);
+                    }
+
+                    throw new GwmVerificationRequiredException(
+                        "GWM China refreshed the account session, but initialization of the vehicle " +
+                        "services failed. The refreshed partial session was saved and will be retried " +
+                        $"automatically. If it repeats, report this response: {ex.Message} [{ex.Code}]",
+                        ex);
+                }
             }
         }
 
-        if (String.IsNullOrWhiteSpace(_options.VerificationCode))
+        if (String.IsNullOrWhiteSpace(_options.VerificationCode)
+            || _chinaVerificationCodeConsumed)
         {
             await RequestVerificationCodeChinaAsync(client, cancellationToken);
             throw new GwmVerificationRequiredException(
@@ -181,6 +202,10 @@ public sealed class GwmAuthenticationService
 
         try
         {
+            // The SMS code is one-time state loaded when the process starts. Clearing
+            // the Supervisor option does not mutate this AddonOptions instance, so do
+            // not submit the same code again on a later polling cycle.
+            _chinaVerificationCodeConsumed = true;
             var session = await client.LoginChinaWithSmsAsync(
                 _options.Username,
                 _options.VerificationCode.Trim(),

@@ -192,7 +192,7 @@ This project is designed for vehicles that can be managed through the official G
 
 Regional GWM services and vehicle firmware can differ, so some entities may be unavailable on some cars.
 
-This integration supports accounts on the European GWM cloud (`region: eu`), including EU countries and Israel; the Australia/New Zealand cloud (`region: aus`); and the live-tested Russia cloud (`region: rus`). Version 0.11.0 also adds experimental, untested mainland-China support (`region: cn`) for NavInfo/AutoAI vehicles.
+This integration supports accounts on the European GWM cloud (`region: eu`), including EU countries and Israel; the Australia/New Zealand cloud (`region: aus`); and the live-tested Russia cloud (`region: rus`). Experimental, untested mainland-China support (`region: cn`) is also available for NavInfo/AutoAI vehicles.
 
 ### Mainland China experimental testing
 
