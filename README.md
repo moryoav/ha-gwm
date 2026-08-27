@@ -1,7 +1,15 @@
 # GWM for Home Assistant
 [![HACS][hacs-badge]][hacs-url] [![release][release-badge]][release-url] [![license][license-badge]][license-url]
 
+---
+
+## Support me on Ko-fi
+
+If this project is useful to you, you can support its continued development:
+
 [![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/Y5B124NZ2L)
+
+---
 
 <img alt="GWM" src="https://www.gwm.com.my/content/dam/gwm/pages/my/en/logo/gwm-black-pc.svg">
 
@@ -323,6 +331,5 @@ Deep thanks to [wilberforce](https://github.com/wilberforce) for reverse-enginee
 [hacs-url]: https://github.com/hacs/integration
 [release-badge]: https://img.shields.io/github/v/release/moryoav/ha-gwm?style=flat-square
 [release-url]: https://github.com/moryoav/ha-gwm/releases
-[downloads-badge]: https://img.shields.io/github/downloads/moryoav/ha-gwm/total?style=flat-square
 [license-badge]: https://img.shields.io/github/license/moryoav/ha-gwm?style=flat-square
 [license-url]: https://github.com/moryoav/ha-gwm/blob/main/LICENSE
