@@ -6,9 +6,10 @@ This document is the durable plan, behavior contract, decision log, and test led
 
 - Working branch: `feature/integration-only`
 - Branch point: `1184737` (`Update README GWM logo to SVG`)
-- Current checkpoint: Task 6 complete; Gate A remains passed
-- Next checkpoint: Task 7 — Russia production authentication and read parity (not yet approved)
-- Released add-on and integration runtime behavior changed so far: none
+- Current checkpoint: Task 6 complete; the 2026-08-27 `main` drift and China scope review is recorded; Gate A remains passed
+- Next checkpoint: Task 7 — synchronize released `main`/`v0.12.0` behavior into this branch (not yet approved)
+- Reviewed local `main`: `9daff32` (`v0.12.0`); the integration-only branch has not merged or ported that runtime behavior yet
+- Released add-on and integration runtime behavior changed so far on this branch: none
 
 Work proceeds one explicitly approved task at a time. At the end of every task, update this document, run the checks appropriate to that checkpoint, create one focused local commit, report the result, and stop. Do not begin the next task without a new user green light.
 
@@ -20,7 +21,7 @@ Work proceeds one explicitly approved task at a time. At the end of every task, 
 - Live read-only tests require explicit approval for the corresponding task.
 - Live climate, lock, unlock, window, and charging-plan operations require an additional explicit confirmation immediately before testing them.
 - Do not publish packages, push the branch, open a pull request, merge, or release without separate approval.
-- If `main` moves materially during this long-lived effort, report the drift before merging or rebasing it into this branch.
+- If `main` moves materially during this long-lived effort, review and record the drift before synchronizing it. Because this published feature branch is long-lived, prefer an explicit merge checkpoint over rebasing or selective cherry-picking of a dependent release series.
 
 ## Architecture
 
@@ -97,8 +98,10 @@ The migration ports the GWM behavior, not the daemon shape. The ASP.NET server, 
 The current local API contract contains:
 
 - Health, cached vehicle list, and explicit refresh.
+- The configured region alongside the cached vehicle-list response.
 - Command-status lookup.
 - Climate, lock/unlock, and close-window command submission.
+- Experimental China-only engine, horn/light, tailgate, and sunroof command submission.
 - Charging-plan read, set, and clear behavior.
 
 That HTTP contract is a migration reference, not part of the final architecture.
@@ -114,18 +117,19 @@ The add-on must not be retired until the Python path preserves the behaviors bel
 | Europe/Israel | `region: eu` and the account registration country | EU v2 password login and verification, token refresh, EU request canonicalization/signing, general-certificate bootstrap, per-device certificate enrollment, mutual TLS, vehicle reads, and commands |
 | Australia/New Zealand | `region: aus` and the exact account registration country | ANZ login and verification, `bt-auth` behavior, single-active-session recovery, ANZ query canonicalization, tolerant API quirks, required VIN headers, vehicle reads, and commands |
 | Russia | `region: rus`, normally with `country: RU` | Russia login and verification payloads, Russian certificate chain and mutual TLS, regional routing/headers/signing, string-or-number decoding, vehicle reads, and Russia-specific command/result behavior |
+| Mainland China (experimental) | `region: cn`, `country: CN`, and the registered phone number | SMS-only G-App login, separate G-App/BeanTech/AutoAI sessions, three signing/encryption schemes, 32-character device identity, fixed UTC+08:00 timestamps, app-like transport, NavInfo-only discovery/status reads, China status translation, no-PIN commands, and China charging behavior |
 
-Regional logic must remain strategy-like and separately tested. A fix for one region must not silently alter another region’s signing, serialization, headers, endpoints, or result interpretation.
+Regional logic must remain strategy-like and separately tested. China is a separate multi-service strategy, not a fourth overseas-gateway policy. A fix for one region or service must not silently alter another region’s signing, serialization, headers, endpoints, transport, session, or result interpretation.
 
 ### Configuration
 
 The current user-facing configuration comprises:
 
 - Account registration country.
-- Cloud region: `eu`, `aus`, or `rus`.
-- Account username/e-mail and password.
-- One-time verification code when required.
-- Vehicle security PIN for remote controls.
+- Cloud region: `eu`, `aus`, `rus`, or experimental `cn`.
+- Account username/e-mail and password outside China; registered phone number and no password for China.
+- One-time verification code when required; China always starts a fresh login through an SMS continuation.
+- Vehicle security PIN for remote controls outside China; the China app protocol does not send a PIN.
 - Independent opt-ins for remote commands and charging control.
 - Cloud polling interval from 30 to 3600 seconds.
 - Logging level.
@@ -139,12 +143,14 @@ The current add-on persists:
 - Stable generated device ID.
 - Access and refresh tokens.
 - GWM and bean user identifiers.
+- A separate China session containing the G-App, BeanTech, and AutoAI tokens and identifiers.
 - Enrolled client certificate and private key.
 - Verification-code request timestamp.
+- An authentication-context binding used to prevent state reuse after a region, country, account, or password change.
 - Exact per-VIN charging plans written by this project.
 - Local API token and Supervisor discovery UUID, which become obsolete after cutover.
 
-State writes must remain serialized and crash-safe. Changing accounts must invalidate account-specific certificates and tokens. The future command journal must persist accepted command identifiers before relying on background result polling.
+State writes must remain serialized and crash-safe. Changing the region, country, account, or password must invalidate every account-bound token, identifier, certificate, verification throttle, partial China session, owned charging plan, and command-journal entry before any new login. China must also be able to publish a bounded partial continuation when G-App tokens rotate but BeanTech/AutoAI initialization later fails. The future command journal must persist accepted command identifiers before relying on background result polling.
 
 ### Vehicle discovery and normalized snapshots
 
@@ -174,11 +180,12 @@ The existing HA platforms must remain available: sensor, binary sensor, device t
 
 ### Remote vehicle commands
 
-Remote controls remain behind both explicit opt-in and a configured security PIN:
+Remote controls remain behind explicit opt-in. Europe, ANZ, and Russia also require a configured security PIN; the China protocol does not send one:
 
-- Climate on/off, temperature, and operation time.
+- Climate on/off, temperature, and operation time; China additionally exposes heating and uses a separate parameter-update operation when HVAC is already running.
 - Door lock and unlock.
 - Close all windows.
+- China-only remote engine start/stop, horn, light flash, combined vehicle search, tailgate open/close, and sunroof close/tilt/half/full controls.
 - Region-specific payload construction, prerequisite calls, VIN headers, pending codes, timeouts, and result selection.
 - User-visible command progress and an immediate vehicle refresh after successful completion.
 
@@ -199,10 +206,12 @@ Charging control remains a separate opt-in and does not require the remote-contr
 - Provide the existing switch and `gwm_ora.set_charging_plan` / `gwm_ora.clear_charging_plan` actions.
 - Track the exact plan written by this project.
 - During cleanup, remove only a still-matching owned plan and never delete a schedule replaced or changed by the official GWM app.
+- Preserve China’s separate AutoAI weekly-schedule command, fixed-China-time conversion, weekday encoding, and synthesized plan-read semantics without claiming live validation that has not occurred.
 
 ### Security and privacy
 
 - The legacy `DEFAULT@SECLEVEL=0` requirement may only be applied to a dedicated GWM SSL context. It must never alter Home Assistant’s process-wide OpenSSL configuration or default HTTPS behavior.
+- China’s required gzip response profile must use bounded decompression and remain isolated from the overseas clients; an HTTP/2-capable dependency may be added only after the China transport POC establishes that it is needed and can retain the same redirect, proxy, cookie, timeout, and redaction boundaries.
 - Offload blocking certificate, key, and filesystem work from the HA event loop.
 - Redact passwords, PINs, tokens, client certificates, private keys, identifiers, VINs, location, and other personal data from diagnostics and logs.
 - Keep request signing deterministic and covered by golden vectors without exposing secrets in test output.
@@ -218,23 +227,29 @@ Tasks 1–3 intentionally do not:
 - Publish a Python package.
 - Remove or deprecate any current feature.
 
+Task 8 is a second, China-specific feasibility checkpoint. It will remain reuse-only and read-only: no SMS request or login, command, charging write, Home Assistant wiring, durable credential import, or released runtime-path change is permitted. Any live China read still requires explicit approval and a separately agreed sanitized-state procedure.
+
 ## Acceptance Gates
 
 ### Gate A — Technical feasibility (passed 2026-08-24)
 
 After Task 3, Python must reproduce the offline signing/certificate vectors and retrieve a sanitized live vehicle snapshot directly from at least one GWM region using scoped TLS. Failure pauses the migration for reassessment.
 
+### Gate A-CN — China transport feasibility
+
+After Task 8, Python must reproduce all three China crypto/signing families and complete a bounded end-to-end synthetic-service discovery/status round trip using the selected transport. Before `cn` can be enabled in a direct Home Assistant flow or the add-on can be retired for a China user, a sanitized live read-only validation must also pass using either an existing session or an explicitly approved Task 9 SMS login. Lack of suitable China access does not block work for the other regions, but it does block claiming China cutover readiness.
+
 ### Gate B — Read-only integration
 
-After Task 10, a native config flow and direct coordinator must provide stable read-only entities without the add-on, with correct reauthentication, availability, unloading, and redaction.
+After Task 14, native config flows, account-bound state, and a direct coordinator must provide stable read-only entities without the add-on, with correct reauthentication, restart behavior, availability, unloading, and redaction.
 
 ### Gate C — Write parity
 
-After Task 15, commands and charging control must pass fixture tests, lifecycle/restart tests, and the explicitly approved live regional matrix available to the project.
+After Task 19, commands and charging control must pass fixture tests, lifecycle/restart tests, and the explicitly approved live regional matrix available to the project. Experimental China operations remain labeled as such until separately live-validated.
 
 ### Gate D — Cutover readiness
 
-After Task 18, packaging, installation migration, documentation, complete tests, and fresh-install validation must pass before the add-on is removed from the supported architecture.
+After Task 22, packaging, installation migration, documentation, complete tests, and fresh-install validation must pass before the add-on is removed from the supported architecture. Gate A-CN must also be fully passed before China users can be included in that cutover.
 
 ## Roadmap
 
@@ -244,18 +259,30 @@ After Task 18, packaging, installation migration, documentation, complete tests,
 - [x] Task 4 — Harden the POC into an async, typed, HA-independent client foundation.
 - [x] Task 5 — Implement EU production authentication and read parity.
 - [x] Task 6 — Implement ANZ production authentication and read parity.
-- [ ] Task 7 — Implement Russia production authentication and read parity.
-- [ ] Task 8 — Port and fixture-test normalized snapshot/model mapping.
-- [ ] Task 9 — Add direct-cloud config, verification, reauth, reconfigure, and options flows.
-- [ ] Task 10 — Add the direct read-only coordinator and existing entity platforms.
-- [ ] Task 11 — Add persistent client state and a restart-safe command journal.
-- [ ] Task 12 — Add climate command parity.
-- [ ] Task 13 — Add lock/unlock and close-window parity.
-- [ ] Task 14 — Add charging-control parity.
-- [ ] Task 15 — Complete hardening and the regional/lifecycle parity matrix.
-- [ ] Task 16 — Resolve packaging, dependency, licensing, and certificate provenance.
-- [ ] Task 17 — Implement the approved existing-installation migration path.
-- [ ] Task 18 — Remove add-on/proxy code and complete final validation and documentation.
+- [ ] Task 7 — Merge the reviewed released `main` series into this branch and re-establish the full baseline.
+- [ ] Task 8 — Prove the isolated China crypto, transport, and reuse-only read path.
+- [ ] Task 9 — Implement China production SMS authentication, multi-service sessions, and read parity.
+- [ ] Task 10 — Implement Russia production authentication and read parity.
+- [ ] Task 11 — Port and fixture-test four-region normalized snapshot/model mapping.
+- [ ] Task 12 — Add direct-cloud config, verification, reauth, reconfigure, and options flows.
+- [ ] Task 13 — Add the direct read-only coordinator and existing entity platforms.
+- [ ] Task 14 — Add persistent account-bound client state and a restart-safe command journal.
+- [ ] Task 15 — Add climate command parity, including China heating and in-place parameter updates.
+- [ ] Task 16 — Add lock/unlock and close-window parity, including isolated China no-PIN behavior.
+- [ ] Task 17 — Add China-only engine, horn/light, tailgate, and sunroof controls and HA buttons.
+- [ ] Task 18 — Add charging-control parity, including China weekly-schedule behavior.
+- [ ] Task 19 — Complete four-region hardening and the lifecycle/write parity matrix.
+- [ ] Task 20 — Resolve packaging, dependency, licensing, certificate, and protocol-material provenance.
+- [ ] Task 21 — Implement the approved existing-installation migration path.
+- [ ] Task 22 — Remove add-on/proxy code and complete final validation and documentation.
+
+The changed checkpoints stay intentionally narrow:
+
+- Task 7 is synchronization only. Merge the complete released mainline series, semantically review auto-merged documentation/translations, run the full Python and .NET baselines, and make no direct-cloud Python behavior change.
+- Task 8 is the early China stop/go POC. Port deterministic crypto/time vectors, exact app-like request bytes, 32-character device identity, bounded gzip handling, and the three-service transport boundary; prove only discovery and status with synthetic services and, if separately approved and available, a reused live session. Do not request or submit an SMS code.
+- Task 9 turns that proof into immutable production authentication/read behavior: SMS continuation and throttling, exact error/risk-control handling, G-App refresh, bounded BeanTech/AutoAI initialization, partial-session publication, corrected discovery routing, NavInfo-only enforcement, sanitized China fixtures, and typed reads. It remains HA-independent, non-persistent, and command-free.
+- Task 10 retains the previously planned Russia authentication/read checkpoint. Moving it after the China feasibility work prevents the current overseas-only client shape from hiding a transport or strategy blocker introduced by the newly released region.
+- Tasks 11–22 preserve the original read integration, persistence, command, charging, packaging, migration, and cutover progression while expanding every relevant fixture and gate to four regions. China-only write surfaces remain a separate Task 17 so their experimental status and live-safety approvals cannot be obscured by already-supported commands.
 
 ## Decision Log
 
@@ -267,7 +294,7 @@ After Task 18, packaging, installation migration, documentation, complete tests,
 | D-004 | 2026-08-22 | Prove offline crypto/TLS and one live read before production migration. | Resolve the principal technical risk before making broad changes. |
 | D-005 | 2026-08-22 | Make the protocol client HA-independent and async. | Separate GWM protocol concerns from HA lifecycle/entity concerns and keep future packaging possible. |
 | D-006 | 2026-08-22 | Never apply legacy TLS settings globally. | A process-wide security downgrade inside HA is unacceptable. |
-| D-007 | 2026-08-22 | Preserve separate regional strategies and tests. | EU, ANZ, and Russia differ in authentication, signing, TLS, payloads, and response behavior. |
+| D-007 | 2026-08-22 | Preserve separate regional strategies and tests. | EU, ANZ, Russia, and China differ in authentication, signing, TLS/transport, payloads, session shape, and response behavior. |
 | D-008 | 2026-08-22 | Require separate approval before every live write test. | Remote commands and charging schedules affect a real vehicle. |
 | D-009 | 2026-08-22 | Defer PyPI/bundling and installation-migration decisions until after the POC. | Avoid release and migration work before feasibility is demonstrated. |
 | D-010 | 2026-08-24 | Keep the POC in a repository-root `gwm_ora_client` package with no HA imports. | Prove the protocol boundary independently while packaging for HACS versus PyPI remains deferred. |
@@ -279,12 +306,45 @@ After Task 18, packaging, installation migration, documentation, complete tests,
 | D-016 | 2026-08-24 | Use immutable per-request session snapshots and independent immutable regional protocol policies. | Token or TLS-identity replacement can affect future requests without mutating an in-flight request, while EU, ANZ, and Russia retain separate origin, signing, header, query, decoding, device-ID, country, and TLS contracts. |
 | D-017 | 2026-08-24 | Use `aiohttp` with a single monotonic deadline, bounded streaming, and redirects, environment proxies, cookies, content decoding, and retries disabled. | The integration needs native async I/O and reliable cancellation without leaking signed URLs or allowing hidden network behavior; compressed responses remain rejected until bounded decompression is deliberately implemented. |
 | D-018 | 2026-08-24 | Make strict typing and a dependency-minimal client suite explicit CI gates. | Directly testing against `aiohttp`, `cryptography`, and pytest without Home Assistant proves the protocol package remains independently usable; strict mypy checking catches boundary drift before HA wiring begins. |
-| D-019 | 2026-08-24 | Model EU login, verification, refresh, and certificate enrollment as a finite immutable continuation that publishes a read session only after complete validation. | Task 9 can drive native config and reauthentication flows without persisting partial tokens, identities, passwords, or verification codes, while Task 11 remains the sole owner of durable state writes. |
+| D-019 | 2026-08-24 | Model EU login, verification, refresh, and certificate enrollment as a finite immutable continuation that publishes a read session only after complete validation. | Task 12 can drive native config and reauthentication flows without persisting partial tokens, identities, passwords, or verification codes, while Task 14 remains the sole owner of durable state writes. |
 | D-020 | 2026-08-24 | Classify EU authentication failures conservatively from closed evidence-backed conditions. | HTTP 401/403 retires rejected state, 429 remains rate limiting, other non-2xx responses remain HTTP failures, exact known verification challenges drive continuation, and unknown application codes propagate instead of causing login or code-request side effects. |
 | D-021 | 2026-08-24 | Validate required bootstrap material before fresh-auth network traffic and renew stored identities only for identity-specific failures. | Known local CA/bootstrap errors must fail before login or verification side effects; malformed or expiring issued identities can be replaced without treating local TLS configuration failures as a reason to enroll another certificate. |
 | D-022 | 2026-08-25 | Require an explicit one-shot caller opt-in before every ANZ password login and retain that requirement through verification continuation. | ANZ permits only one active session; even a first or fallback login can supersede the official app or add-on. Validation and safe refresh may proceed without consent, while detected `607501` conflicts retire only the rejected revision and never trigger an automatic login loop. |
 | D-023 | 2026-08-25 | Keep ANZ application-code side effects exact, endpoint-scoped, and conservative. | Only exact raw `309702`/`110641` challenges, historical captured-R&D `308011` code rejection, `607501` session conflict, and basics-only `607099` have special meanings. Unknown, whitespace-mutated, transient, HTTP, schema, and transport failures cannot trigger login, code delivery, reclaim, or optional-endpoint fallback. |
-| D-024 | 2026-08-25 | Expose ANZ basics `607099` as `GwmOptionalEndpointError` at the raw client boundary. | The future coordinator can reproduce the add-on polling service's empty-basics fallback without hiding the regional protocol outcome from direct client callers; every other region, operation, and code still propagates. |
+| D-024 | 2026-08-25 | Expose ANZ basics `607099` as `GwmOptionalEndpointError` at the raw client boundary. | The Task 13 coordinator can reproduce the add-on polling service's empty-basics fallback without hiding the regional protocol outcome from direct client callers; every other region, operation, and code still propagates. |
+| D-025 | 2026-08-27 | Synchronize the full released `main` series in its own merge checkpoint before more protocol work. | The feature branch is already published, and China’s initial implementation plus its Alpine, transport, gateway, mapping, account-reset, and command fixes form a dependent release series that should not be partially cherry-picked or rebased away. |
+| D-026 | 2026-08-27 | Implement China as an isolated multi-service strategy sharing only safe lifecycle, model, and error boundaries with the overseas client. | G-App, BeanTech, and AutoAI use different sessions, signing/encryption, envelopes, routes, time semantics, and command-result flow; forcing them into the current overseas `RegionProtocol`/single-token shape would couple unrelated behavior. |
+| D-027 | 2026-08-27 | Retire China transport risk before production SMS authentication. | The existing Python transport rejects compressed responses and does not provide HTTP/2, while the observed China app profile advertises gzip and prefers HTTP/2. A bounded read-only POC can decide the transport without requesting codes or mutating an account or vehicle. |
+| D-028 | 2026-08-27 | Bind all durable authentication and ownership state to the complete account context and clear it atomically when that context changes. | Main now prevents tokens, certificates, partial China sessions, verification throttles, charging ownership, or command outcomes from crossing region, country, account, or password changes; the direct integration must preserve that safety behavior without persisting a reversible credential fingerprint. |
+| D-029 | 2026-08-27 | Preserve evidence labels for China capabilities instead of treating fixture parity as live validation. | Discovery, VV6 status, cooling, lock/unlock, and close-window behavior have initial live evidence; heating, extended controls, charging, other models/platforms, and broader response encodings remain experimental and require distinct approvals and results. |
+
+## Post-Branch Main Drift Review
+
+Review captured on 2026-08-27 without merging or rebasing. The merge base remains `1184737`; local `main` is `9daff32` (`v0.12.0`) and this branch is `ec80c4b` before this ledger-only commit.
+
+Main contains twelve commits after the branch point. Two are patch-equivalent to changes already carried here: `cd8ffa7` corresponds to `cba0873` (regional reverse-engineering guide), and `10d6761` corresponds to `030199e` (new-region issue chooser). The ten unreconciled commits are:
+
+- `d179610` — initial experimental mainland-China region, authentication, reads, basic controls, charging, fixtures, configuration, and documentation.
+- `ee73524` — idempotent GitHub release creation/update behavior.
+- `2d7e324` — Alpine-safe UTC+08:00 timestamps, one-time SMS-code handling, and preservation of rotated partial China tokens.
+- `a41857d` — Ko-fi documentation expansion.
+- `3699037` — app-like China User-Agent/HTTP-version preference and privacy-safe failure diagnostics.
+- `4d39bff` — gzip-only response handling, exact JSON content headers/length, and expanded credential-safe gateway diagnostics.
+- `a0e1977` — live-corrected vehicle discovery through the G-App gateway.
+- `c45d0ff` — live-verified WEY VV6 SOC, fuel/range, and network-type-2 lock mappings.
+- `f2159d0` — cross-region account-context binding and atomic authentication/ownership-state reset.
+- `9daff32` — China heating, in-place HVAC parameter changes, eleven China-only HA buttons, and the engine, horn/light, tailgate, and sunroof command matrix.
+
+Technical conclusions from the review:
+
+- Main’s China cloud implementation remains inside the add-on. The existing HA integration still uses the local proxy and has no native China config/authentication flow.
+- China spans G-App account/discovery, BeanTech session/result polling, and AutoAI/NavInfo status/commands. It uses ordinary verified TLS but separate crypto, tokens, envelopes, header profiles, and fixed-China-time semantics.
+- The current Python client’s single overseas session and `RegionProtocol` abstraction cannot represent China safely without a separate strategy. Its transport also deliberately rejects compression and currently offers no HTTP/2 path, so transport feasibility must be proved before production SMS authentication.
+- Discovery and status currently fail closed for any China vehicle whose `belongPlatform` is not `navinfo`. That limitation must remain explicit in the direct client and UI.
+- Initial live evidence exists for SMS-backed access, NavInfo discovery, VV6 status, cooling, lock/unlock, and closing windows. Heating, extended controls, charging writes, other models/platforms, and broader status encodings remain experimental.
+- A dry-run merge against `9daff32` predicts no textual conflicts. `README.md`, `CONTRIBUTING.md`, the issue chooser, and `custom_components/gwm_ora/translations/en.json` still require semantic review so both the released China material and the integration-only development guidance survive the auto-merge.
+
+Task 7 will synchronize this released series as a whole and re-run both language baselines. No part of the series was merged, cherry-picked, or ported during this review.
 
 ## Baseline Evidence
 
@@ -436,7 +496,7 @@ Delivered foundation:
 
 - Added a lifecycle-managed `GwmClient` with typed `acquire_vehicles`, `get_last_status`, and `get_vehicle_basics` methods. It requires an existing immutable authenticated-session snapshot; no login, refresh, verification, enrollment, session reclaim, persistence, or HA wiring exists yet.
 - Added separately testable immutable EU, ANZ, and Russia policies for the known H5, auth, app, and certificate origins, regional signers, static/dynamic headers, country and device-ID rules, TLS roles, query canonicalization, and scalar-tolerance boundaries.
-- Added redaction-safe cloud vehicle, status-item, status, and basics DTOs without Task 8 normalized-snapshot mapping. Discovery parsing deliberately discards unrelated license, engine, ICCID, location, and other unknown fields; status values are recursively frozen for later mapping.
+- Added redaction-safe cloud vehicle, status-item, status, and basics DTOs without the now-renumbered Task 11 normalized-snapshot mapping. Discovery parsing deliberately discards unrelated license, engine, ICCID, location, and other unknown fields; status values are recursively frozen for later mapping.
 - Added a dedicated `aiohttp` transport with exact encoded URLs, an injected policy-validated `SSLContext`, no redirects/proxies/cookies/retries/automatic decompression, bounded streaming, response cleanup, owned-versus-external lifecycle, and no background tasks. Identity provisioning remains part of the regional authentication checkpoints.
 - Applied one absolute event-loop deadline across lock acquisition, transport, response streaming, envelope parsing, and typed decoding. Caller cancellation propagates unchanged; overlapping account requests are serialized.
 - Added fixed-message configuration, route, lifecycle, transport, HTTP, authentication, rate-limit, API, protocol, and schema exceptions that retain no URL, headers, body, cloud description, identifier, token, TLS material, or underlying aiohttp exception.
@@ -468,7 +528,7 @@ dotnet test --no-restore --configuration Release
 128 passed, 0 failed, 0 skipped
 ```
 
-The dependency-minimal Ruff, mypy, compile, and 321-test client gate also passed under WSL/Linux with Python 3.13. The Python warning and .NET nullable-annotation warnings are the unchanged baseline warnings. The async read surface is production-structured but not production-authenticated: Tasks 5–7 must still implement and prove each region's authentication/session behavior and expand sanitized regional response parity before Home Assistant can use it.
+The dependency-minimal Ruff, mypy, compile, and 321-test client gate also passed under WSL/Linux with Python 3.13. The Python warning and .NET nullable-annotation warnings are the unchanged baseline warnings. The async overseas read surface is production-structured; Tasks 5 and 6 have since added EU/ANZ authentication, while Tasks 9 and 10 must add China and Russia authentication/session behavior and expand sanitized regional response parity before Home Assistant can use every region directly.
 
 ## Task 5 EU Authentication and Read-Parity Evidence
 
@@ -614,7 +674,7 @@ Delivered:
 
 - Replaced the disposable POC's architectural role with separate production modules for configuration, errors, immutable cloud DTOs, regional policy, private wire contracts, async transport, and the typed read client; retained the POC itself as Task 3 evidence.
 - Defined the full known regional origin/signing/TLS matrix while exposing only the three read operations and an immutable existing-session snapshot.
-- Added strict route, header, TLS, response, error-redaction, timeout, cancellation, non-overlap, lifecycle, and scalar-decoding boundaries while preserving finite raw cloud values for Task 8 availability normalization.
+- Added strict route, header, TLS, response, error-redaction, timeout, cancellation, non-overlap, lifecycle, and scalar-decoding boundaries while preserving finite raw cloud values for the now-renumbered Task 11 availability normalization.
 - Added versioned synthetic fixtures and expanded the dependency-minimal suite to 321 tests (217 added after Task 3), with strict package type checking and dedicated CI coverage.
 - Kept authentication, persistence, normalized snapshot mapping, Home Assistant wiring, commands, charging, packaging, and migration deferred to their planned checkpoints.
 - Made no live request and no add-on or integration runtime-path change.
@@ -647,7 +707,7 @@ Delivered:
 
 ### Next checkpoint (requires explicit approval)
 
-Task 7 will implement Russia production authentication, certificate/TLS/session behavior, and sanitized Russia discovery/status/basics response parity on top of the shared client foundation. It will remain HA-independent and read-only: it will not switch Home Assistant to direct cloud access, add persistence or Home Assistant flows, send vehicle commands, change charging plans, publish anything, or remove the existing add-on path. Any Task 7 live authentication or read will require explicit approval and a separately agreed credential/evidence procedure.
+Task 7 will merge the complete local `main` release series through `9daff32` (`v0.12.0`) into `feature/integration-only`, semantically verify the auto-merged documentation/translations, and re-run the full Python and .NET baselines. It will not port China into `gwm_ora_client`, alter the direct-cloud architecture, perform network I/O, publish or push anything, or begin Task 8. If `main` advances again before approval, its new drift must be reviewed before the Task 7 merge.
 
 ## Open Risks and Questions
 
@@ -656,14 +716,18 @@ Task 7 will implement Russia production authentication, certificate/TLS/session 
 - Modern `cryptography` rejects invalid PrintableString characters in the legacy OEM CA subjects; the POC validates their envelopes and lets OpenSSL consume the original signed bytes instead.
 - EU authentication is implemented and exhaustively fixture-tested offline, but its undocumented application-level token-expiry and wrong-verification-code values remain unverified. Until sanitized evidence establishes those codes, only HTTP 401/403 retires token state and unknown application errors propagate without fallback side effects.
 - Exact live parity of undocumented authentication and response behavior in ANZ and Russia remains unverified; EU read transport is proven live, while Task 5 EU auth and Task 6 ANZ auth/read semantics were deliberately not exercised live.
-- The cloud DTOs intentionally retain only the fields required to establish the protocol boundary. EU and ANZ now have sanitized regional response fixtures; Russia response parity and Task 8's complete normalized-snapshot mapping remain outstanding.
-- ANZ's exact basics `607099` response is now a typed raw-client optional-endpoint failure. The Task 10 coordinator must deliberately map it to empty basics to preserve the add-on polling service's nonfatal behavior.
-- Whether Task 9 should use one dedicated cookie-free client session per config entry or a policy-validated HA-owned session while preserving scoped TLS and unload ownership.
+- The current Python `aiohttp` transport rejects compressed responses and has no HTTP/2 client support. Task 8 must prove whether bounded China-only gzip over HTTP/1.1 is accepted by the corrected gateway or whether an isolated HTTP/2-capable dependency is required without weakening existing transport boundaries.
+- China authentication crosses three services. Unknown G-App, BeanTech, or AutoAI application codes must not be treated as token rejection, trigger SMS delivery/login, or discard a still-recoverable partial session without sanitized evidence. Risk-control `1013` remains an explicit stop that directs the user to the official app.
+- Main retries BeanTech and AutoAI initialization three times. The Python port must decide from fixtures/evidence whether narrowly bounded retries of those idempotent initialization calls are safe under one deadline; it must not introduce general retries for SMS delivery, SMS login, reads, or commands.
+- China live evidence is currently limited to a contributed NavInfo WEY VV6 and selected reads/controls. Gate A-CN needs suitable sanitized access before direct China setup can be exposed, while heating, extended controls, charging, other platforms/models, and broader response encodings need their own later evidence.
+- The cloud DTOs intentionally retain only the fields required to establish the overseas protocol boundary. EU and ANZ now have sanitized regional response fixtures; China production fixtures, Russia response parity, and Task 11's complete four-region normalized-snapshot mapping remain outstanding.
+- ANZ's exact basics `607099` response is now a typed raw-client optional-endpoint failure. The Task 13 coordinator must deliberately map it to empty basics to preserve the add-on polling service's nonfatal behavior.
+- Whether Task 12 should use one dedicated cookie-free client session per config entry or a policy-validated HA-owned session while preserving scoped TLS and unload ownership.
 - Availability of safe test accounts/vehicles for every regional read and write matrix.
-- ANZ side-by-side session effects remain untested. Task 6 prevents every password login without explicit one-shot consent and prevents automatic `607501` reclaim loops, but Task 9 must explain that consent clearly and the project still recommends a dedicated shared vehicle account.
+- ANZ side-by-side session effects remain untested. Task 6 prevents every password login without explicit one-shot consent and prevents automatic `607501` reclaim loops, but Task 12 must explain that consent clearly and the project still recommends a dedicated shared vehicle account.
 - ANZ `110641`, current token-expiry/rotation behavior, verification delivery/expiry, AU-versus-NZ differences, and unknown `checkSMSCode` failures lack sanitized current-service evidence; unknown errors stop without attempting the final login.
 - Safe handling and future renewal of bundled bootstrap certificates and OEM-derived key material.
-- Licensing/provenance of code and resources derived from earlier reverse-engineering work.
+- Licensing/provenance of code, certificates, China app-derived signing material, and other resources derived from reverse-engineering work.
 - Whether the final client is bundled for HACS or published as a separately versioned Python dependency.
 - Whether existing users perform one fresh authentication or use a temporary secured state-export path.
 - Blocking certificate/key workers finish protected temporary-file cleanup before propagating cancellation, so a cancelled authentication may return after its nominal deadline even though no network stage may continue past that deadline.
