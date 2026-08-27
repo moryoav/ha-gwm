@@ -1,11 +1,14 @@
 #nullable enable
 
 using System.Globalization;
+using System.Net;
+using System.Net.Http.Headers;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
+using System.Text.RegularExpressions;
 using libgwmapi.DTO.China;
 using libgwmapi.DTO.Vehicle;
 using Microsoft.Extensions.Logging;
@@ -25,6 +28,39 @@ public sealed class ChinaProtocolClient
     internal const string AutoAiDirectUrl = "https://ti.gwm.com.cn:8443/tsp/ead";
     internal const string SourceAppVersion = "2.1.5";
     internal const string SourceAppCode = "2150";
+    internal const string OfficialUserAgent = "okhttp/4.2.2";
+
+    private static readonly HashSet<string> SafeDiagnosticFields = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "code",
+        "description",
+        "error",
+        "message",
+        "msg",
+        "path",
+        "requestId",
+        "status",
+        "timestamp",
+        "traceId"
+    };
+
+    private static readonly Regex WhitespacePattern = new(@"\s+", RegexOptions.Compiled);
+    private static readonly Regex BearerPattern = new(
+        @"\bBearer\s+\S+",
+        RegexOptions.Compiled | RegexOptions.IgnoreCase);
+    private static readonly Regex EmailPattern = new(
+        @"\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b",
+        RegexOptions.Compiled | RegexOptions.IgnoreCase);
+    private static readonly Regex CredentialAssignmentPattern = new(
+        @"\b(access[_-]?token|authorization|g-token|password|refresh[_-]?token|secret|token)\s*[=:]\s*[^\s,;&]+",
+        RegexOptions.Compiled | RegexOptions.IgnoreCase);
+    private static readonly Regex PhonePattern = new(@"\b1[3-9]\d{9}\b", RegexOptions.Compiled);
+    private static readonly Regex VinPattern = new(
+        @"\b[A-HJ-NPR-Z0-9]{17}\b",
+        RegexOptions.Compiled | RegexOptions.IgnoreCase);
+    private static readonly Regex LongSecretPattern = new(
+        @"\b[A-Z0-9+/_=-]{48,}\b",
+        RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
     private static readonly JsonSerializerOptions SerializerOptions = new()
     {
@@ -587,6 +623,7 @@ public sealed class ChinaProtocolClient
         {
             Content = new StringContent(rawBody, Encoding.UTF8, "application/json")
         };
+        ApplyChinaTransportDefaults(request);
         AddHeader(request, "G-TOKEN", Session.GToken);
         AddHeader(request, "Authorization", headers["Authorization"]);
         AddHeader(request, "ssoId", Session.UserId);
@@ -617,6 +654,7 @@ public sealed class ChinaProtocolClient
         {
             Content = new StringContent(rawBody, Encoding.UTF8, "application/json")
         };
+        ApplyChinaTransportDefaults(request);
         AddBeanTechHeaders(request, "json=" + rawBody, vin);
         using var response = await _beanTechClient.SendAsync(request, cancellationToken);
         var root = await ReadJsonAsync(response, "China BeanTech", cancellationToken);
@@ -635,6 +673,7 @@ public sealed class ChinaProtocolClient
             .OrderBy(pair => pair.Key, StringComparer.Ordinal)
             .Select(pair => pair.Key.ToLowerInvariant() + "=" + pair.Value));
         using var request = new HttpRequestMessage(HttpMethod.Get, url + "?" + queryString);
+        ApplyChinaTransportDefaults(request);
         AddBeanTechHeaders(request, parameter, vin);
         using var response = await _beanTechClient.SendAsync(request, cancellationToken);
         var root = await ReadJsonAsync(response, "China BeanTech", cancellationToken);
@@ -701,6 +740,7 @@ public sealed class ChinaProtocolClient
         using var request = new HttpRequestMessage(
             HttpMethod.Get,
             url + "?p=" + Uri.EscapeDataString(payload));
+        ApplyChinaTransportDefaults(request);
         AddHeader(request, "v", "1.0");
         AddHeader(request, "cid", DeviceId);
         // The official interceptor sends this literal value; it is not the user's
@@ -732,12 +772,17 @@ public sealed class ChinaProtocolClient
         return Property(root, "body") ?? root;
     }
 
-    private static async Task<JsonNode> ReadJsonAsync(
+    private async Task<JsonNode> ReadJsonAsync(
         HttpResponseMessage response,
         string service,
         CancellationToken cancellationToken)
     {
         var content = await response.Content.ReadAsStringAsync(cancellationToken);
+        if (!response.IsSuccessStatusCode)
+        {
+            LogHttpFailure(response, service, content);
+        }
+
         JsonNode? root;
         try
         {
@@ -757,6 +802,189 @@ public sealed class ChinaProtocolClient
 
         response.EnsureSuccessStatusCode();
         return root ?? throw new GwmApiException("CN_EMPTY_RESPONSE", $"{service} returned an empty response.");
+    }
+
+    private void LogHttpFailure(HttpResponseMessage response, string service, string content)
+    {
+        var request = response.RequestMessage;
+        var requestHeaderNames = HeaderNames(request?.Headers, request?.Content?.Headers);
+        var responseHeaderNames = HeaderNames(response.Headers, response.Content.Headers);
+        var path = SanitizeDiagnosticValue(RequestPath(request?.RequestUri));
+        var reason = SanitizeDiagnosticValue(response.ReasonPhrase ?? "<none>");
+        var contentType = response.Content.Headers.ContentType?.MediaType ?? "<missing>";
+
+        _logger.LogWarning(
+            "Experimental GWM China HTTP failure: {Service} {Method} {Path} returned {StatusCode} " +
+            "{ReasonPhrase} over HTTP/{HttpVersion}; content type {ContentType}; request headers " +
+            "[{RequestHeaders}]; response headers [{ResponseHeaders}]; safe response: {SafeResponse}",
+            service,
+            request?.Method.Method ?? "<unknown>",
+            path,
+            (int)response.StatusCode,
+            reason,
+            response.Version,
+            contentType,
+            requestHeaderNames,
+            responseHeaderNames,
+            SafeResponsePreview(content));
+    }
+
+    internal static string SafeResponsePreview(string content)
+    {
+        var byteCount = Encoding.UTF8.GetByteCount(content);
+        if (String.IsNullOrWhiteSpace(content))
+        {
+            return "empty response body";
+        }
+
+        JsonNode? root;
+        try
+        {
+            root = JsonNode.Parse(content);
+        }
+        catch (JsonException)
+        {
+            return $"non-JSON response body ({byteCount} UTF-8 bytes; content omitted)";
+        }
+
+        if (root is null)
+        {
+            return "JSON null response body";
+        }
+
+        var fields = new List<string>();
+        CollectSafeDiagnosticFields(root, fields, 0);
+        return fields.Count == 0
+            ? $"JSON response body ({byteCount} UTF-8 bytes; no safe error fields)"
+            : String.Join("; ", fields);
+    }
+
+    private static void CollectSafeDiagnosticFields(
+        JsonNode node,
+        List<string> fields,
+        int depth)
+    {
+        if (depth >= 6 || fields.Count >= 12)
+        {
+            return;
+        }
+
+        if (node is JsonObject obj)
+        {
+            foreach (var pair in obj)
+            {
+                if (pair.Value is null)
+                {
+                    continue;
+                }
+
+                if (SafeDiagnosticFields.Contains(pair.Key)
+                    && pair.Value is JsonValue value)
+                {
+                    var rawValue = JsonScalarValue(value);
+                    if (pair.Key.Equals("path", StringComparison.OrdinalIgnoreCase))
+                    {
+                        rawValue = StripQuery(rawValue);
+                    }
+                    fields.Add(pair.Key + "=" + SanitizeDiagnosticValue(rawValue));
+                    if (fields.Count >= 12)
+                    {
+                        return;
+                    }
+                }
+                else if (pair.Value is JsonObject or JsonArray)
+                {
+                    CollectSafeDiagnosticFields(pair.Value, fields, depth + 1);
+                }
+            }
+            return;
+        }
+
+        if (node is JsonArray array)
+        {
+            foreach (var item in array)
+            {
+                if (item is not null)
+                {
+                    CollectSafeDiagnosticFields(item, fields, depth + 1);
+                }
+                if (fields.Count >= 12)
+                {
+                    return;
+                }
+            }
+        }
+    }
+
+    private static string JsonScalarValue(JsonValue value)
+    {
+        if (value.TryGetValue<string>(out var text))
+        {
+            return text;
+        }
+        if (value.TryGetValue<bool>(out var boolean))
+        {
+            return boolean ? "true" : "false";
+        }
+        if (value.TryGetValue<long>(out var integer))
+        {
+            return integer.ToString(CultureInfo.InvariantCulture);
+        }
+        if (value.TryGetValue<double>(out var number))
+        {
+            return number.ToString(CultureInfo.InvariantCulture);
+        }
+        return value.ToJsonString();
+    }
+
+    private static string SanitizeDiagnosticValue(string value)
+    {
+        var sanitized = BearerPattern.Replace(value, "[redacted credential]");
+        sanitized = EmailPattern.Replace(sanitized, "[redacted email]");
+        sanitized = CredentialAssignmentPattern.Replace(sanitized, "$1=[redacted credential]");
+        sanitized = PhonePattern.Replace(sanitized, "[redacted phone]");
+        sanitized = VinPattern.Replace(sanitized, "[redacted VIN]");
+        sanitized = LongSecretPattern.Replace(sanitized, "[redacted credential]");
+        sanitized = WhitespacePattern.Replace(sanitized, " ").Trim();
+        return sanitized.Length <= 256 ? sanitized : sanitized[..256] + "...";
+    }
+
+    private static string RequestPath(Uri? uri)
+    {
+        if (uri is null)
+        {
+            return "<unknown>";
+        }
+        return uri.IsAbsoluteUri
+            ? uri.AbsolutePath
+            : StripQuery(uri.OriginalString);
+    }
+
+    private static string StripQuery(string value)
+    {
+        var queryIndex = value.IndexOfAny(['?', '#']);
+        return queryIndex >= 0 ? value[..queryIndex] : value;
+    }
+
+    private static string HeaderNames(
+        HttpHeaders? headers,
+        HttpHeaders? contentHeaders)
+    {
+        var names = Enumerable.Empty<string>();
+        if (headers is not null)
+        {
+            names = names.Concat(headers.Select(header => header.Key));
+        }
+        if (contentHeaders is not null)
+        {
+            names = names.Concat(contentHeaders.Select(header => header.Key));
+        }
+        return String.Join(
+            ", ",
+            names
+                .Select(SanitizeDiagnosticValue)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .Order(StringComparer.OrdinalIgnoreCase));
     }
 
     private static JsonNode ExtractDefaultData(JsonNode root, string service)
@@ -816,6 +1044,15 @@ public sealed class ChinaProtocolClient
                 "CN_INCOMPLETE_SESSION",
                 "The experimental China vehicle-service session is incomplete; sign in again with a new SMS code.");
         }
+    }
+
+    private static void ApplyChinaTransportDefaults(HttpRequestMessage request)
+    {
+        // Match the Android app's observable network profile. Servers may route
+        // generic .NET clients differently even when the signed request is valid.
+        request.Version = HttpVersion.Version20;
+        request.VersionPolicy = HttpVersionPolicy.RequestVersionOrLower;
+        AddHeader(request, "User-Agent", OfficialUserAgent);
     }
 
     private static void AddHeader(HttpRequestMessage request, string name, string? value)

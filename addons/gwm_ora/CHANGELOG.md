@@ -6,6 +6,16 @@ This project follows semantic versioning. HACS uses the latest GitHub release ta
 
 ## [Unreleased]
 
+## [0.11.2] - 2026-08-27
+
+### Fixed
+
+- Aligned experimental China cloud requests with the official Android app's `okhttp/4.2.2` user agent and HTTP/2 preference to address the vehicle-list endpoint returning HTTP 404 to the add-on while succeeding in the app.
+
+### Added
+
+- Added privacy-safe diagnostics for unsuccessful China cloud responses, including the service, method, route, status, negotiated HTTP version, content type, header names, and sanitized error fields without logging request bodies, header values, tokens, phone numbers, or VINs.
+
 ## [0.11.1] - 2026-08-26
 
 ### Fixed

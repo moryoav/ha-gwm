@@ -60,12 +60,39 @@ public sealed class ChinaProtocolClientTests
     }
 
     [Fact]
+    public void HttpFailurePreviewKeepsRoutingErrorsAndRedactsPrivateValues()
+    {
+        const string secret = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+        var preview = ChinaProtocolClient.SafeResponsePreview("""
+            {
+              "code": 404,
+              "message": "No route for 13800138000, LGWEE6A50GK123456, Bearer exposed-token, or token=short-secret",
+              "path": "/missing?access_token=private",
+              "token": "$SECRET$",
+              "LGWEE6A50GK123456": { "traceId": "trace-123" }
+            }
+            """.Replace("$SECRET$", secret, StringComparison.Ordinal));
+
+        Assert.Contains("code=404", preview);
+        Assert.Contains("path=/missing", preview);
+        Assert.Contains("traceId=trace-123", preview);
+        Assert.DoesNotContain("13800138000", preview);
+        Assert.DoesNotContain("LGWEE6A50GK123456", preview);
+        Assert.DoesNotContain("exposed-token", preview);
+        Assert.DoesNotContain("short-secret", preview);
+        Assert.DoesNotContain("access_token", preview);
+        Assert.DoesNotContain(secret, preview);
+        Assert.DoesNotContain("; token=", preview);
+    }
+
+    [Fact]
     public async Task SmsRequestAndSessionRefreshUseTheAppAccountFlowOffline()
     {
         JsonObject? smsRequestBody = null;
         JsonObject? refreshBody = null;
         using var gApp = new HttpClient(new DelegateHandler(request =>
         {
+            AssertOfficialTransport(request);
             switch (request.RequestUri!.AbsolutePath)
             {
                 case "/api-guser/v5/user/login-sms/send":
@@ -87,9 +114,13 @@ public sealed class ChinaProtocolClientTests
                         """);
             }
         }));
-        using var beanTech = new HttpClient(new DelegateHandler(_ => Json("""
-            {"code":"000000","data":{"accessToken":"bt-access-2","refreshToken":"bt-refresh-2","beanId":"bt-bean-2"}}
-            """)));
+        using var beanTech = new HttpClient(new DelegateHandler(request =>
+        {
+            AssertOfficialTransport(request);
+            return Json("""
+                {"code":"000000","data":{"accessToken":"bt-access-2","refreshToken":"bt-refresh-2","beanId":"bt-bean-2"}}
+                """);
+        }));
         using var unusedCar = new HttpClient(new DelegateHandler(_ =>
             throw new Xunit.Sdk.XunitException("Car service should not be called")));
         using var unusedAutoAi = new HttpClient(new DelegateHandler(_ =>
@@ -195,6 +226,7 @@ public sealed class ChinaProtocolClientTests
 
         using var gApp = new HttpClient(new DelegateHandler(request =>
         {
+            AssertOfficialTransport(request);
             if (request.RequestUri!.AbsolutePath.EndsWith("/sms-login", StringComparison.Ordinal))
             {
                 smsLoginBody = ParseEncryptedRequest(request);
@@ -212,6 +244,7 @@ public sealed class ChinaProtocolClientTests
         }));
         using var car = new HttpClient(new DelegateHandler(request =>
         {
+            AssertOfficialTransport(request);
             Assert.Equal("/gcar/v1/app/android/vehicle/query-vehicle-list", request.RequestUri!.AbsolutePath);
             Assert.Equal("car-api.gwmapp-h.com", request.RequestUri.Host);
             Assert.True(request.Headers.Contains("Sign"));
@@ -223,6 +256,7 @@ public sealed class ChinaProtocolClientTests
         }));
         using var beanTech = new HttpClient(new DelegateHandler(request =>
         {
+            AssertOfficialTransport(request);
             Assert.True(request.Headers.Contains("bt-auth-sign"));
             if (request.Method == HttpMethod.Post)
             {
@@ -238,6 +272,7 @@ public sealed class ChinaProtocolClientTests
         }));
         using var autoAi = new HttpClient(new DelegateHandler(request =>
         {
+            AssertOfficialTransport(request);
             Assert.Equal("ti.gwm.com.cn", request.RequestUri!.Host);
             Assert.True(request.Headers.Contains("sign"));
             Assert.Equal("phone", Assert.Single(request.Headers.GetValues("client")));
@@ -323,13 +358,18 @@ public sealed class ChinaProtocolClientTests
         var commands = new List<(string Function, JsonObject Body)>();
         using var unusedGApp = new HttpClient(new DelegateHandler(_ =>
             throw new Xunit.Sdk.XunitException("G-App should not be called")));
-        using var car = new HttpClient(new DelegateHandler(_ => Json("""
-            {"code":"000000","data":{"acquireVehiclesList":[{"vin":"$VIN$","vehicleId":"vehicle-1","belongPlatform":"navinfo","vehicleNetworkType":2}]}}
-            """.Replace("$VIN$", Vin, StringComparison.Ordinal))));
+        using var car = new HttpClient(new DelegateHandler(request =>
+        {
+            AssertOfficialTransport(request);
+            return Json("""
+                {"code":"000000","data":{"acquireVehiclesList":[{"vin":"$VIN$","vehicleId":"vehicle-1","belongPlatform":"navinfo","vehicleNetworkType":2}]}}
+                """.Replace("$VIN$", Vin, StringComparison.Ordinal));
+        }));
         using var unusedBeanTech = new HttpClient(new DelegateHandler(_ =>
             throw new Xunit.Sdk.XunitException("BeanTech should not be called")));
         using var autoAi = new HttpClient(new DelegateHandler(request =>
         {
+            AssertOfficialTransport(request);
             var wrapper = ParseAutoAiWrapper(request);
             commands.Add((
                 wrapper["header"]!["fn"]!.GetValue<string>(),
@@ -394,6 +434,15 @@ public sealed class ChinaProtocolClientTests
         Assert.Equal(expectedFunction, command.Function);
         Assert.Equal(expectedCode, command.Body["cmdCode"]!.GetValue<int>());
         Assert.Equal(Vin, command.Body["vin"]!.GetValue<string>());
+    }
+
+    private static void AssertOfficialTransport(HttpRequestMessage request)
+    {
+        Assert.Equal(HttpVersion.Version20, request.Version);
+        Assert.Equal(HttpVersionPolicy.RequestVersionOrLower, request.VersionPolicy);
+        Assert.Equal(
+            ChinaProtocolClient.OfficialUserAgent,
+            Assert.Single(request.Headers.GetValues("User-Agent")));
     }
 
     private static libgwmapi.DTO.China.ChinaSession CompleteSession() => new()
