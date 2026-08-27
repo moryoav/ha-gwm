@@ -24,7 +24,6 @@ namespace libgwmapi.China;
 public sealed class ChinaProtocolClient
 {
     internal const string GAppBaseUrl = "https://gapp-api.gwmapp-h.com/";
-    internal const string CarBaseUrl = "https://car-api.gwmapp-h.com/";
     internal const string BeanTechBaseUrl = "https://gw-app-gateway.gwmapp-h.com/";
     internal const string AutoAiDirectUrl = "https://ti.gwm.com.cn:8443/tsp/ead";
     internal const string SourceAppVersion = "2.1.5";
@@ -200,12 +199,14 @@ public sealed class ChinaProtocolClient
             return _cachedVehicles;
         }
 
-        var physicalUrl = CarBaseUrl + "gcar/v1/app/android/vehicle/query-vehicle-list";
-        var signingUrl = physicalUrl.Replace(CarBaseUrl, GAppBaseUrl, StringComparison.Ordinal);
+        // Live mainland-China testing confirmed that this route is served by the
+        // G-App gateway. The car-api host returns an empty edge 404 for the same
+        // authenticated and signed request, while gapp-api returns the vehicle list.
+        var physicalUrl = GAppBaseUrl + "gcar/v1/app/android/vehicle/query-vehicle-list";
         var data = await SendDefaultPostAsync(
             _carClient,
             physicalUrl,
-            signingUrl,
+            signingUrl: null,
             new JsonObject { ["vehicleVersion"] = 13 },
             encryptBody: false,
             cancellationToken);

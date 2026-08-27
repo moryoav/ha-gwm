@@ -6,6 +6,12 @@ This project follows semantic versioning. HACS uses the latest GitHub release ta
 
 ## [Unreleased]
 
+## [0.11.4] - 2026-08-27
+
+### Fixed
+
+- Routed experimental mainland-China vehicle discovery through the live G-App gateway. Controlled read-only testing showed that `gapp-api.gwmapp-h.com` returns the vehicle list while the previously used `car-api.gwmapp-h.com` route returns an empty HTTP 404 for the same authenticated request.
+
 ## [0.11.3] - 2026-08-27
 
 ### Fixed

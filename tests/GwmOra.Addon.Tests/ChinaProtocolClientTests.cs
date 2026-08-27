@@ -101,7 +101,7 @@ public sealed class ChinaProtocolClientTests
         var bytes = Encoding.UTF8.GetBytes(body);
         using var request = new HttpRequestMessage(
             HttpMethod.Post,
-            ChinaProtocolClient.CarBaseUrl + "gcar/v1/app/android/vehicle/query-vehicle-list")
+            ChinaProtocolClient.GAppBaseUrl + "gcar/v1/app/android/vehicle/query-vehicle-list")
         {
             Version = HttpVersion.Version20,
             VersionPolicy = HttpVersionPolicy.RequestVersionOrLower,
@@ -316,7 +316,7 @@ public sealed class ChinaProtocolClientTests
         {
             AssertOfficialTransport(request);
             Assert.Equal("/gcar/v1/app/android/vehicle/query-vehicle-list", request.RequestUri!.AbsolutePath);
-            Assert.Equal("car-api.gwmapp-h.com", request.RequestUri.Host);
+            Assert.Equal("gapp-api.gwmapp-h.com", request.RequestUri.Host);
             Assert.True(request.Headers.Contains("Sign"));
             Assert.Equal("bt-access", Assert.Single(request.Headers.GetValues("Authorization")));
             Assert.Equal("g-token", Assert.Single(request.Headers.GetValues("G-TOKEN")));
