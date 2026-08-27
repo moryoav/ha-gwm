@@ -23,10 +23,10 @@ public sealed class GwmApiClientFactory
         if (String.Equals(options.Region, "cn", StringComparison.OrdinalIgnoreCase))
         {
             var china = new ChinaProtocolClient(
-                new HttpClient(CreatePlainHandler()),
-                new HttpClient(CreatePlainHandler()),
-                new HttpClient(CreatePlainHandler()),
-                new HttpClient(CreatePlainHandler()),
+                new HttpClient(CreateChinaHandler()),
+                new HttpClient(CreateChinaHandler()),
+                new HttpClient(CreateChinaHandler()),
+                new HttpClient(CreateChinaHandler()),
                 _loggerFactory)
             {
                 DeviceId = ChinaDeviceId(state.DeviceId)
@@ -174,6 +174,16 @@ public sealed class GwmApiClientFactory
         return new HttpClientHandler
         {
             AutomaticDecompression = DecompressionMethods.All
+        };
+    }
+
+    internal static HttpClientHandler CreateChinaHandler()
+    {
+        // The mainland-China Android app advertises only gzip. Keep this isolated
+        // from the established regions, which continue to accept all formats.
+        return new HttpClientHandler
+        {
+            AutomaticDecompression = DecompressionMethods.GZip
         };
     }
 

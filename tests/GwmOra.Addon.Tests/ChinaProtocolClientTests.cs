@@ -86,6 +86,76 @@ public sealed class ChinaProtocolClientTests
     }
 
     [Fact]
+    public void ChinaTransportAndFailureShapeMatchTheAppWithoutExposingCredentials()
+    {
+        using var handler = GwmApiClientFactory.CreateChinaHandler();
+        Assert.Equal(DecompressionMethods.GZip, handler.AutomaticDecompression);
+
+        const string gToken = "g-token-value-that-must-not-be-logged";
+        const string accessToken = "access-token-value-that-must-not-be-logged";
+        const string userId = "1234567890123456789";
+        const string beanId = "9876543210987654321";
+        const string deviceId = "0123456789abcdef0123456789abcdef";
+        const string signature = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+        const string body = "{\"vehicleVersion\":13}";
+        var bytes = Encoding.UTF8.GetBytes(body);
+        using var request = new HttpRequestMessage(
+            HttpMethod.Post,
+            ChinaProtocolClient.CarBaseUrl + "gcar/v1/app/android/vehicle/query-vehicle-list")
+        {
+            Version = HttpVersion.Version20,
+            VersionPolicy = HttpVersionPolicy.RequestVersionOrLower,
+            Content = new ByteArrayContent(bytes)
+        };
+        request.Content.Headers.TryAddWithoutValidation(
+            "Content-Type",
+            "application/json; charset=UTF-8");
+        request.Content.Headers.ContentLength = bytes.Length;
+        request.Headers.TryAddWithoutValidation("G-TOKEN", gToken);
+        request.Headers.TryAddWithoutValidation("Authorization", accessToken);
+        request.Headers.TryAddWithoutValidation("ssoId", userId);
+        request.Headers.TryAddWithoutValidation("SourceApp", "GWM");
+        request.Headers.TryAddWithoutValidation("SourceType", "ANDROID");
+        request.Headers.TryAddWithoutValidation("SourceAppVer", ChinaProtocolClient.SourceAppVersion);
+        request.Headers.TryAddWithoutValidation("SourceAppCode", ChinaProtocolClient.SourceAppCode);
+        request.Headers.TryAddWithoutValidation("Timestamp", "1723456789000");
+        request.Headers.TryAddWithoutValidation("DeviceId", deviceId);
+        request.Headers.TryAddWithoutValidation("AppId", "GWM-APP-ANDROID-1100018");
+        request.Headers.TryAddWithoutValidation("beanId", beanId);
+        request.Headers.TryAddWithoutValidation("NoteId", ChinaCrypto.DefaultNoteId);
+        request.Headers.TryAddWithoutValidation("Sign", signature);
+        request.Headers.TryAddWithoutValidation("Accept-Encoding", "gzip");
+        request.Headers.TryAddWithoutValidation("User-Agent", ChinaProtocolClient.OfficialUserAgent);
+        var session = new libgwmapi.DTO.China.ChinaSession
+        {
+            GToken = gToken,
+            BeanTechAccessToken = accessToken,
+            UserId = userId,
+            BeanId = beanId,
+            BeanTechBeanId = beanId
+        };
+
+        var shape = ChinaProtocolClient.SafeRequestShape(request, session, deviceId);
+
+        Assert.Contains("user-agent=okhttp/4.2.2", shape);
+        Assert.Contains("accept-encoding=gzip", shape);
+        Assert.Contains("content-type=application/json; charset=UTF-8", shape);
+        Assert.Contains("content-length=21", shape);
+        Assert.Contains("official-static-headers=True", shape);
+        Assert.Contains($"g-token-length={gToken.Length}", shape);
+        Assert.Contains($"authorization-length={accessToken.Length}", shape);
+        Assert.Contains("g-token-session-match=True", shape);
+        Assert.Contains("authorization-session-match=True", shape);
+        Assert.Contains("gapp-beantech-bean-id-match=True", shape);
+        Assert.DoesNotContain(gToken, shape);
+        Assert.DoesNotContain(accessToken, shape);
+        Assert.DoesNotContain(userId, shape);
+        Assert.DoesNotContain(beanId, shape);
+        Assert.DoesNotContain(deviceId, shape);
+        Assert.DoesNotContain(signature, shape);
+    }
+
+    [Fact]
     public async Task SmsRequestAndSessionRefreshUseTheAppAccountFlowOffline()
     {
         JsonObject? smsRequestBody = null;
@@ -440,9 +510,21 @@ public sealed class ChinaProtocolClientTests
     {
         Assert.Equal(HttpVersion.Version20, request.Version);
         Assert.Equal(HttpVersionPolicy.RequestVersionOrLower, request.VersionPolicy);
+        Assert.Equal("gzip", Assert.Single(request.Headers.GetValues("Accept-Encoding")));
         Assert.Equal(
             ChinaProtocolClient.OfficialUserAgent,
             Assert.Single(request.Headers.GetValues("User-Agent")));
+        var headerNames = request.Headers.Select(header => header.Key).ToArray();
+        Assert.Equal("Accept-Encoding", headerNames[^2]);
+        Assert.Equal("User-Agent", headerNames[^1]);
+        if (request.Content is not null)
+        {
+            Assert.Equal(
+                "application/json; charset=UTF-8",
+                request.Content.Headers.ContentType?.ToString());
+            var body = request.Content.ReadAsStringAsync().GetAwaiter().GetResult();
+            Assert.Equal(Encoding.UTF8.GetByteCount(body), request.Content.Headers.ContentLength);
+        }
     }
 
     private static libgwmapi.DTO.China.ChinaSession CompleteSession() => new()

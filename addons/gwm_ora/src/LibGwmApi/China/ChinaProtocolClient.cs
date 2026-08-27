@@ -3,6 +3,7 @@
 using System.Globalization;
 using System.Net;
 using System.Net.Http.Headers;
+using System.Net.Sockets;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -621,9 +622,8 @@ public sealed class ChinaProtocolClient
 
         using var request = new HttpRequestMessage(HttpMethod.Post, physicalUrl)
         {
-            Content = new StringContent(rawBody, Encoding.UTF8, "application/json")
+            Content = CreateOfficialJsonContent(rawBody)
         };
-        ApplyChinaTransportDefaults(request);
         AddHeader(request, "G-TOKEN", Session.GToken);
         AddHeader(request, "Authorization", headers["Authorization"]);
         AddHeader(request, "ssoId", Session.UserId);
@@ -637,6 +637,7 @@ public sealed class ChinaProtocolClient
         AddHeader(request, "beanId", Session.BeanId);
         AddHeader(request, "NoteId", ChinaCrypto.DefaultNoteId);
         AddHeader(request, "Sign", headers["Sign"]);
+        ApplyChinaTransportDefaults(request);
 
         using var response = await client.SendAsync(request, cancellationToken);
         var root = await ReadJsonAsync(response, "China G-App", cancellationToken);
@@ -652,10 +653,10 @@ public sealed class ChinaProtocolClient
         var rawBody = body.ToJsonString();
         using var request = new HttpRequestMessage(HttpMethod.Post, url)
         {
-            Content = new StringContent(rawBody, Encoding.UTF8, "application/json")
+            Content = CreateOfficialJsonContent(rawBody)
         };
-        ApplyChinaTransportDefaults(request);
         AddBeanTechHeaders(request, "json=" + rawBody, vin);
+        ApplyChinaTransportDefaults(request);
         using var response = await _beanTechClient.SendAsync(request, cancellationToken);
         var root = await ReadJsonAsync(response, "China BeanTech", cancellationToken);
         return ExtractDefaultData(root, "China BeanTech");
@@ -673,8 +674,8 @@ public sealed class ChinaProtocolClient
             .OrderBy(pair => pair.Key, StringComparer.Ordinal)
             .Select(pair => pair.Key.ToLowerInvariant() + "=" + pair.Value));
         using var request = new HttpRequestMessage(HttpMethod.Get, url + "?" + queryString);
-        ApplyChinaTransportDefaults(request);
         AddBeanTechHeaders(request, parameter, vin);
+        ApplyChinaTransportDefaults(request);
         using var response = await _beanTechClient.SendAsync(request, cancellationToken);
         var root = await ReadJsonAsync(response, "China BeanTech", cancellationToken);
         return ExtractDefaultData(root, "China BeanTech");
@@ -740,7 +741,6 @@ public sealed class ChinaProtocolClient
         using var request = new HttpRequestMessage(
             HttpMethod.Get,
             url + "?p=" + Uri.EscapeDataString(payload));
-        ApplyChinaTransportDefaults(request);
         AddHeader(request, "v", "1.0");
         AddHeader(request, "cid", DeviceId);
         // The official interceptor sends this literal value; it is not the user's
@@ -752,6 +752,7 @@ public sealed class ChinaProtocolClient
         AddHeader(request, "protocolVer", "2.1.2");
         AddHeader(request, "token", Session.AutoAiTokenId);
         AddHeader(request, "brandType", "GWM");
+        ApplyChinaTransportDefaults(request);
 
         using var response = await client.SendAsync(request, cancellationToken);
         var root = await ReadJsonAsync(response, "China AutoAI", cancellationToken);
@@ -780,7 +781,7 @@ public sealed class ChinaProtocolClient
         var content = await response.Content.ReadAsStringAsync(cancellationToken);
         if (!response.IsSuccessStatusCode)
         {
-            LogHttpFailure(response, service, content);
+            await LogHttpFailureAsync(response, service, content, cancellationToken);
         }
 
         JsonNode? root;
@@ -804,29 +805,100 @@ public sealed class ChinaProtocolClient
         return root ?? throw new GwmApiException("CN_EMPTY_RESPONSE", $"{service} returned an empty response.");
     }
 
-    private void LogHttpFailure(HttpResponseMessage response, string service, string content)
+    private async Task LogHttpFailureAsync(
+        HttpResponseMessage response,
+        string service,
+        string content,
+        CancellationToken cancellationToken)
     {
         var request = response.RequestMessage;
         var requestHeaderNames = HeaderNames(request?.Headers, request?.Content?.Headers);
         var responseHeaderNames = HeaderNames(response.Headers, response.Content.Headers);
         var path = SanitizeDiagnosticValue(RequestPath(request?.RequestUri));
+        var host = SanitizeDiagnosticValue(request?.RequestUri?.Host ?? "<unknown>");
         var reason = SanitizeDiagnosticValue(response.ReasonPhrase ?? "<none>");
         var contentType = response.Content.Headers.ContentType?.MediaType ?? "<missing>";
+        var contentLength = response.Content.Headers.ContentLength?.ToString(CultureInfo.InvariantCulture)
+                            ?? "<missing>";
+        var responseDate = response.Headers.Date?.ToString("O", CultureInfo.InvariantCulture)
+                           ?? "<missing>";
+        var dnsCandidates = await ResolveDnsCandidatesAsync(request?.RequestUri, cancellationToken);
 
         _logger.LogWarning(
-            "Experimental GWM China HTTP failure: {Service} {Method} {Path} returned {StatusCode} " +
-            "{ReasonPhrase} over HTTP/{HttpVersion}; content type {ContentType}; request headers " +
-            "[{RequestHeaders}]; response headers [{ResponseHeaders}]; safe response: {SafeResponse}",
+            "Experimental GWM China HTTP failure: {Service} {Method} {Host}{Path} returned {StatusCode} " +
+            "{ReasonPhrase} over HTTP/{HttpVersion}; response content type {ContentType}, content length " +
+            "{ContentLength}, date {ResponseDate}; request headers [{RequestHeaders}]; request shape " +
+            "[{RequestShape}]; response headers [{ResponseHeaders}]; DNS candidates [{DnsCandidates}]; " +
+            "safe response: {SafeResponse}",
             service,
             request?.Method.Method ?? "<unknown>",
+            host,
             path,
             (int)response.StatusCode,
             reason,
             response.Version,
             contentType,
+            contentLength,
+            responseDate,
             requestHeaderNames,
+            SafeRequestShape(request, Session, DeviceId),
             responseHeaderNames,
+            dnsCandidates,
             SafeResponsePreview(content));
+    }
+
+    internal static string SafeRequestShape(
+        HttpRequestMessage? request,
+        ChinaSession session,
+        string expectedDeviceId)
+    {
+        var userAgent = HeaderValue(request, "User-Agent");
+        var acceptEncoding = HeaderValue(request, "Accept-Encoding");
+        var contentType = HeaderValue(request, "Content-Type");
+        var contentLength = HeaderValue(request, "Content-Length");
+        var gToken = HeaderValue(request, "G-TOKEN");
+        var authorization = HeaderValue(request, "Authorization");
+        var ssoId = HeaderValue(request, "ssoId");
+        var beanId = HeaderValue(request, "beanId");
+        var deviceId = HeaderValue(request, "DeviceId");
+        var timestamp = HeaderValue(request, "Timestamp");
+        var sign = HeaderValue(request, "Sign");
+        var officialStaticHeaders =
+            String.Equals(HeaderValue(request, "SourceApp"), "GWM", StringComparison.Ordinal)
+            && String.Equals(HeaderValue(request, "SourceType"), "ANDROID", StringComparison.Ordinal)
+            && String.Equals(HeaderValue(request, "SourceAppVer"), SourceAppVersion, StringComparison.Ordinal)
+            && String.Equals(HeaderValue(request, "SourceAppCode"), SourceAppCode, StringComparison.Ordinal)
+            && String.Equals(
+                HeaderValue(request, "AppId"),
+                "GWM-APP-ANDROID-1100018",
+                StringComparison.Ordinal)
+            && String.Equals(
+                HeaderValue(request, "NoteId"),
+                ChinaCrypto.DefaultNoteId,
+                StringComparison.Ordinal);
+
+        return String.Join(
+            ", ",
+            $"user-agent={SafeKnownHeader(userAgent, OfficialUserAgent)}",
+            $"accept-encoding={SafeKnownHeader(acceptEncoding, "gzip")}",
+            $"content-type={SafeKnownHeader(contentType, "application/json; charset=UTF-8")}",
+            $"content-length={SafeNumericHeader(contentLength)}",
+            $"official-static-headers={officialStaticHeaders}",
+            $"g-token-length={ValueLength(gToken)}",
+            $"authorization-length={ValueLength(authorization)}",
+            $"sso-id-length={ValueLength(ssoId)}",
+            $"bean-id-length={ValueLength(beanId)}",
+            $"device-id-length={ValueLength(deviceId)}",
+            $"timestamp-length={ValueLength(timestamp)}",
+            $"timestamp-second-aligned={timestamp?.EndsWith("000", StringComparison.Ordinal) == true}",
+            $"sign-length={ValueLength(sign)}",
+            $"g-token-session-match={PresentAndEqual(gToken, session.GToken)}",
+            $"authorization-session-match={PresentAndEqual(authorization, session.BeanTechAccessToken)}",
+            $"sso-id-session-match={PresentAndEqual(ssoId, session.UserId)}",
+            $"bean-id-gapp-match={PresentAndEqual(beanId, session.BeanId)}",
+            $"bean-id-beantech-match={PresentAndEqual(beanId, session.BeanTechBeanId)}",
+            $"gapp-beantech-bean-id-match={PresentAndEqual(session.BeanId, session.BeanTechBeanId)}",
+            $"device-id-session-match={PresentAndEqual(deviceId, expectedDeviceId)}");
     }
 
     internal static string SafeResponsePreview(string content)
@@ -987,6 +1059,73 @@ public sealed class ChinaProtocolClient
                 .Order(StringComparer.OrdinalIgnoreCase));
     }
 
+    private static string? HeaderValue(HttpRequestMessage? request, string name)
+    {
+        if (request?.Headers.TryGetValues(name, out var values) == true)
+        {
+            return String.Join(",", values);
+        }
+        if (request?.Content?.Headers.TryGetValues(name, out values) == true)
+        {
+            return String.Join(",", values);
+        }
+        return null;
+    }
+
+    private static string SafeKnownHeader(string? value, string expected)
+    {
+        if (value is null)
+        {
+            return "<missing>";
+        }
+        return String.Equals(value, expected, StringComparison.Ordinal)
+            ? expected
+            : $"<unexpected length {value.Length}>";
+    }
+
+    private static string SafeNumericHeader(string? value) =>
+        Int64.TryParse(value, NumberStyles.None, CultureInfo.InvariantCulture, out var number)
+            ? number.ToString(CultureInfo.InvariantCulture)
+            : value is null
+                ? "<missing>"
+                : "<invalid>";
+
+    private static string ValueLength(string? value) =>
+        value is null ? "<missing>" : value.Length.ToString(CultureInfo.InvariantCulture);
+
+    private static bool PresentAndEqual(string? left, string? right) =>
+        !String.IsNullOrEmpty(left)
+        && !String.IsNullOrEmpty(right)
+        && String.Equals(left, right, StringComparison.Ordinal);
+
+    private static async Task<string> ResolveDnsCandidatesAsync(
+        Uri? uri,
+        CancellationToken cancellationToken)
+    {
+        if (uri is null || !uri.IsAbsoluteUri)
+        {
+            return "<unknown host>";
+        }
+
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeout.CancelAfter(TimeSpan.FromSeconds(2));
+        try
+        {
+            var addresses = await Dns.GetHostAddressesAsync(uri.Host, timeout.Token);
+            return addresses.Length == 0
+                ? "<no addresses>"
+                : String.Join(", ", addresses.Select(address => address.ToString()).Order());
+        }
+        catch (OperationCanceledException)
+        {
+            return "<lookup timed out>";
+        }
+        catch (SocketException ex)
+        {
+            return $"<lookup failed: {ex.SocketErrorCode}>";
+        }
+    }
+
     private static JsonNode ExtractDefaultData(JsonNode root, string service)
     {
         var code = Value(root, "code");
@@ -1052,7 +1191,17 @@ public sealed class ChinaProtocolClient
         // generic .NET clients differently even when the signed request is valid.
         request.Version = HttpVersion.Version20;
         request.VersionPolicy = HttpVersionPolicy.RequestVersionOrLower;
+        AddHeader(request, "Accept-Encoding", "gzip");
         AddHeader(request, "User-Agent", OfficialUserAgent);
+    }
+
+    private static HttpContent CreateOfficialJsonContent(string body)
+    {
+        var bytes = Encoding.UTF8.GetBytes(body);
+        var content = new ByteArrayContent(bytes);
+        content.Headers.TryAddWithoutValidation("Content-Type", "application/json; charset=UTF-8");
+        content.Headers.ContentLength = bytes.Length;
+        return content;
     }
 
     private static void AddHeader(HttpRequestMessage request, string name, string? value)

@@ -6,6 +6,16 @@ This project follows semantic versioning. HACS uses the latest GitHub release ta
 
 ## [Unreleased]
 
+## [0.11.3] - 2026-08-27
+
+### Fixed
+
+- Matched the official mainland-China Android app's request profile more closely by using gzip-only response encoding, the exact JSON content type and length, and app-style header placement for China cloud requests.
+
+### Added
+
+- Added privacy-safe China gateway diagnostics for request header shape, credential lengths and session relationships, response metadata, and DNS candidates. Credential values, phone numbers, VINs, and request bodies remain omitted.
+
 ## [0.11.2] - 2026-08-27
 
 ### Fixed
