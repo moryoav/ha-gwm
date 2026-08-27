@@ -253,7 +253,7 @@ public sealed class ChinaProtocolClientTests
         Assert.Equal(123, snapshot.Values.RangeKm);
         Assert.Equal(45678, snapshot.Values.OdometerKm);
         Assert.Equal(28, snapshot.Values.FuelLevelL);
-        Assert.Equal(320, snapshot.Values.FuelRangeKm);
+        Assert.Equal(123, snapshot.Values.FuelRangeKm);
         Assert.True(snapshot.Values.Locked);
         Assert.True(snapshot.Values.AcActive);
         Assert.True(snapshot.Values.ChargingActive);
@@ -268,7 +268,7 @@ public sealed class ChinaProtocolClientTests
     }
 
     [Fact]
-    public void StatusMappingLeavesMissingBooleanSignalsUnknown()
+    public void StatusMappingUsesCarStatusSocFallbackAndLeavesMissingBooleanSignalsUnknown()
     {
         var mapped = ChinaStatusMapper.Map(
             JsonNode.Parse("{\"vehicleSts\":{\"carStatus\":{\"soc\":\"80\"},\"battSts\":{}}}")!,
@@ -283,8 +283,75 @@ public sealed class ChinaProtocolClientTests
         Assert.Null(snapshot.Values.Locked);
         Assert.Null(snapshot.Values.AcActive);
         Assert.Null(snapshot.Values.ChargePlugConnected);
-        Assert.Null(snapshot.Values.Soc);
+        Assert.Equal(80, snapshot.Values.Soc);
         Assert.Null(snapshot.Values.FuelLevelL);
+    }
+
+    [Fact]
+    public void StatusMappingPrefersDedicatedBatterySoc()
+    {
+        var mapped = ChinaStatusMapper.Map(
+            JsonNode.Parse("{\"vehicleSts\":{\"carStatus\":{\"soc\":\"46\"},\"battSts\":{\"battSoc\":\"78\"}}}")!,
+            new Vehicle { Vin = Vin, VehicleNetworkType = 2 });
+        var snapshot = VehicleSnapshotMapper.Map(
+            new Vehicle { Vin = Vin },
+            mapped,
+            new VehicleBasicsInfo(),
+            true,
+            "idle");
+
+        Assert.Equal(78, snapshot.Values.Soc);
+    }
+
+    [Fact]
+    public void StatusMappingMatchesVerifiedVv6AppValues()
+    {
+        var mapped = ChinaStatusMapper.Map(
+            JsonNode.Parse("""
+                {
+                  "vehicleSts": {
+                    "battSts": {},
+                    "carStatus": {
+                      "drvDoorLockSts": 0,
+                      "drvTirePress": "266",
+                      "drvTireTemp": "41",
+                      "passTirePress": "266",
+                      "passTireTemp": "36",
+                      "rlTirePress": "279",
+                      "rlTireTemp": "36",
+                      "rrTirePress": "248",
+                      "rrTireTemp": "35",
+                      "hcuEvcontnsdistance": "204",
+                      "remainFuel": "24",
+                      "remainFuelSts": 1,
+                      "soc": "46",
+                      "vehTotDistance": "56040"
+                    }
+                  }
+                }
+                """)!,
+            new Vehicle { Vin = Vin, VehicleNetworkType = 2, TankCapacity = 56 });
+        var snapshot = VehicleSnapshotMapper.Map(
+            new Vehicle { Vin = Vin },
+            mapped,
+            new VehicleBasicsInfo(),
+            true,
+            "idle");
+
+        Assert.Equal(46, snapshot.Values.Soc);
+        Assert.Equal(204, snapshot.Values.RangeKm);
+        Assert.Equal(24, snapshot.Values.FuelLevelL);
+        Assert.Equal(204, snapshot.Values.FuelRangeKm);
+        Assert.Equal(56040, snapshot.Values.OdometerKm);
+        Assert.True(snapshot.Values.Locked);
+        Assert.Equal(266, snapshot.Values.TirePressureFrontLeftKpa);
+        Assert.Equal(266, snapshot.Values.TirePressureFrontRightKpa);
+        Assert.Equal(279, snapshot.Values.TirePressureRearLeftKpa);
+        Assert.Equal(248, snapshot.Values.TirePressureRearRightKpa);
+        Assert.Equal(41, snapshot.Values.TireTemperatureFrontLeftC);
+        Assert.Equal(36, snapshot.Values.TireTemperatureFrontRightC);
+        Assert.Equal(36, snapshot.Values.TireTemperatureRearLeftC);
+        Assert.Equal(35, snapshot.Values.TireTemperatureRearRightC);
     }
 
     [Fact]

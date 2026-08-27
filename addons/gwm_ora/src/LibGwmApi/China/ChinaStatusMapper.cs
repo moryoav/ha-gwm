@@ -23,14 +23,18 @@ internal static class ChinaStatusMapper
                          ?? 0;
         var items = new List<VehicleStatusItems>();
 
-        // carStatus.soc is the low-voltage/storage battery in the China app, not
-        // the traction-battery SOC exposed by Home Assistant.
-        Add(items, "2013021", Value(battery, "battSoc"), "%");
-        Add(items, "2011501", FirstValue(battery, "hcuEVContnsDistance", car, "hcuEvcontnsdistance"), "km");
-        Add(items, "2011007", ValidFuelRange(car), "km");
+        // China status payloads vary by vehicle. Prefer the dedicated battery
+        // field, but VV6/NavInfo payloads expose the app's battery level as
+        // carStatus.soc instead.
+        Add(items, "2013021", FirstValue(battery, "battSoc", car, "soc"), "%");
+        var remainingRange = FirstValue(battery, "hcuEVContnsDistance", car, "hcuEvcontnsdistance");
+        Add(items, "2011501", remainingRange, "km");
         Add(items, "2013022", NonNegativeValue(battery, "chgTime"), "min");
         Add(items, "2041301", Value(battery, "battSoh"), "%");
-        AddFuelLevel(items, vehicle, car);
+        if (AddFuelLevel(items, vehicle, car))
+        {
+            Add(items, "2011007", remainingRange, "km");
+        }
 
         AddTire(items, car, "drv", "2101001", "2101005", "2102001", "2102007");
         AddTire(items, car, "pass", "2101002", "2101006", "2102002", "2102008");
@@ -146,15 +150,25 @@ internal static class ChinaStatusMapper
         };
     }
 
-    private static void AddFuelLevel(List<VehicleStatusItems> items, Vehicle vehicle, JsonNode? car)
+    private static bool AddFuelLevel(List<VehicleStatusItems> items, Vehicle vehicle, JsonNode? car)
     {
+        var direct = ValidFuelLevel(car, vehicle);
+        if (direct is not null)
+        {
+            Add(items, "2017002", direct, "L");
+            return true;
+        }
+
         var segments = Double(Property(car, "oilQty"));
         var tankCapacity = ObjectNumber(vehicle.TankCapacity);
         if (segments is >= 0 and <= 8 && tankCapacity is > 0)
         {
             Add(items, "2017002", (segments.Value * tankCapacity.Value / 8.0)
                 .ToString("0.###", CultureInfo.InvariantCulture), "L");
+            return true;
         }
+
+        return false;
     }
 
     private static void AddTire(
@@ -211,10 +225,22 @@ internal static class ChinaStatusMapper
         return Value(battery, "chgSts");
     }
 
-    private static string? ValidFuelRange(JsonNode? car)
+    private static string? ValidFuelLevel(JsonNode? car, Vehicle vehicle)
     {
         var validity = Integer(Property(car, "remainFuelSts"));
-        return validity == 1 ? Value(car, "remainFuel") : null;
+        var value = Double(Property(car, "remainFuel"));
+        if (validity != 1 || value is null or < 0)
+        {
+            return null;
+        }
+
+        var tankCapacity = ObjectNumber(vehicle.TankCapacity);
+        if (tankCapacity is > 0 && value > tankCapacity)
+        {
+            return null;
+        }
+
+        return value.Value.ToString("0.###", CultureInfo.InvariantCulture);
     }
 
     private static string? AirConditioningCode(JsonNode? car)
@@ -237,7 +263,9 @@ internal static class ChinaStatusMapper
             return null;
         }
 
-        var locked = vehicle.VehicleNetworkType == 2 ? raw is 2 or 3 : raw == 1;
+        // The verified VV6/NavInfo payload uses 0 for locked. Other network-type-2
+        // variants observed in the app protocol can use 2 or 3 for the same state.
+        var locked = vehicle.VehicleNetworkType == 2 ? raw is 0 or 2 or 3 : raw == 1;
         return locked ? "0" : "1";
     }
 

@@ -6,6 +6,12 @@ This project follows semantic versioning. HACS uses the latest GitHub release ta
 
 ## [Unreleased]
 
+## [0.11.5] - 2026-08-27
+
+### Fixed
+
+- Corrected mainland-China WEY VV6 status mapping against the official app: read battery SoC from `carStatus.soc` when `battSts.battSoc` is absent, treat `remainFuel` as liters, expose the displayed remaining range as fuel range, and recognize its locked-state encoding.
+
 ## [0.11.4] - 2026-08-27
 
 ### Fixed
