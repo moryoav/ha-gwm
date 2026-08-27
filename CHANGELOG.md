@@ -6,6 +6,13 @@ This project follows semantic versioning. HACS uses the latest GitHub release ta
 
 ## [Unreleased]
 
+## [0.11.6] - 2026-08-27
+
+### Fixed
+
+- Bound stored authentication sessions to the configured region, country, username, and password. Changing accounts now clears the previous account's tokens, identity, certificate, verification throttle, and add-on-owned charging-plan tracking before starting the new login flow.
+- Detect a changed mainland-China phone number when upgrading from an earlier version, discard the mismatched China session, and request a fresh SMS code for the newly configured account.
+
 ## [0.11.5] - 2026-08-27
 
 ### Fixed

@@ -221,15 +221,150 @@ public class GwmAuthenticationServiceTests
         }
     }
 
+    [Fact]
+    public async Task ChinaAccountChangeClearsStoredSessionAndRequestsFreshSms()
+    {
+        var statePath = Path.Combine(Path.GetTempPath(), $"gwm-auth-{Guid.NewGuid():N}.json");
+        try
+        {
+            var store = AddonStateStore.Load(statePath);
+            await store.UpdateAsync(state =>
+            {
+                state.AccessToken = "overseas-access";
+                state.RefreshToken = "overseas-refresh";
+                state.GwId = "old-gw";
+                state.BeanId = "old-bean";
+                state.ClientCertificate = "old-certificate";
+                state.ClientPrivateKey = "old-private-key";
+                state.VerificationCodeRequestedAt = DateTimeOffset.UtcNow;
+                state.ChinaSession = new ChinaSession
+                {
+                    GToken = "old-g-token",
+                    GRefreshToken = "old-g-refresh",
+                    UserId = "old-user",
+                    Phone = "13800138000",
+                    BeanTechAccessToken = "old-bt-token",
+                    AutoAiTokenId = "old-auto-token",
+                    AutoAiUserId = "old-auto-user"
+                };
+                state.ChargingPlansSetByAddon["old-vehicle"] = new TrackedChargingPlan();
+            }, CancellationToken.None);
+
+            var smsRequestCalls = 0;
+            using var gApp = new HttpClient(new DelegateHandler(request =>
+            {
+                Assert.Equal("/api-guser/v5/user/login-sms/send", request.RequestUri!.AbsolutePath);
+                smsRequestCalls++;
+                return Json("{\"code\":\"000000\",\"data\":{}}");
+            }));
+            using var unusedCar = new HttpClient(new DelegateHandler(_ =>
+                throw new Xunit.Sdk.XunitException("Car service should not be called")));
+            using var unusedBeanTech = new HttpClient(new DelegateHandler(_ =>
+                throw new Xunit.Sdk.XunitException("BeanTech should not be called")));
+            using var unusedAutoAi = new HttpClient(new DelegateHandler(_ =>
+                throw new Xunit.Sdk.XunitException("AutoAI should not be called")));
+            var protocol = new ChinaProtocolClient(
+                gApp,
+                unusedCar,
+                unusedBeanTech,
+                unusedAutoAi,
+                NullLoggerFactory.Instance)
+            {
+                DeviceId = "0123456789abcdef0123456789abcdef"
+            };
+            var client = new GwmApiClient(protocol, NullLoggerFactory.Instance);
+            var service = CreateChinaAuthenticationService(
+                store,
+                verificationCode: null,
+                username: "13900139000");
+
+            var exception = await Assert.ThrowsAsync<GwmVerificationRequiredException>(() =>
+                service.EnsureAuthenticatedAsync(client, CancellationToken.None));
+
+            Assert.Contains("verification code was requested", exception.Message);
+            Assert.Equal(1, smsRequestCalls);
+            Assert.Null(store.State.ChinaSession);
+            Assert.Null(store.State.AccessToken);
+            Assert.Null(store.State.RefreshToken);
+            Assert.Null(store.State.GwId);
+            Assert.Null(store.State.BeanId);
+            Assert.Null(store.State.ClientCertificate);
+            Assert.Null(store.State.ClientPrivateKey);
+            Assert.NotNull(store.State.VerificationCodeRequestedAt);
+            Assert.Empty(store.State.ChargingPlansSetByAddon);
+            Assert.False(String.IsNullOrWhiteSpace(store.State.AuthenticationContextFingerprint));
+            Assert.DoesNotContain("13900139000", store.State.AuthenticationContextFingerprint!);
+        }
+        finally
+        {
+            File.Delete(statePath);
+            File.Delete(statePath + ".tmp");
+        }
+    }
+
+    [Fact]
+    public void AuthenticationContextTracksOnlyLoginIdentity()
+    {
+        var original = new AddonOptions
+        {
+            Region = "eu",
+            Country = "DE",
+            Username = "owner@example.com",
+            Password = "old-password",
+            VerificationCode = "111111",
+            SecurityPin = "1234",
+            EnableRemoteCommands = false,
+            EnableChargingControl = false,
+            PollIntervalSeconds = 60
+        };
+        var operationalChange = new AddonOptions
+        {
+            Region = "eu",
+            Country = "DE",
+            Username = "owner@example.com",
+            Password = "old-password",
+            VerificationCode = "222222",
+            SecurityPin = "5678",
+            EnableRemoteCommands = true,
+            EnableChargingControl = true,
+            PollIntervalSeconds = 300
+        };
+
+        Assert.Equal(
+            GwmAuthenticationService.AuthenticationContextFingerprint(original),
+            GwmAuthenticationService.AuthenticationContextFingerprint(operationalChange));
+        Assert.NotEqual(
+            GwmAuthenticationService.AuthenticationContextFingerprint(original),
+            GwmAuthenticationService.AuthenticationContextFingerprint(
+                new AddonOptions
+                {
+                    Region = "eu",
+                    Country = "DE",
+                    Username = "different@example.com",
+                    Password = "old-password"
+                }));
+        Assert.NotEqual(
+            GwmAuthenticationService.AuthenticationContextFingerprint(original),
+            GwmAuthenticationService.AuthenticationContextFingerprint(
+                new AddonOptions
+                {
+                    Region = "eu",
+                    Country = "DE",
+                    Username = "owner@example.com",
+                    Password = "new-password"
+                }));
+    }
+
     private static GwmAuthenticationService CreateChinaAuthenticationService(
         AddonStateStore store,
-        string verificationCode) =>
+        string? verificationCode,
+        string username = "13800138000") =>
         new(
             new AddonOptions
             {
                 Region = "cn",
                 Country = "CN",
-                Username = "13800138000",
+                Username = username,
                 VerificationCode = verificationCode
             },
             store,

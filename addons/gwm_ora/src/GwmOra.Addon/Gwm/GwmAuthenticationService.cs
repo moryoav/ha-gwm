@@ -1,3 +1,5 @@
+using System.Security.Cryptography;
+using System.Text;
 using GwmOra.Addon.Configuration;
 using GwmOra.Addon.Supervisor;
 using libgwmapi;
@@ -34,6 +36,8 @@ public sealed class GwmAuthenticationService
         GwmApiClient client,
         CancellationToken cancellationToken)
     {
+        await EnsureAuthenticationContextAsync(cancellationToken);
+
         if (IsChinaRegion())
         {
             await EnsureChinaAuthenticatedAsync(client, cancellationToken);
@@ -130,6 +134,60 @@ public sealed class GwmAuthenticationService
         {
             await EnsureEuClientCertificateAsync(client, cancellationToken);
         }
+    }
+
+    private async Task EnsureAuthenticationContextAsync(CancellationToken cancellationToken)
+    {
+        var expectedFingerprint = AuthenticationContextFingerprint(_options);
+        var storedFingerprint = _stateStore.State.AuthenticationContextFingerprint;
+        var storedChinaPhone = _stateStore.State.ChinaSession?.Phone;
+        var migratedChinaAccountChanged = IsChinaRegion()
+                                          && !String.IsNullOrWhiteSpace(storedChinaPhone)
+                                          && !String.Equals(
+                                              storedChinaPhone,
+                                              _options.Username,
+                                              StringComparison.Ordinal);
+
+        if (String.Equals(storedFingerprint, expectedFingerprint, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        if (String.IsNullOrWhiteSpace(storedFingerprint) && !migratedChinaAccountChanged)
+        {
+            await _stateStore.UpdateAsync(
+                state => state.AuthenticationContextFingerprint = expectedFingerprint,
+                cancellationToken);
+            return;
+        }
+
+        await _stateStore.UpdateAsync(state =>
+        {
+            state.AuthenticationContextFingerprint = expectedFingerprint;
+            state.AccessToken = null;
+            state.RefreshToken = null;
+            state.GwId = null;
+            state.BeanId = null;
+            state.ClientCertificate = null;
+            state.ClientPrivateKey = null;
+            state.VerificationCodeRequestedAt = null;
+            state.ChinaSession = null;
+            state.ChargingPlansSetByAddon.Clear();
+        }, cancellationToken);
+        _logger.LogInformation(
+            "Cleared stored GWM authentication because the configured account or region changed");
+    }
+
+    internal static string AuthenticationContextFingerprint(AddonOptions options)
+    {
+        var context = String.Join(
+            '\0',
+            options.Region.Trim().ToLowerInvariant(),
+            options.Country.Trim().ToUpperInvariant(),
+            options.Username.Trim(),
+            options.Password ?? String.Empty);
+        return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(context)))
+            .ToLowerInvariant();
     }
 
     private async Task EnsureChinaAuthenticatedAsync(

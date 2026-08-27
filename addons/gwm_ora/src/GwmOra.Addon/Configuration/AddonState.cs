@@ -37,6 +37,9 @@ public sealed class AddonState
     [JsonPropertyName("verification_code_requested_at")]
     public DateTimeOffset? VerificationCodeRequestedAt { get; set; }
 
+    [JsonPropertyName("authentication_context_fingerprint")]
+    public string? AuthenticationContextFingerprint { get; set; }
+
     [JsonPropertyName("china_session")]
     public ChinaSession? ChinaSession { get; set; }
 
