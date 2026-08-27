@@ -6,6 +6,17 @@ This project follows semantic versioning. HACS uses the latest GitHub release ta
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-08-27
+
+### Added
+
+- Added experimental China-only controls for remote engine start/stop, horn, flashing lights, combined vehicle search, tailgate open/close, and sunroof close/tilt/half/full positions.
+- Added experimental heating mode to the China climate entity using the mainland app's separate cooling and heating switches.
+
+### Fixed
+
+- Use the China app's dedicated A/C parameter-update command when changing temperature or mode while climate control is already running, instead of repeating the start command.
+
 ## [0.11.6] - 2026-08-27
 
 ### Fixed

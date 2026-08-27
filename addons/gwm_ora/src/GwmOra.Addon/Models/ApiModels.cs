@@ -18,6 +18,7 @@ public sealed class HealthResponse
 public sealed class VehiclesResponse
 {
     public int ApiVersion { get; init; } = 1;
+    public string Region { get; init; } = String.Empty;
     public DateTimeOffset GeneratedAt { get; init; } = DateTimeOffset.UtcNow;
     public bool RemoteCommandsEnabled { get; init; }
     public bool SecurityPinConfigured { get; init; }
@@ -151,6 +152,12 @@ public sealed class ClimateCommandRequest
 public sealed class LockCommandRequest
 {
     public string Action { get; init; } = String.Empty;
+}
+
+public sealed class VehicleControlCommandRequest
+{
+    public string Action { get; init; } = String.Empty;
+    public int? RunTimeMinutes { get; init; }
 }
 
 // Charging schedule (vehicleCharge/setChargingPlan). Times are epoch milliseconds.

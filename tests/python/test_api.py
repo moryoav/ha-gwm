@@ -41,6 +41,20 @@ async def test_set_climate_omits_unspecified_values() -> None:
 
 
 @pytest.mark.asyncio
+async def test_vehicle_control_uses_china_control_endpoint() -> None:
+    client = GwmOraApiClient(AsyncMock(), "addon", 8099, "token")
+    client._request = AsyncMock(return_value={"id": "command"})
+
+    await client.async_vehicle_control("VIN123", "remote_start", run_time_minutes=15)
+
+    client._request.assert_awaited_once_with(
+        "POST",
+        "/vehicles/VIN123/commands/control",
+        json={"action": "remote_start", "run_time_minutes": 15},
+    )
+
+
+@pytest.mark.asyncio
 async def test_set_charging_plan_includes_complete_window() -> None:
     client = GwmOraApiClient(AsyncMock(), "addon", 8099, "token")
     client._request = AsyncMock(return_value={"status": "ok"})

@@ -274,6 +274,18 @@ public class RemoteCommandServiceTests
     }
 
     [Theory]
+    [InlineData("cool")]
+    [InlineData("heat")]
+    [InlineData("off")]
+    public void ClimateValidationAcceptsSupportedModes(string mode)
+    {
+        RemoteCommandService.ValidateClimateRequest(new ClimateCommandRequest
+        {
+            Mode = mode
+        });
+    }
+
+    [Theory]
     [InlineData(4)]
     [InlineData(31)]
     public void ClimateValidationRejectsUnsupportedRunTime(int operationTimeMinutes)

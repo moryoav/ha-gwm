@@ -169,7 +169,18 @@
       "door_lock": { "name": "Door lock" }
     },
     "button": {
-      "close_windows": { "name": "Close windows" }
+      "close_windows": { "name": "Close windows" },
+      "remote_start": { "name": "Remote start" },
+      "remote_stop": { "name": "Remote stop" },
+      "sound_horn": { "name": "Sound horn" },
+      "flash_lights": { "name": "Flash lights" },
+      "horn_and_lights": { "name": "Sound horn and flash lights" },
+      "open_tailgate": { "name": "Open tailgate" },
+      "close_tailgate": { "name": "Close tailgate" },
+      "close_sunroof": { "name": "Close sunroof" },
+      "tilt_sunroof": { "name": "Tilt sunroof" },
+      "half_open_sunroof": { "name": "Half open sunroof" },
+      "fully_open_sunroof": { "name": "Fully open sunroof" }
     },
     "switch": {
       "charging_schedule": { "name": "Scheduled charging" }

@@ -119,4 +119,20 @@ public class RemoteCommandFactoryTests
         Assert.Equal("0", windowInstruction.GetProperty("switchOrder").GetString());
         Assert.Equal(String.Empty, windowInstruction.GetProperty("window").GetProperty("skyLight").GetString());
     }
+
+    [Fact]
+    public void ChinaDescriptorIsProcessLocalAndDoesNotChangeSerializedPayloads()
+    {
+        var command = RemoteCommandFactory.CreateChinaCommand(
+            "VIN123",
+            libgwmapi.DTO.Vehicle.ChinaRemoteCommandKind.SunroofOpen,
+            29,
+            openAngle: 2);
+
+        using var document = JsonDocument.Parse(JsonSerializer.Serialize(command));
+
+        Assert.False(document.RootElement.TryGetProperty("chinaCommand", out _));
+        Assert.Equal(29, command.ChinaCommand.CommandCode);
+        Assert.Equal(2, command.ChinaCommand.OpenAngle);
+    }
 }

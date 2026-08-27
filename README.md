@@ -28,7 +28,7 @@ Other GWM models may also work. If you try the integration with another model, p
 ## What You Get
 
 - Battery SOC, range, odometer, charging, plug, cabin temperature, tire, lock, window, door, trunk, A/C, and location entities, plus model-dependent fuel and comfort data.
-- Native Home Assistant controls for A/C mode, temperature, run time, door lock/unlock, and closing windows.
+- Native Home Assistant controls for A/C mode, temperature, run time, door lock/unlock, and closing windows. Experimental China support also exposes remote start/stop, vehicle search, tailgate, and sunroof controls.
 - A remote command status sensor that shows progress while commands are being sent to the car.
 - Automatic discovery of the add-on by the integration.
 - A small add-on Web UI showing add-on health and the latest cached vehicle summary.
@@ -72,7 +72,7 @@ log_level: info
 - `country`: Two-letter country where the GWM account was registered, such as `DE`, `GB`, `AU`, `NZ`, `RU`, or `CN`. It must match the account registration country.
 - `username`: E-mail address for the account, or its registered phone number when using `cn`.
 - `password`: Password for `eu`, `aus`, and `rus`. China uses SMS login and ignores this field.
-- `enable_remote_commands`: Enables A/C, lock, unlock, and close-window controls. Use `false` for read-only entities.
+- `enable_remote_commands`: Enables A/C, lock, unlock, and close-window controls. In China it also enables the experimental remote start/stop, vehicle-search, tailgate, and sunroof buttons. Use `false` for read-only entities.
 - `enable_charging_control`: Enables the **Scheduled charging** switch and the `gwm_ora.set_charging_plan` / `gwm_ora.clear_charging_plan` actions. Default `false`, independent of `enable_remote_commands`, and needs no security PIN. Validated on an ANZ vehicle; the experimental China implementation uses the corresponding China-app command and is untested on a live vehicle.
 - `security_pin`: The remote-control PIN configured in the official GWM app. It is a prerequisite for remote commands outside China. The China app protocol does not send it.
 - `poll_interval_seconds`: How often the add-on refreshes vehicle data from GWM.
@@ -122,10 +122,10 @@ You do not enter your GWM username or password in the integration.
 - Binary sensors: charging active, charge plug, A/C active, lock open, driver/passenger windows and doors, trunk, air circulation, defrosters, and optional steering-wheel and windscreen heater states.
 - Disabled diagnostic sensors: raw tire state, window-learning state, engine state code, sunroof position code, and GPS authorization data when supplied by the vehicle.
 - Device tracker: vehicle GPS location when available.
-- Climate: A/C mode `off`/`cool`, target temperature, current cabin temperature.
+- Climate: A/C mode `off`/`cool`, target temperature, current cabin temperature. Experimental China support also offers `heat`.
 - Number: climate run time from 5 to 30 minutes in one-minute steps.
 - Lock: lock and unlock vehicle doors.
-- Button: close all windows.
+- Button: close all windows. China-only experimental buttons include remote start/stop, horn, lights, combined vehicle search, tailgate open/close, and four sunroof positions.
 - Switch: enable an eight-hour charging window now or clear the vehicle's charging schedule.
 
 Remote command entities are unavailable until remote commands are enabled and, outside China, a security PIN is configured in the add-on.
@@ -204,7 +204,7 @@ This integration supports accounts on the European GWM cloud (`region: eu`), inc
 
 ### Mainland China experimental testing
 
-China support was derived from the mainland-China GWM Android app and has offline coverage for authentication, vehicle discovery, sensor translation, A/C, lock, unlock, close windows, command-result polling, and charging schedules. It still needs its first live account and vehicle validation.
+China support was derived from the mainland-China GWM Android app. Vehicle discovery, sensors, cooling, lock/unlock, and closing windows have received initial live validation on a WEY VV6. Heating, remote start/stop, horn/lights, tailgate, sunroof, and charging schedules remain experimental until each command is confirmed on a live vehicle.
 
 For a China account, set `region: cn`, `country: CN`, and put the registered phone number in `username`. Leave `password`, `verification_code`, and `security_pin` empty on the first start. The add-on requests an SMS code and reports `verification_required`; enter that code in `verification_code`, save, and restart. Keep both command opt-ins off until vehicle discovery and sensor values have been compared with the official app.
 

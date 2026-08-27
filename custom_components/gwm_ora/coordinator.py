@@ -49,6 +49,11 @@ class GwmOraDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         data = self.data or {}
         return list(data.get("vehicles", []))
 
+    @property
+    def region(self) -> str:
+        """Return the add-on region."""
+        return str((self.data or {}).get("region") or "").lower()
+
     def vehicle(self, vin: str) -> dict[str, Any] | None:
         """Return one vehicle snapshot by VIN."""
         return next((vehicle for vehicle in self.vehicles if vehicle.get("vin") == vin), None)

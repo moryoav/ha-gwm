@@ -11,6 +11,20 @@ from .entity import GwmOraEntity, async_call_addon_api, setup_vehicle_entities
 
 PARALLEL_UPDATES = 0
 
+CHINA_REMOTE_BUTTONS: tuple[tuple[str, str], ...] = (
+    ("remote_start", "remote_start"),
+    ("remote_stop", "remote_stop"),
+    ("horn", "sound_horn"),
+    ("flash_lights", "flash_lights"),
+    ("horn_and_lights", "horn_and_lights"),
+    ("tailgate_open", "open_tailgate"),
+    ("tailgate_close", "close_tailgate"),
+    ("sunroof_close", "close_sunroof"),
+    ("sunroof_tilt", "tilt_sunroof"),
+    ("sunroof_half", "half_open_sunroof"),
+    ("sunroof_full", "fully_open_sunroof"),
+)
+
 
 async def async_setup_entry(
     hass: HomeAssistant,
@@ -18,12 +32,33 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up GWM buttons."""
+
+    def entities_for_vehicle(vehicle):
+        vin = vehicle["vin"]
+        entities = [
+            GwmOraCloseWindowsButton(
+                entry.runtime_data.api,
+                entry.runtime_data.coordinator,
+                vin,
+            )
+        ]
+        if entry.runtime_data.coordinator.region == "cn":
+            entities.extend(
+                GwmOraChinaRemoteButton(
+                    entry.runtime_data.api,
+                    entry.runtime_data.coordinator,
+                    vin,
+                    action,
+                    translation_key,
+                )
+                for action, translation_key in CHINA_REMOTE_BUTTONS
+            )
+        return entities
+
     setup_vehicle_entities(
         entry,
         async_add_entities,
-        lambda vehicle: (
-            GwmOraCloseWindowsButton(entry.runtime_data.api, entry.runtime_data.coordinator, vehicle["vin"]),
-        ),
+        entities_for_vehicle,
     )
 
 
@@ -45,4 +80,31 @@ class GwmOraCloseWindowsButton(GwmOraEntity, ButtonEntity):
     async def async_press(self) -> None:
         """Close windows."""
         command = await async_call_addon_api(self._api.async_close_windows(self.vin))
+        self.coordinator.async_track_command(command)
+
+
+class GwmOraChinaRemoteButton(GwmOraEntity, ButtonEntity):
+    """Experimental China-only remote-control button."""
+
+    def __init__(self, api, coordinator, vin: str, action: str, translation_key: str) -> None:
+        super().__init__(coordinator, vin)
+        self._api = api
+        self._action = action
+        self._attr_translation_key = translation_key
+        self._attr_unique_id = f"{vin}_{action}"
+
+    @property
+    def available(self) -> bool:
+        """Return whether this China command is available."""
+        return (
+            super().available
+            and self.remote_commands_available
+            and self.coordinator.region == "cn"
+        )
+
+    async def async_press(self) -> None:
+        """Queue the configured China remote command."""
+        command = await async_call_addon_api(
+            self._api.async_vehicle_control(self.vin, self._action)
+        )
         self.coordinator.async_track_command(command)

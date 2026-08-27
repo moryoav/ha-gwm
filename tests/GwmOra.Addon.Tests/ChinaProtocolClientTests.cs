@@ -544,6 +544,39 @@ public sealed class ChinaProtocolClientTests
         await client.SendCommandAsync(
             RemoteCommandFactory.CreateClimateCommand(Vin, String.Empty, "0", 24, 15),
             CancellationToken.None);
+        await client.SendCommandAsync(
+            RemoteCommandFactory.CreateChinaCommand(Vin, ChinaRemoteCommandKind.Common, 19),
+            CancellationToken.None);
+        await client.SendCommandAsync(
+            RemoteCommandFactory.CreateChinaCommand(
+                Vin,
+                ChinaRemoteCommandKind.EngineStart,
+                15,
+                runTimeMinutes: 20),
+            CancellationToken.None);
+        await client.SendCommandAsync(
+            RemoteCommandFactory.CreateChinaCommand(
+                Vin,
+                ChinaRemoteCommandKind.SunroofOpen,
+                29,
+                openAngle: 3),
+            CancellationToken.None);
+        await client.SendCommandAsync(
+            RemoteCommandFactory.CreateChinaClimateCommand(
+                Vin,
+                "cool",
+                21,
+                10,
+                airAlreadyOn: false),
+            CancellationToken.None);
+        await client.SendCommandAsync(
+            RemoteCommandFactory.CreateChinaClimateCommand(
+                Vin,
+                "heat",
+                26,
+                20,
+                airAlreadyOn: true),
+            CancellationToken.None);
 
         Assert.Collection(
             commands,
@@ -560,6 +593,37 @@ public sealed class ChinaProtocolClientTests
             {
                 AssertCommand(command, "GW.M.SEND_COMMON_COMMAND", 7);
                 Assert.Null(command.Body["airParams"]);
+            },
+            command => AssertCommand(command, "GW.M.SEND_COMMON_COMMAND", 19),
+            command =>
+            {
+                AssertCommand(command, "GW.M.SET_AND_OPEN_COMMAND", 15);
+                Assert.Equal(20, command.Body["engineParams"]!["runTime"]!.GetValue<int>());
+            },
+            command =>
+            {
+                AssertCommand(command, "GW.M.SEND_COMMON_COMMAND", 29);
+                Assert.Equal(3, command.Body["openAngle"]!.GetValue<int>());
+            },
+            command =>
+            {
+                AssertCommand(command, "GW.M.SET_AND_OPEN_COMMAND", 6);
+                Assert.Equal(10, command.Body["airParams"]!["runTime"]!.GetValue<int>());
+                Assert.Equal(21, command.Body["airParams"]!["temperature"]!.GetValue<int>());
+                Assert.Equal("1", command.Body["airParams"]!["coldSwitch"]!.GetValue<string>());
+                Assert.Equal("0", command.Body["airParams"]!["heatSwitch"]!.GetValue<string>());
+                Assert.Equal(0, command.Body["airParams"]!["engineControl"]!.GetValue<int>());
+            },
+            command =>
+            {
+                Assert.Equal("GW.M.SET_AIR_PRM", command.Function);
+                Assert.False(command.Body.ContainsKey("cmdCode"));
+                Assert.Equal(Vin, command.Body["vin"]!.GetValue<string>());
+                Assert.Equal(20, command.Body["airParams"]!["runTime"]!.GetValue<int>());
+                Assert.Equal(26, command.Body["airParams"]!["temperature"]!.GetValue<int>());
+                Assert.Equal("0", command.Body["airParams"]!["coldSwitch"]!.GetValue<string>());
+                Assert.Equal("1", command.Body["airParams"]!["heatSwitch"]!.GetValue<string>());
+                Assert.Equal(0, command.Body["airParams"]!["engineControl"]!.GetValue<int>());
             });
     }
 

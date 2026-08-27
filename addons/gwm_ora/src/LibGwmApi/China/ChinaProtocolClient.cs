@@ -275,7 +275,11 @@ public sealed class ChinaProtocolClient
 
         string function;
         JsonObject command;
-        if (request.Instructions?.X05 is not null)
+        if (request.ChinaCommand is not null)
+        {
+            (function, command) = BuildChinaRemoteCommand(request.Vin, request.ChinaCommand);
+        }
+        else if (request.Instructions?.X05 is not null)
         {
             function = "GW.M.SEND_COMMON_COMMAND";
             command = BaseControlRequest(request.Vin);
@@ -326,6 +330,88 @@ public sealed class ChinaProtocolClient
         }
 
         _commandTransactions[request.SeqNo] = transactionId;
+    }
+
+    private (string Function, JsonObject Command) BuildChinaRemoteCommand(
+        string vin,
+        ChinaRemoteCommand request)
+    {
+        var command = BaseControlRequest(vin);
+        string function;
+        switch (request.Kind)
+        {
+            case ChinaRemoteCommandKind.Common:
+                function = "GW.M.SEND_COMMON_COMMAND";
+                command["cmdCode"] = request.CommandCode;
+                break;
+
+            case ChinaRemoteCommandKind.EngineStart:
+                function = "GW.M.SET_AND_OPEN_COMMAND";
+                command["cmdCode"] = request.CommandCode;
+                command["engineParams"] = new JsonObject
+                {
+                    ["runTime"] = request.RunTimeMinutes ?? 15
+                };
+                break;
+
+            case ChinaRemoteCommandKind.SunroofOpen:
+                function = "GW.M.SEND_COMMON_COMMAND";
+                command["cmdCode"] = request.CommandCode;
+                command["openAngle"] = request.OpenAngle
+                    ?? throw new GwmApiException("CN_SUNROOF_ANGLE", "A China sunroof-open command requires an angle.");
+                break;
+
+            case ChinaRemoteCommandKind.Climate:
+                var climateMode = request.ClimateMode?.Trim().ToLowerInvariant();
+                if (climateMode == "off")
+                {
+                    function = "GW.M.SEND_COMMON_COMMAND";
+                    command["cmdCode"] = 7;
+                    break;
+                }
+
+                if (climateMode is not ("cool" or "heat"))
+                {
+                    throw new GwmApiException(
+                        "CN_CLIMATE_MODE",
+                        $"Unsupported China climate mode '{request.ClimateMode}'.");
+                }
+
+                // The official client uses SET_AIR_PRM when HVAC is already running. Sending
+                // SET_AND_OPEN_COMMAND again is accepted as a start command but does not apply
+                // a changed temperature on the tested China vehicle.
+                function = request.AirAlreadyOn
+                    ? "GW.M.SET_AIR_PRM"
+                    : "GW.M.SET_AND_OPEN_COMMAND";
+                if (!request.AirAlreadyOn)
+                {
+                    command["cmdCode"] = 6;
+                }
+
+                command["airParams"] = new JsonObject
+                {
+                    ["runTime"] = request.RunTimeMinutes ?? 15,
+                    ["temperature"] = request.Temperature ?? 22,
+                    ["coldSwitch"] = climateMode == "cool" ? "1" : "0",
+                    ["heatSwitch"] = climateMode == "heat" ? "1" : "0",
+                    // This is the app's linked hybrid-engine-heating switch. Leave it disabled;
+                    // ordinary engine start is a separate, explicit user command.
+                    ["engineControl"] = 0
+                };
+                break;
+
+            default:
+                throw new GwmApiException(
+                    "CN_UNSUPPORTED_COMMAND",
+                    $"Unsupported China remote command kind '{request.Kind}'.");
+        }
+
+        _logger.LogInformation(
+            "Sending experimental China command {CommandCode} using {Function} (kind {Kind})",
+            request.CommandCode,
+            function,
+            request.Kind);
+        return (function, command);
     }
 
     public async Task<RemoteCtrlResultT5[]> GetRemoteCommandResultAsync(

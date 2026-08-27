@@ -44,6 +44,7 @@ public sealed class GwmVehicleService
         return new VehiclesResponse
         {
             GeneratedAt = DateTimeOffset.UtcNow,
+            Region = _options.Region.Trim().ToLowerInvariant(),
             RemoteCommandsEnabled = RemoteCommandsAvailable,
             SecurityPinConfigured = !String.IsNullOrWhiteSpace(_options.SecurityPin),
             ChargingControlEnabled = _options.EnableChargingControl,
