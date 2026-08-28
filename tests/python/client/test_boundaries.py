@@ -24,6 +24,12 @@ _SYNTHETIC_STABLE_DEVICE_IDS = frozenset(
 _SYNTHETIC_COORDINATE_SENTINELS = frozenset(
     {"-33.8688", "-2.5", "0", "0.0", "1.25", "151.2093"}
 )
+_SYNTHETIC_NUMERIC_IDENTIFIER_SENTINELS = frozenset(
+    {
+        9_007_199_254_740_993,
+        9_007_199_254_740_995,
+    }
+)
 
 
 def test_client_package_has_no_home_assistant_imports() -> None:
@@ -107,9 +113,14 @@ def test_client_fixtures_are_versioned_and_explicitly_synthetic() -> None:
         text = fixture_path.read_text(encoding="utf-8")
         payload = json.loads(text)
         assert payload["schema_version"] == 1
-        assert "-----BEGIN PRIVATE KEY-----" not in text
-        assert "-----BEGIN RSA PRIVATE KEY-----" not in text
+        _assert_no_raw_identity_text(text)
         _assert_sensitive_fixture_values_are_synthetic(payload)
+
+
+def _assert_no_raw_identity_text(text: str) -> None:
+    assert "-----BEGIN CERTIFICATE-----" not in text
+    assert "-----BEGIN PRIVATE KEY-----" not in text
+    assert "-----BEGIN RSA PRIVATE KEY-----" not in text
 
 
 def _assert_sensitive_fixture_values_are_synthetic(value: object) -> None:
@@ -139,13 +150,25 @@ def _assert_sensitive_fixture_values_are_synthetic(value: object) -> None:
                 "userid",
                 "beanid",
             }:
-                assert isinstance(child, str) and (not child or child.startswith("SYNTHETIC-"))
+                assert (
+                    isinstance(child, str)
+                    and (not child or child.startswith("SYNTHETIC-"))
+                ) or (
+                    normalized_key == "beanid"
+                    and isinstance(child, int)
+                    and not isinstance(child, bool)
+                    and child in _SYNTHETIC_NUMERIC_IDENTIFIER_SENTINELS
+                )
             if normalized_key == "password":
                 assert isinstance(child, str) and child.startswith("SYNTHETIC-")
             if normalized_key in {"account", "email"}:
                 assert isinstance(child, str) and child.startswith("SYNTHETIC-")
-            if key in {"verifyCode", "verificationCode", "verification_code"}:
-                assert isinstance(child, str) and child.startswith("SYNTHETIC-")
+            if normalized_key in {"smscode", "verificationcode", "verifycode"} and not isinstance(
+                child, dict | list
+            ):
+                assert child is None or (
+                    isinstance(child, str) and child.startswith("SYNTHETIC-")
+                )
             if normalized_key == "code" and {"phone", "devicetoken"} <= normalized_keys:
                 assert isinstance(child, str) and child.startswith("SYNTHETIC-")
             if normalized_key == "phone":
@@ -153,9 +176,16 @@ def _assert_sensitive_fixture_values_are_synthetic(value: object) -> None:
                     child == "13800138000" or child.startswith("SYNTHETIC-")
                 )
             if normalized_key in {"deviceid", "mobileid", "cid"}:
-                assert isinstance(child, str) and (
-                    child.startswith("SYNTHETIC")
-                    or child in _SYNTHETIC_STABLE_DEVICE_IDS
+                assert (
+                    isinstance(child, str)
+                    and (
+                        child.startswith("SYNTHETIC")
+                        or child in _SYNTHETIC_STABLE_DEVICE_IDS
+                    )
+                ) or (
+                    isinstance(child, int)
+                    and not isinstance(child, bool)
+                    and child in _SYNTHETIC_NUMERIC_IDENTIFIER_SENTINELS
                 )
             if normalized_key == "devicetoken":
                 assert isinstance(child, str) and (
@@ -167,14 +197,36 @@ def _assert_sensitive_fixture_values_are_synthetic(value: object) -> None:
                     and not isinstance(child, bool)
                     and str(child) in _SYNTHETIC_COORDINATE_SENTINELS
                 )
-            if normalized_key in {"privatekey", "clientprivatekey"}:
-                raise AssertionError("private keys are forbidden in fixtures")
+            raw_identity_key = (
+                normalized_key in {"cabundle", "keypem", "pkcs8"}
+                or (
+                    "certificate" in normalized_key
+                    and not normalized_key.endswith("sha256")
+                )
+                or (
+                    "privatekey" in normalized_key
+                    and not normalized_key.endswith("sha256")
+                )
+                or (
+                    "transformedkey" in normalized_key
+                    and not normalized_key.endswith("sha256")
+                )
+            )
+            if raw_identity_key and not isinstance(child, dict | list):
+                raise AssertionError("raw certificate and private-key material is forbidden in fixtures")
             if key == "identifier":
                 assert isinstance(child, str) and child.startswith("SYNTHETIC")
             if normalized_key == "vin":
                 assert isinstance(child, str) and child.upper().startswith(("LGWTEST", "SYNTHETIC"))
             if normalized_key in {"vehicleid", "gwid"}:
-                assert isinstance(child, str) and child.casefold().startswith("synthetic")
+                assert (
+                    isinstance(child, str)
+                    and child.casefold().startswith("synthetic")
+                ) or (
+                    isinstance(child, int)
+                    and not isinstance(child, bool)
+                    and child in _SYNTHETIC_NUMERIC_IDENTIFIER_SENTINELS
+                )
             if key == "body" and isinstance(child, str) and child.startswith(("{", "[")):
                 _assert_sensitive_fixture_values_are_synthetic(json.loads(child))
             _assert_sensitive_fixture_values_are_synthetic(child)
@@ -233,13 +285,53 @@ def test_fixture_guard_covers_wire_and_python_token_spellings(key: str) -> None:
         "account",
         "email",
         "verifyCode",
+        "smsCode",
+        "sms_code",
         "deviceToken",
         "privateKey",
+        "private_key_data",
+        "transformed_private_key",
+        "transformed_private_key_data",
+        "transformedKey",
+        "transformed_key",
+        "transformedKeyData",
+        "certificate",
+        "certificate_data",
+        "certificatePem",
+        "clientCertificate",
+        "bootstrap_certificate",
+        "ca_bundle",
     ],
 )
 def test_fixture_guard_inspects_embedded_wire_bodies(key: str) -> None:
     with pytest.raises(AssertionError):
         _assert_sensitive_fixture_values_are_synthetic({"body": json.dumps({key: "REAL-MATERIAL-MUST-FAIL"})})
+
+
+@pytest.mark.parametrize(
+    "key",
+    [
+        "transformedKey",
+        "transformed_key",
+        "transformedKeyData",
+        "certificate",
+        "certificate_data",
+        "certificatePem",
+        "clientCertificate",
+        "bootstrap_certificate",
+        "ca_bundle",
+    ],
+)
+def test_fixture_guard_rejects_top_level_raw_identity_aliases(key: str) -> None:
+    with pytest.raises(AssertionError):
+        _assert_sensitive_fixture_values_are_synthetic({key: "REAL-MATERIAL-MUST-FAIL"})
+
+
+def test_fixture_guard_rejects_certificate_pem_under_unknown_key() -> None:
+    with pytest.raises(AssertionError):
+        _assert_no_raw_identity_text(
+            json.dumps({"unrecognized": "-----BEGIN CERTIFICATE-----SENSITIVE"})
+        )
 
 
 @pytest.mark.parametrize(
@@ -257,6 +349,16 @@ def test_fixture_guard_inspects_embedded_wire_bodies(key: str) -> None:
     ],
 )
 def test_fixture_guard_rejects_non_synthetic_device_and_coordinate_values(
+    key: str,
+    value: object,
+) -> None:
+    with pytest.raises(AssertionError):
+        _assert_sensitive_fixture_values_are_synthetic({key: value})
+
+
+@pytest.mark.parametrize("key", ["beanId", "deviceId", "vehicleId", "gwId"])
+@pytest.mark.parametrize("value", [123, True, 9_007_199_254_740_994])
+def test_fixture_guard_allows_only_closed_synthetic_numeric_identifiers(
     key: str,
     value: object,
 ) -> None:

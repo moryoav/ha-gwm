@@ -73,6 +73,18 @@ from .models import (
     VehicleIdentifier,
 )
 from .regions import Region
+from .russia_auth import (
+    RussiaAuthenticated,
+    RussiaAuthenticationResult,
+    RussiaAuthState,
+    RussiaCredentials,
+    RussiaVerificationRequired,
+)
+from .russia_identity import (
+    RussiaBootstrapMaterial,
+    RussiaIdentityError,
+    create_russia_bootstrap_ssl_context,
+)
 from .signing import (
     ANZ_BT_AUTH,
     EU_BT_AUTH,
@@ -142,11 +154,19 @@ __all__ = [
     "RUSSIA_GWM_AUTH",
     "Region",
     "RequestTimeouts",
+    "RussiaAuthenticated",
+    "RussiaAuthenticationResult",
+    "RussiaAuthState",
+    "RussiaBootstrapMaterial",
+    "RussiaCredentials",
+    "RussiaIdentityError",
+    "RussiaVerificationRequired",
     "GeneratedClientCertificateRequest",
     "SignedRequest",
     "SigningProfile",
     "VehicleIdentifier",
     "create_gwm_ssl_context",
+    "create_russia_bootstrap_ssl_context",
     "create_eu_bootstrap_ssl_context",
     "create_eu_issued_ssl_context",
     "generate_client_certificate_request",

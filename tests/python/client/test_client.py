@@ -299,6 +299,7 @@ def test_only_closed_operation_surfaces_and_typed_public_methods_exist() -> None
         "acquire_vehicles",
         "authenticate_anz",
         "authenticate_eu",
+        "authenticate_russia",
         "get_last_status",
         "get_vehicle_basics",
     }
@@ -954,7 +955,11 @@ async def test_exact_anz_read_607501_retires_matching_session() -> None:
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     ("region", "code"),
-    [(Region.ANZ, "607502"), (Region.EU, "607501")],
+    [
+        (Region.ANZ, "607502"),
+        (Region.EU, "607501"),
+        (Region.RUSSIA, "607501"),
+    ],
 )
 async def test_read_authentication_retirement_is_exactly_anz_607501(
     region: Region,
@@ -971,23 +976,48 @@ async def test_read_authentication_retirement_is_exactly_anz_607501(
 
 
 @pytest.mark.asyncio
-async def test_rejected_anz_read_cannot_erase_newer_session_replacement() -> None:
+@pytest.mark.parametrize("status", [401, 403])
+async def test_russia_http_authentication_read_retires_matching_session(status: int) -> None:
+    transport = _RecordingTransport([_TransportResponse(status, {}, b"")])
+    client = GwmClient(
+        GwmClientConfig(region=Region.RUSSIA),
+        _session(Region.RUSSIA),
+        transport=transport,
+    )
+
+    with pytest.raises(GwmAuthenticationError):
+        await client.acquire_vehicles()
+    assert not client.authenticated
+
+    with pytest.raises(GwmAuthenticationError):
+        await client.acquire_vehicles()
+    assert len(transport.requests) == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("region", [Region.ANZ, Region.RUSSIA])
+async def test_rejected_read_cannot_erase_newer_session_replacement(region: Region) -> None:
     replacement_token = "SYNTHETIC-CONCURRENT-READ-TOKEN"
-    replacement_context = _tls_context(Region.ANZ)
+    replacement_context = _tls_context(region)
+    rejection = (
+        _api_failure("607501")
+        if region is Region.ANZ
+        else _TransportResponse(401, {}, b"")
+    )
     transport = _RecordingTransport(
-        [_api_failure("607501"), _operation_response("acquire_vehicles")],
+        [rejection, _operation_response("acquire_vehicles")],
         delay=0.02,
     )
     client = GwmClient(
-        GwmClientConfig(region=Region.ANZ),
-        _session(Region.ANZ),
+        GwmClientConfig(region=region),
+        _session(region),
         transport=transport,
     )
     reading = asyncio.create_task(client.acquire_vehicles())
     async with asyncio.timeout(1):
         await transport.entered.wait()
 
-    original = _session(Region.ANZ)
+    original = _session(region)
     client.replace_session(
         GwmSession(
             original.country,

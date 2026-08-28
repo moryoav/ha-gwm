@@ -61,6 +61,15 @@ from .models import (
     parse_cloud_vehicles,
 )
 from .regions import GatewayRole, Region, RegionProtocol, TlsMode, get_region_protocol
+from .russia_auth import (
+    RussiaAuthenticated,
+    RussiaAuthenticationResult,
+    RussiaAuthState,
+    RussiaCredentials,
+    _RussiaAuthProgress,
+)
+from .russia_auth import authenticate_russia as _run_russia_authentication
+from .russia_identity import RussiaBootstrapMaterial
 from .signing import SignedRequest, SigningProfile, sign_request
 from .transport import AiohttpTransport
 
@@ -380,6 +389,100 @@ class GwmClient:
             raise failure
         raise GwmNetworkError(operation=operation)
 
+    async def authenticate_russia(
+        self,
+        credentials: RussiaCredentials,
+        *,
+        state: RussiaAuthState | None = None,
+        verification_code: str | None = None,
+        bootstrap_material: RussiaBootstrapMaterial,
+        timeout: float | None = None,
+    ) -> RussiaAuthenticationResult:
+        """Authenticate Russia and install its static-bootstrap-mTLS read session."""
+
+        operation = "login"
+        if (
+            self._protocol.region is not Region.RUSSIA
+            or type(credentials) is not RussiaCredentials
+            or (state is not None and type(state) is not RussiaAuthState)
+            or type(bootstrap_material) is not RussiaBootstrapMaterial
+        ):
+            raise GwmConfigurationError(operation=operation)
+        if self._closed or self._closing:
+            raise GwmClosedError(operation=operation)
+        total_timeout = self._validated_timeout(timeout, operation=operation)
+        loop = asyncio.get_running_loop()
+        deadline = _Deadline(loop.time() + total_timeout)
+        failure: GwmClientError | None = None
+        progress = _RussiaAuthProgress()
+
+        try:
+            async with asyncio.timeout_at(deadline.expires_at):
+                async with self._request_lock:
+                    if self._closed or self._closing:
+                        raise GwmClosedError(operation=operation)
+                    reusable = state is not None and state.matches(credentials)
+                    current = self._session
+                    attempt_revision = self._session_revision
+                    if reusable and state is not None and current is not None:
+                        reusable = (
+                            current.country == state.country
+                            and current.device_id == state.device_id
+                            and current.access_token == state.access_token
+                        )
+                    if not reusable:
+                        self._session = None
+                        self._session_revision += 1
+                        attempt_revision = self._session_revision
+                    try:
+                        result = await _run_russia_authentication(
+                            config=self._config,
+                            transport=self._transport,
+                            credentials=credentials,
+                            state=state,
+                            verification_code=verification_code,
+                            bootstrap_material=bootstrap_material,
+                            deadline=deadline,
+                            progress=progress,
+                        )
+                        replacement = (
+                            self._validated_session(result.session)
+                            if type(result) is RussiaAuthenticated
+                            else None
+                        )
+                        self._replace_session_if_revision(
+                            expected_revision=attempt_revision,
+                            session=replacement,
+                        )
+                        return result
+                    except BaseException:
+                        if progress.existing_session_rejected:
+                            self._replace_session_if_revision(
+                                expected_revision=attempt_revision,
+                                session=None,
+                            )
+                        raise
+        except asyncio.CancelledError:
+            raise
+        except GwmClientError as error:
+            failure = (
+                GwmDeadlineExceededError(operation=operation)
+                if deadline.remaining(loop.time()) <= 0
+                else _sanitized_client_error(error, operation=error.operation)
+            )
+        except TimeoutError:
+            failure = GwmDeadlineExceededError(operation=operation)
+        except Exception:
+            failure = (
+                GwmDeadlineExceededError(operation=operation)
+                if deadline.remaining(loop.time()) <= 0
+                else GwmNetworkError(operation=operation)
+            )
+
+        if failure is not None:
+            raise failure
+        raise GwmNetworkError(operation=operation)
+
     def _replace_session_if_revision(
         self,
         *,
@@ -493,7 +596,7 @@ class GwmClient:
             raise
         except GwmClientError as error:
             if (
-                self._protocol.region is Region.ANZ
+                self._protocol.region in {Region.ANZ, Region.RUSSIA}
                 and attempt_revision is not None
                 and type(error) is GwmAuthenticationError
             ):
@@ -708,7 +811,10 @@ def _validate_app_tls_context(protocol: RegionProtocol, context: object) -> None
     if tls_mode is TlsMode.DEFAULT:
         if context.security_level <= 0:
             raise ValueError("tls_context_invalid")
-    elif context.security_level != 0:
+    elif tls_mode in {TlsMode.EU_ISSUED_MTLS, TlsMode.RUSSIA_BOOTSTRAP_MTLS}:
+        if context.security_level != 0:
+            raise ValueError("tls_context_invalid")
+    else:
         raise ValueError("tls_context_invalid")
 
 

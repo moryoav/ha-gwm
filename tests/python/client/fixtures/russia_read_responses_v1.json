@@ -1,0 +1,49 @@
+{
+  "schema_version": 1,
+  "provenance": "fully synthetic Task 10 response contract; contains no captured account, vehicle, session, or location data",
+  "identifier": "SYNTHETIC+RUS/OPAQUE=",
+  "responses": {
+    "acquire_vehicles": [
+      {
+        "vin": "SYNTHETIC+RUS/OPAQUE=",
+        "defaultVehicle": true,
+        "appShowSeriesName": "Synthetic Russia series",
+        "vehicleNick": null,
+        "modelName": "Synthetic Russia model",
+        "brandName": "Synthetic brand",
+        "otBrandName": null,
+        "vtype": "BEV",
+        "vTypeName": "Battery electric",
+        "vehicleId": 9007199254740993,
+        "email": "SYNTHETIC-owner@example.invalid",
+        "licenseNumber": "SYNTHETIC-LICENSE-NOT-RETAINED"
+      }
+    ],
+    "get_last_status": {
+      "deviceId": 9007199254740995,
+      "acquisitionTime": "1787747696789",
+      "updateTime": "1787747697890",
+      "latitude": "1.25",
+      "longitude": "-2.5",
+      "items": [
+        null,
+        {"code": "", "value": "ignored"},
+        {"code": 2013021, "value": 61, "unit": 1},
+        {
+          "code": "NESTED",
+          "value": {"flag": true, "levels": [10, null, "synthetic"]},
+          "unit": null
+        }
+      ],
+      "email": "SYNTHETIC-owner@example.invalid"
+    },
+    "get_vehicle_basics": {
+      "config": {
+        "airConditionerTemperature": 22,
+        "airConditionerStatusTime": 7,
+        "engineStatusTime": 9,
+        "email": "SYNTHETIC-owner@example.invalid"
+      }
+    }
+  }
+}

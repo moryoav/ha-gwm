@@ -1,0 +1,143 @@
+{
+  "schema_version": 1,
+  "provenance": "fully synthetic Task 10 contract; contains no captured account, vehicle, session, certificate, or private-key data",
+  "credentials": {
+    "account": "SYNTHETIC-owner+tag@example.invalid",
+    "password": "SYNTHETIC-PASSWORD",
+    "verification_code": "SYNTHETIC-246810",
+    "country": "RU",
+    "device_id": "0123456789abcdef0123456789abcdef",
+    "api_device_id": "0123456789abcdef0123456789abcdef"
+  },
+  "signing": {
+    "profile": "russia-gwm-auth",
+    "prefix": "gwm-auth-",
+    "app_key": "4694605273",
+    "timestamp": "1721462400123",
+    "nonce": "0123456789abcdef"
+  },
+  "required_headers": {
+    "rs": "2",
+    "terminal": "GW_APP_Haval",
+    "brand": "1",
+    "enterpriseId": "CC01",
+    "brandId": "CCZ001",
+    "appId": "1",
+    "channel": "APP",
+    "systemType": "1",
+    "cVer": "1.0.0",
+    "communityBrand": "1",
+    "language": "ru",
+    "secVersion": "2.0",
+    "country": "RU",
+    "regionCode": "RU",
+    "deviceId": "0123456789abcdef0123456789abcdef",
+    "iccid": "0123456789abcdef0123456789abcdef"
+  },
+  "bootstrap_identity": {
+    "certificate_der_sha256": "eafa5ee9e7200dc7fbbc14f01cd96790324c00aa1d4f6520b2d4f78db1794741",
+    "certificate_spki_sha256": "6baf5b16d57286abd59c00c7cd75a3c25db80fb073f7a1607db4d41f8d61ab83",
+    "transformed_key_source_sha256": "ffd7c95ef5b45e66d62bb37acd037b84c860e3eea35cc1aba6c0b6246e715424",
+    "subject_common_name": "LGWGWM-AD-RU-GENERAL",
+    "subject_country": "RU",
+    "issuer_common_name": "IOV APP General SubCA",
+    "not_valid_before": "2025-04-21T08:21:35+00:00",
+    "not_valid_after": "2030-04-21T08:21:35+00:00",
+    "rsa_bits": 2048,
+    "rsa_public_exponent": 65537,
+    "ca_bundle_certificate_der_sha256": [
+      "937f862cf2d1ee232b6c93890c6e9b31b1340497e70d0761cee64dc47ab1a96e",
+      "0b73613f9caee93f8cb69a51632a49682b7746544f98169ebe136116ab8b2a80",
+      "e5366d2561c30bad46773f4534329813fa112d63578283a544ab298864b74664"
+    ],
+    "client_chain_certificate_der_sha256": [
+      "eafa5ee9e7200dc7fbbc14f01cd96790324c00aa1d4f6520b2d4f78db1794741",
+      "0b73613f9caee93f8cb69a51632a49682b7746544f98169ebe136116ab8b2a80"
+    ],
+    "h5_tls_mode": "default",
+    "app_tls_mode": "russia_bootstrap_mtls"
+  },
+  "operations": {
+    "login": {
+      "method": "POST",
+      "host": "rus-h5-gateway.gwmcloud.com",
+      "path": "/app-api/api/v1.0/userAuth/loginAccount",
+      "tls_mode": "default",
+      "access_token_header": false,
+      "body": "{\"account\":\"SYNTHETIC-owner\\u002Btag@example.invalid\",\"agreement\":[1,2,18,19],\"appType\":0,\"country\":\"RU\",\"deviceId\":\"0123456789abcdef0123456789abcdef\",\"isEncrypt\":false,\"model\":\"ha-gwm-ora\",\"password\":\"SYNTHETIC-PASSWORD\",\"pushToken\":\"\",\"type\":1}",
+      "signature": "0380b7dc81a7aa39c8ebc0bb981b13d66f4d1438522625cd5446253d54c04a9e"
+    },
+    "verified_login": {
+      "method": "POST",
+      "host": "rus-h5-gateway.gwmcloud.com",
+      "path": "/app-api/api/v1.0/userAuth/loginWithSMS",
+      "tls_mode": "default",
+      "access_token_header": false,
+      "body": "{\"agreement\":[1,2,18,19],\"appType\":0,\"country\":\"RU\",\"deviceId\":\"0123456789abcdef0123456789abcdef\",\"email\":\"SYNTHETIC-owner\\u002Btag@example.invalid\",\"model\":\"ha-gwm-ora\",\"pushToken\":\"\",\"smsCode\":\"SYNTHETIC-246810\"}",
+      "signature": "74409ef012d743b5ffc5f427c454623a9fd76616fb566e6ec2427e1c86fd9d3f"
+    },
+    "request_verification": {
+      "method": "POST",
+      "host": "rus-h5-gateway.gwmcloud.com",
+      "path": "/app-api/api/v1.0/userAuth/getSMSCode",
+      "tls_mode": "default",
+      "access_token_header": false,
+      "body": "{\"email\":\"SYNTHETIC-owner\\u002Btag@example.invalid\",\"scenario\":0,\"type\":3}",
+      "signature": "eb45fae5796d99ec9df179f389d0b999a9e7b63cfe7aa4049f2fa7bae2c1b2ba"
+    },
+    "refresh": {
+      "method": "POST",
+      "host": "rus-h5-gateway.gwmcloud.com",
+      "path": "/app-api/api/v1.0/userAuth/refreshToken",
+      "tls_mode": "default",
+      "access_token_header": false,
+      "body": "{\"accessToken\":\"SYNTHETIC-OLD-ACCESS\",\"refreshToken\":\"SYNTHETIC-OLD-REFRESH\",\"deviceId\":\"0123456789abcdef0123456789abcdef\"}",
+      "signature": "2fb66313703d916c8ba384bf0c709357bd169528db62d439d62af33768d33228"
+    },
+    "get_user_info": {
+      "method": "GET",
+      "host": "rus-h5-gateway.gwmcloud.com",
+      "path": "/app-api/api/v1.0/user/getUserBaseInfo",
+      "tls_mode": "default",
+      "access_token_header": true,
+      "body": null,
+      "signature": "adb3e14df6ea043cf0c8ebb59956c494cad3ffad37647e26f93e35162f24ef91"
+    }
+  },
+  "responses": {
+    "verification_challenge": {
+      "code": "110641",
+      "description": "SYNTHETIC-VERIFICATION-REQUIRED",
+      "data": null
+    },
+    "login": {
+      "code": "000000",
+      "description": "SYNTHETIC-SUCCESS",
+      "data": {
+        "accessToken": "SYNTHETIC-NEW-ACCESS",
+        "refreshToken": "SYNTHETIC-NEW-REFRESH",
+        "gwId": 9007199254740993,
+        "beanId": 9007199254740995,
+        "email": "SYNTHETIC-owner@example.invalid"
+      }
+    },
+    "refresh": {
+      "code": "000000",
+      "description": "SYNTHETIC-SUCCESS",
+      "data": {
+        "accessToken": "SYNTHETIC-ROTATED-ACCESS",
+        "refreshToken": "SYNTHETIC-ROTATED-REFRESH"
+      }
+    },
+    "get_user_info": {
+      "code": "000000",
+      "description": "SYNTHETIC-SUCCESS",
+      "data": {
+        "gwId": 9007199254740993,
+        "beanId": 9007199254740995,
+        "email": "SYNTHETIC-owner@example.invalid",
+        "firstName": "SYNTHETIC-NOT-RETAINED"
+      }
+    }
+  }
+}

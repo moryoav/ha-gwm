@@ -6,10 +6,10 @@ This document is the durable plan, behavior contract, decision log, and test led
 
 - Working branch: `feature/integration-only`
 - Branch point: `1184737` (`Update README GWM logo to SVG`)
-- Current checkpoint: Task 9 complete; China production authentication/read parity is proven offline, while Gate A-CN's live activation prerequisite remains pending
-- Next checkpoint: Task 10 — Russia production authentication and read parity (not yet approved)
+- Current checkpoint: Task 10 complete; Russia production authentication/read parity is proven offline, while live Russia behavior remains deliberately unverified
+- Next checkpoint: Task 11 — four-region normalized snapshot/model mapping (not yet approved)
 - Synchronized local `main`: `9daff32` (`v0.12.0`) through a two-parent merge without rebasing or selective cherry-picks
-- Task 9 added an isolated public China authentication/read client without changing `GwmClient`, `Region`, Home Assistant, the add-on/proxy runtime, persistence, commands, or charging
+- Task 10 completed offline authentication and three-read parity for every supported region without changing Home Assistant, the add-on/proxy runtime, persistence, commands, or charging
 
 Work proceeds one explicitly approved task at a time. At the end of every task, update this document, run the checks appropriate to that checkpoint, create one focused commit, push it to `feature/integration-only`, report the result, and stop. Do not begin the next task without a new user green light.
 
@@ -262,7 +262,7 @@ After Task 22, packaging, installation migration, documentation, complete tests,
 - [x] Task 7 — Merge the reviewed released `main` series into this branch and re-establish the full baseline.
 - [x] Task 8 — Prove the isolated China crypto, transport, and reuse-only read path.
 - [x] Task 9 — Implement China production SMS authentication, multi-service sessions, and read parity.
-- [ ] Task 10 — Implement Russia production authentication and read parity.
+- [x] Task 10 — Implement Russia production authentication and read parity.
 - [ ] Task 11 — Port and fixture-test four-region normalized snapshot/model mapping.
 - [ ] Task 12 — Add direct-cloud config, verification, reauth, reconfigure, and options flows.
 - [ ] Task 13 — Add the direct read-only coordinator and existing entity platforms.
@@ -281,7 +281,7 @@ The changed checkpoints stay intentionally narrow:
 - Task 7 was synchronization only. It merged the complete released mainline series, semantically reviewed auto-merged documentation/translations, re-established the full Python and .NET baselines, and made no direct-cloud Python behavior change.
 - Task 8 is the early China stop/go POC. Port deterministic crypto/time vectors, exact app-like request bytes, 32-character device identity, bounded gzip handling, and the three-service transport boundary; prove only discovery and status with synthetic services and, if separately approved and available, a reused live session. Do not request or submit an SMS code.
 - Task 9 turns that proof into immutable production authentication/read behavior: SMS continuation and throttling, exact error/risk-control handling, G-App refresh, bounded BeanTech/AutoAI initialization, partial-session publication, corrected discovery routing, NavInfo-only enforcement, sanitized China fixtures, and typed reads. It remains HA-independent, non-persistent, and command-free.
-- Task 10 retains the previously planned Russia authentication/read checkpoint. Moving it after the China feasibility work prevents the current overseas-only client shape from hiding a transport or strategy blocker introduced by the newly released region.
+- Task 10 retained the previously planned Russia authentication/read checkpoint. Moving it after the China feasibility work prevented the overseas-client shape from hiding a transport or strategy blocker introduced by the newly released region.
 - Tasks 11–22 preserve the original read integration, persistence, command, charging, packaging, migration, and cutover progression while expanding every relevant fixture and gate to four regions. China-only write surfaces remain a separate Task 17 so their experimental status and live-safety approvals cannot be obscured by already-supported commands.
 
 ## Decision Log
@@ -324,6 +324,9 @@ The changed checkpoints stay intentionally narrow:
 | D-034 | 2026-08-28 | Treat only HTTP 401/403 as evidence that China authentication was rejected; preserve state for unknown application failures. | No sanitized evidence identifies G-App, BeanTech, or AutoAI token-expiry application codes. Code `1013` is instead an explicit risk-control stop, `429` remains rate limiting, and unknown codes must neither retire state nor trigger refresh, SMS delivery, login, or retries. |
 | D-035 | 2026-08-28 | Publish a valid G-App-only partial revision after downstream initialization fails, and install a read session only after both platform logins and forced discovery succeed. | Rotated G-App tokens must not be lost or mixed with stale or one-sided BeanTech/AutoAI state. Only the two idempotent platform initializers may retry, limited to network and HTTP 502/503/504 failures, three attempts under the same deadline; all other operations remain single-attempt. |
 | D-036 | 2026-08-28 | Push every completed checkpoint commit to `feature/integration-only` before stopping. | The user granted standing approval so each weekly checkpoint is backed up and visible without granting permission to publish, merge, or release. |
+| D-037 | 2026-08-28 | Implement Russia as its own authentication and static-identity strategy inside the existing overseas `GwmClient`. | Russia shares the overseas single-token/read model and routes, but its login/SMS payloads and fixed regional mTLS identity are distinct from EU enrollment and ANZ session reclaim. A separate strategy preserves those boundaries without inventing a fourth client shape. |
+| D-038 | 2026-08-28 | Classify Russia authentication side effects only from endpoint-scoped evidence. | Exact raw `110641` requests verification only after password login; submitted-code application errors remain unknown, only HTTP 401/403 proves code or token rejection, `429` remains rate limiting, and every other failure stops without refresh, login, SMS, retry, or state retirement. |
+| D-039 | 2026-08-28 | Preflight and exact-bind the static Russia bootstrap identity before every authentication network side effect. | Russia app reads use the bundled general RU identity rather than per-user enrollment. Exact RU subject/issuer, key, chain, validity, and scoped legacy TLS validation prevents swapped EU material or local certificate failure from causing a login or SMS request. |
 
 ## Post-Branch Main Drift Review
 
@@ -493,7 +496,7 @@ dotnet test --no-restore --configuration Release
 128 passed, 0 failed, 0 skipped
 ```
 
-The Python warning and .NET nullable-annotation warnings are the unchanged baseline warnings. Gate A is passed for direct EU vehicle reads. ANZ and Russia remain offline-parity-only until their later regional checkpoints.
+The Python warning and .NET nullable-annotation warnings are the unchanged baseline warnings. Gate A is passed for direct EU vehicle reads. At this checkpoint ANZ and Russia were offline-parity-only; Tasks 6 and 10 have since completed their production-shaped offline authentication/read checkpoints without claiming live validation.
 
 ## Task 4 Async Client Foundation Evidence
 
@@ -535,7 +538,7 @@ dotnet test --no-restore --configuration Release
 128 passed, 0 failed, 0 skipped
 ```
 
-The dependency-minimal Ruff, mypy, compile, and 321-test client gate also passed under WSL/Linux with Python 3.13. The Python warning and .NET nullable-annotation warnings are the unchanged baseline warnings. The async overseas read surface is production-structured; Tasks 5 and 6 have since added EU/ANZ authentication, while Tasks 9 and 10 must add China and Russia authentication/session behavior and expand sanitized regional response parity before Home Assistant can use every region directly.
+The dependency-minimal Ruff, mypy, compile, and 321-test client gate also passed under WSL/Linux with Python 3.13. The Python warning and .NET nullable-annotation warnings are the unchanged baseline warnings. Tasks 5, 6, 9, and 10 have since added production-shaped offline authentication/read behavior for every region; Task 11 must now complete the normalized four-region snapshot mapping before Home Assistant can use those clients directly.
 
 ## Task 5 EU Authentication and Read-Parity Evidence
 
@@ -776,6 +779,59 @@ All checks passed!
 
 The Python warning and .NET nullable-annotation warnings remain the unchanged baseline warnings. Gate A-CN remains deliberately incomplete: Task 9 proves production-shaped authentication and reads offline, but only a separately approved sanitized live procedure can establish gateway acceptance, account behavior, and whether the HTTP/1.1 fallback is sufficient before China can be exposed in a direct Home Assistant flow.
 
+## Task 10 Russia Production Authentication and Read Evidence
+
+Evidence captured on 2026-08-28 from `feature/integration-only`. Task 10 used only versioned synthetic contracts, local fake transports, and the already committed OEM bootstrap resources. It made no live login, verification-code delivery, token refresh, profile, vehicle read, Home Assistant, add-on, account, phone-app, command, charging, publish, merge, or release request and used no live credential or session state.
+
+Delivered:
+
+- Added immutable, secret-safe `RussiaCredentials`, `RussiaAuthState`, authenticated and verification continuation outcomes, and `GwmClient.authenticate_russia`. The finite continuation remains Home Assistant-independent and non-persistent, consumes a submitted code once without retaining it, and installs only a fully validated read session.
+- Implemented the closed five-operation Russia H5 authentication surface: plaintext password login with `countryCode` omitted and agreements `[1,2,18,19]`, direct `loginWithSMS`, SMS-code delivery, token refresh without an `accessToken` header, and access-token profile validation. Exact .NET-compatible bodies, property order/types, routes, headers, full untruncated device identity, `gwm-auth` signing, and ordinary H5 TLS are fixed-contract tested.
+- Validated stored access first, rotated a rejected token pair through a single refresh, forced profile validation before publishing refreshed or newly logged-in state, and fell back to password login only after definite HTTP 401/403 rejection. There are no retries or ANZ-style session-reclaim side effects.
+- Limited the exact `110641` verification challenge to password login. Submitted-code application errors remain unknown; only HTTP 401/403 returns a rejected-code continuation. Unknown or whitespace-mutated codes, `429`, other HTTP failures, malformed responses, TLS/network failures, and cancellation cannot request another code, retry, or trigger an unproven fallback.
+- Added Russia-specific static mTLS identity handling that exact-binds the bundled `LGWGWM-AD-RU-GENERAL` / `RU` leaf and General SubCA issuer before delegating to the hardened bounded key, RSA, chain, validity, protected-temporary-file, and scoped `SECLEVEL=0` mechanics. Swapped or malformed local material fails before any authentication or SMS network side effect.
+- Completed an authentication-to-discovery/status/basics synthetic round trip through the existing overseas read client. Russia retains exact large integer identifiers as strings, rejects booleans/floats at string-or-number boundaries, preserves numeric-string status values, uses the static mTLS session for every APP request, retires only the matching session on HTTP 401/403, and preserves newer concurrent replacements.
+- Added versioned fully synthetic Russia authentication and read fixtures with exact golden signatures and public identity digests only. Expanded cross-fixture guards for SMS-code aliases, closed numeric sentinels, raw certificate PEM/field aliases, and transformed/private-key aliases; no raw certificate, key, credential, token, VIN, location, or response capture was added.
+- Kept Home Assistant flows/coordinator/entities, durable state, normalized snapshot mapping, commands, charging, packaging, migration, and the released add-on/proxy runtime unchanged.
+
+Validation:
+
+```text
+# Task 10 Russia auth/identity/fixture/boundary/client matrix (Windows, CPython 3.13.13)
+py -3.13 -m pytest -q tests/python/client/test_russia_auth.py tests/python/client/test_russia_identity.py tests/python/client/test_russia_fixtures.py tests/python/client/test_boundaries.py tests/python/client/test_client.py
+198 passed
+
+py -3.13 -m pytest -q tests/python/client
+887 passed
+
+py -3.13 -m pytest -q tests/python
+925 passed, 1 warning
+
+py -3.13 -m mypy gwm_ora_client
+Success: no issues found in 22 source files
+
+py -3.13 -m ruff check gwm_ora_client custom_components tests/python
+All checks passed!
+
+py -3.13 -m compileall -q gwm_ora_client custom_components tests/python
+# no output; exit 0
+
+dotnet test --configuration Release --nologo --verbosity quiet
+149 passed, 0 failed, 0 skipped
+
+# Dependency-minimal WSL/Linux, CPython 3.13.13
+python -m pytest -q tests/python/client
+887 passed
+
+python -m mypy gwm_ora_client
+Success: no issues found in 22 source files
+
+ruff check gwm_ora_client tests/python/client
+All checks passed!
+```
+
+The Python warning and .NET nullable-annotation warnings remain the unchanged baseline warnings. Russia authentication and reads are production-shaped and offline-parity complete, but undocumented live token expiry, wrong-code behavior, response variation, gateway acceptance, and supported ARM TLS behavior remain deliberately unclaimed until separately approved sanitized validation is available.
+
 ## Checkpoint Log
 
 ### Task 1 — Branch, baseline, and migration ledger
@@ -900,27 +956,43 @@ Delivered:
 - Added a versioned fully synthetic authentication/read contract, exact request bytes and signatures for all seven operations, hostile response/route/session/privacy tests, and stronger cross-fixture guards for account, code, token, device, vehicle, and coordinate material.
 - Kept `GwmClient`, `Region`, Home Assistant flows/coordinator/entities, persistence, commands, charging, packaging, add-on/proxy behavior, and live China access unchanged.
 
+### Task 10 — Russia production authentication and read parity
+
+Status: complete on 2026-08-28; offline production parity passed, live behavior deliberately unverified.
+
+Delivered:
+
+- Added Russia-specific immutable credentials/state/results and a serialized `GwmClient.authenticate_russia` continuation without introducing Home Assistant or persistence dependencies.
+- Implemented exact password login, direct SMS-code login, SMS delivery, headerless token refresh, and profile validation on the Russia H5 gateway with the existing `gwm-auth` signer and full device identity.
+- Added conservative stored-token validation, rotation, verification throttling, profile-before-publication, cancellation/deadline behavior, and revision-safe session replacement with no retries or inferred application-code fallbacks.
+- Exact-bound the static Russian general certificate/key/chain to a protected, scoped legacy mTLS context and preflighted it before all authentication or verification side effects.
+- Completed fixture-tested Russia discovery, status, and basics parity, including exact large numeric identifiers, stringified status scalars, boolean rejection, opaque vehicle identifiers, and HTTP 401/403 session retirement.
+- Added fully synthetic auth/read contracts and expanded privacy guards so raw certificate/key material, codes, credentials, tokens, VINs, locations, and response captures cannot enter fixtures unnoticed.
+- Kept Home Assistant, normalized snapshot mapping, durable state, commands, charging, packaging, migration, add-on/proxy behavior, and live Russia access unchanged.
+
 ### Next checkpoint (requires explicit approval)
 
-Task 10 will implement production Russia authentication and read parity in the existing HA-independent overseas client boundary, with versioned synthetic contracts and no Home Assistant wiring or persistence. Task 10 must not begin without a new user green light; any live Russia authentication or read requires separate explicit approval.
+Task 11 will port and fixture-test the complete four-region normalized snapshot/model mapping without adding Home Assistant flows, persistence, commands, or charging behavior. Task 11 must not begin without a new user green light; any live cloud access still requires separate explicit approval.
 
 ## Open Risks and Questions
 
 - Cross-architecture confirmation of the scoped GWM SSL context; Linux x86-64/OpenSSL 3.5.6 is proven offline, while supported ARM architectures remain untested.
 - The bundled EU general bootstrap certificate expires on 2027-01-04 and needs a renewal/provenance plan before production cutover.
+- The bundled Russia general bootstrap certificate expires on 2030-04-21 and likewise needs a renewal/provenance plan before that identity can expire in supported installations.
 - Modern `cryptography` rejects invalid PrintableString characters in the legacy OEM CA subjects; the POC validates their envelopes and lets OpenSSL consume the original signed bytes instead.
 - EU authentication is implemented and exhaustively fixture-tested offline, but its undocumented application-level token-expiry and wrong-verification-code values remain unverified. Until sanitized evidence establishes those codes, only HTTP 401/403 retires token state and unknown application errors propagate without fallback side effects.
-- Exact live parity of undocumented authentication and response behavior in ANZ and Russia remains unverified; EU read transport is proven live, while Task 5 EU auth and Task 6 ANZ auth/read semantics were deliberately not exercised live.
+- Exact live parity of undocumented authentication and response behavior in ANZ and Russia remains unverified; EU read transport is proven live, while Task 5 EU auth, Task 6 ANZ auth/read, and Task 10 Russia auth/read semantics were deliberately not exercised live.
 - The overseas Python transport still deliberately rejects compressed responses. The separate China adapter, expanded through Task 9, proves independently bounded gzip over HTTP/1.1 against synthetic services, but `aiohttp` cannot prefer HTTP/2 and no live China read was approved; a sanitized live validation must decide whether the service accepts the permitted fallback or an isolated HTTP/2-capable dependency is required before Gate A-CN activation.
 - China authentication now crosses three services in the standalone client, but its exact live error-code behavior remains unverified. Unknown G-App, BeanTech, or AutoAI application codes therefore do not retire authentication, trigger SMS delivery/login, or discard a recoverable G-App-only partial; risk-control `1013` remains an explicit stop directing the user to the official app.
 - BeanTech and AutoAI initialization now use the narrowly bounded three-attempt policy selected in D-035. It is fixture-proven only; live validation must confirm gateway behavior, while SMS delivery/login, refresh, reads, schema/TLS/risk failures, and commands retain no automatic retry.
 - China live evidence is currently limited to a contributed NavInfo WEY VV6 and selected reads/controls. Gate A-CN needs suitable sanitized access before direct China setup can be exposed, while heating, extended controls, charging, other platforms/models, and broader response encodings need their own later evidence.
-- The cloud DTOs intentionally retain only the fields required to establish the protocol boundary. EU, ANZ, and China now have sanitized regional response fixtures; Russia response parity and Task 11's complete four-region normalized-snapshot mapping remain outstanding.
+- The cloud DTOs intentionally retain only the fields required to establish the protocol boundary. All four regions now have sanitized response fixtures; Task 11's complete four-region normalized-snapshot mapping remains outstanding.
 - ANZ's exact basics `607099` response is now a typed raw-client optional-endpoint failure. The Task 13 coordinator must deliberately map it to empty basics to preserve the add-on polling service's nonfatal behavior.
 - Whether Task 12 should use one dedicated cookie-free client session per config entry or a policy-validated HA-owned session while preserving scoped TLS and unload ownership.
 - Availability of safe test accounts/vehicles for every regional read and write matrix.
 - ANZ side-by-side session effects remain untested. Task 6 prevents every password login without explicit one-shot consent and prevents automatic `607501` reclaim loops, but Task 12 must explain that consent clearly and the project still recommends a dedicated shared vehicle account.
 - ANZ `110641`, current token-expiry/rotation behavior, verification delivery/expiry, AU-versus-NZ differences, and unknown `checkSMSCode` failures lack sanitized current-service evidence; unknown errors stop without attempting the final login.
+- Russia application-level token-expiry and wrong/expired verification-code values lack sanitized evidence. Exact `110641` is therefore limited to the password-login challenge, submitted-code application failures remain unknown, and only HTTP 401/403 can retire or reject authentication state.
 - Safe handling and future renewal of bundled bootstrap certificates and OEM-derived key material.
 - Licensing/provenance of code, certificates, China app-derived signing material, and other resources derived from reverse-engineering work.
 - Whether the final client is bundled for HACS or published as a separately versioned Python dependency.
