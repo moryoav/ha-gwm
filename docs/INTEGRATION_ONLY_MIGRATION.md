@@ -6,10 +6,10 @@ This document is the durable plan, behavior contract, decision log, and test led
 
 - Working branch: `feature/integration-only`
 - Branch point: `1184737` (`Update README GWM logo to SVG`)
-- Current checkpoint: Task 16 complete; the standalone Python China client now has offline-proven platform-routed NavInfo/BeanTech reads and platform-isolated normalized entities
-- Next checkpoint: Task 17 — add climate command parity, including NavInfo China heating and in-place parameter updates while keeping BeanTech climate hidden (not yet approved)
+- Current checkpoint: Task 17 complete; direct overseas climate writes and the isolated NavInfo China climate protocol now pass the offline journal/result/lifecycle matrix
+- Next checkpoint: Task 18 — add lock/unlock and close-window parity with explicit NavInfo/BeanTech routing (not yet approved)
 - Synchronized `main`: `7b599cb` (`v0.13.0`) through a two-parent merge without rebasing or selective cherry-picks
-- Task 16 ported the released BeanTech status contract into the independent Python client without exposing direct China, enabling writes, or making a live request; Gate A-CN still requires separately approved live read validation
+- Task 17 exposed only overseas direct climate/run-time entities behind explicit opt-in and PIN, kept every later write family fail-closed, kept BeanTech climate hidden, and made no live request; direct China remains hidden behind Gate A-CN
 
 Work proceeds one explicitly approved task at a time. At the end of every task, update this document, run the checks appropriate to that checkpoint, create one focused commit, push it to `feature/integration-only`, report the result, and stop. Do not begin the next task without a new user green light.
 
@@ -270,7 +270,7 @@ After Task 24, packaging, installation migration, documentation, complete tests,
 - [x] Task 14 — Add persistent account-bound client state and a restart-safe command journal.
 - [x] Task 15 — Merge released `main` v0.13.0, reconcile its BeanTech-aware integration contract, and re-establish both baselines.
 - [x] Task 16 — Port BeanTech status transport/mapping into the direct Python client and complete platform-aware read/entity parity.
-- [ ] Task 17 — Add climate command parity, including NavInfo China heating and in-place parameter updates; keep unsupported BeanTech climate hidden.
+- [x] Task 17 — Add climate command parity, including NavInfo China heating and in-place parameter updates; keep unsupported BeanTech climate hidden.
 - [ ] Task 18 — Add lock/unlock and close-window parity with explicit NavInfo/BeanTech routing and isolated China no-PIN behavior.
 - [ ] Task 19 — Add platform-filtered China engine, horn/light, tailgate, and sunroof controls and HA buttons.
 - [ ] Task 20 — Add charging-control parity, including NavInfo China weekly schedules while keeping unsupported BeanTech charging unavailable.
@@ -287,6 +287,7 @@ The changed checkpoints stay intentionally narrow:
 - Task 10 retained the previously planned Russia authentication/read checkpoint. Moving it after the China feasibility work prevented the overseas-client shape from hiding a transport or strategy blocker introduced by the newly released region.
 - Task 15 is synchronization only: merge the single released v0.13.0 mainline commit, preserve the released add-on behavior, reconcile versioned docs/translations/entity tests with the direct-flow additions, and re-run both language baselines. It must not port the BeanTech backend or enable direct China.
 - Task 16 is a second read-parity checkpoint: route status by the discovered vehicle platform, port the BeanTech signed GET and strict mapper into Python, extend the normalized snapshot/capability contract, and prove that BeanTech-only entities never leak onto NavInfo or overseas vehicles. It remains read-only and offline unless a separate live approval is granted.
+- Task 17 is the first write-family checkpoint: expose only overseas climate/run-time entities behind remote-command opt-in and PIN, reuse the Task 14 journal for accepted provider IDs and restart reconciliation, and port NavInfo China cooling/heating/in-place parameter requests without exposing direct China or BeanTech climate. All evidence remains synthetic unless a separate immediate live-operation confirmation is given.
 - Tasks 17–24 preserve the original command, charging, hardening, packaging, migration, and cutover progression. Platform capability is now explicit: released BeanTech evidence supports lock/unlock, close windows, remote start/stop, horn, flash, and close sunroof; it does not support the climate entity, climate run-time number, tailgate operations, other sunroof positions, combined horn/lights, or charging schedules. China-only write surfaces remain a separate Task 19 so experimental status and live-safety approvals cannot be obscured by already-supported commands.
 
 ## Decision Log
@@ -346,6 +347,7 @@ The changed checkpoints stay intentionally narrow:
 | D-051 | 2026-08-28 | Treat the discovered China vehicle platform as a mandatory status-routing and capability dimension. | NavInfo status remains on AutoAI, BeanTech status uses its separately signed BeanTech route, and unknown/missing platforms fail locally before status or command traffic. Normalized snapshots must publish a safe lowercase platform plus per-vehicle capabilities so one account can contain vehicles with different backends without leaking entities or operations between them. |
 | D-052 | 2026-08-28 | Carry the released BeanTech capability matrix forward conservatively rather than treating all China vehicles alike. | BeanTech read fields and the released mapped action subset may be ported in their dedicated tasks, while climate/run-time and charging stay unavailable and unmapped controls stay hidden. C# live-read evidence informs fixtures but does not pass the independent Python live gate; all direct writes still require their task approval and separate immediate live-operation confirmation. |
 | D-053 | 2026-08-28 | Merge released v0.13.0 as an explicit second parent and resolve only semantic overlap at the Task 15 checkpoint. | Root/add-on China documentation keeps the branch's partial-live-validation qualification while adding BeanTech coverage. The new Simplified Chinese catalog mirrors all 221 English leaf paths, including direct-cloud flows and current persistent-state wording. Released runtime behavior is preserved without copying its BeanTech C# implementation into Python ahead of Task 16. |
+| D-054 | 2026-08-28 | Expose Task 17 through a climate-specific capability instead of the broad remote-command flag. | Direct overseas climate and run-time controls can become available after explicit opt-in and PIN without prematurely exposing Task 18 lock/window or Task 19 button entities. Accepted provider IDs are persisted before polling, reload resumes polling without resending, Russia retains its longer result window, and BeanTech/direct-China climate remains unavailable. |
 
 ## Post-Branch Main Drift Review
 
@@ -1369,9 +1371,21 @@ Delivered:
 - Proved exact fixed requests, strict malformed/route behavior, mixed-platform reads, snapshot serialization, direct-coordinator entity isolation, and fixture privacy with fully synthetic offline evidence.
 - Preserved the released add-on path, kept direct China hidden behind Gate A-CN, enabled no writes, and made no live request.
 
+### Task 17 — Direct climate commands and restart reconciliation
+
+Status: complete on 2026-08-28; the offline climate write matrix passed for EU, ANZ, Russia, and isolated NavInfo China protocol behavior. No live login, read, vehicle command, or charging operation was made.
+
+Delivered:
+
+- Added typed overseas climate-default, command-send, and result-query operations with exact regional gateway selection, signing, Russia PIN prerequisite, command type, and VIN-header behavior.
+- Added NavInfo China cooling, heating, stop, and already-running `SET_AIR_PRM` requests plus signed transaction-result polling; a discovered BeanTech or unknown platform fails locally before command traffic.
+- Added a climate-only direct capability so explicit overseas opt-in and PIN expose the climate entity and run-time number without exposing locks, windows, buttons, charging, or services assigned to later tasks.
+- Reused the Task 14 account-bound journal: a provider identifier is persisted before polling, accepted/polling commands resume after restart without resending, terminal transitions persist, and timeouts fail closed.
+- Added synthetic fixtures and tests for exact requests, provider rejection, regional result selection, China pending normalization, saved-default-only behavior, accepted-ID persistence, restart recovery, timeout, availability, and BeanTech isolation.
+
 ### Next checkpoint (requires explicit approval)
 
-Task 17 will add direct climate command parity through the Task 14 journal, including the existing overseas behavior plus NavInfo China cooling/heating and in-place parameter changes. It must keep unsupported BeanTech climate and run-time entities hidden, preserve platform routing and no-PIN China behavior, and fixture-test accepted command IDs, restart reconciliation, rejection, timeout, and availability before any live write. Task 17 must not begin without a new user green light; every live vehicle operation still requires separate explicit confirmation immediately before it is sent.
+Task 18 will add direct lock/unlock and close-window parity through the same journal, with explicit overseas, NavInfo, and BeanTech routing and China no-PIN isolation. It must not broaden the Task 17 climate capability or expose unsupported operations, and every live vehicle operation still requires separate explicit confirmation immediately before it is sent.
 
 ## Open Risks and Questions
 
@@ -1386,7 +1400,7 @@ Task 17 will add direct climate command parity through the Task 14 journal, incl
 - BeanTech and AutoAI initialization now use the narrowly bounded three-attempt policy selected in D-035. It is fixture-proven only; live validation must confirm gateway behavior, while SMS delivery/login, refresh, reads, schema/TLS/risk failures, and commands retain no automatic retry.
 - China evidence now includes a contributed NavInfo WEY VV6 with selected reads/controls, contributed live-tested BeanTech status through the released C# add-on, and independent offline Python parity for both status routes. Gate A-CN still needs a suitable sanitized live Python read before either claimed platform can be exposed; heating, platform-specific controls, charging, other models, and broader response encodings retain their own later evidence requirements.
 - The Python cloud DTOs and normalized snapshots now carry the released BeanTech platform/capability fields and additional status values with mixed-platform isolation proven offline. Broader live response/model variation remains unverified, so absent, malformed, and unknown platform data must continue to fail closed or stay vehicle-local.
-- Task 14 persists account-bound authentication and the accepted-command journal, but provider-specific result-query identifiers, polling windows, terminal-code interpretation, and reconciliation policy still belong to Tasks 17-21 and require fixture plus explicitly approved live evidence before write parity can pass.
+- Task 17 now fixture-proves climate provider identifiers, result-query routing, polling windows, terminal-code interpretation, and restart reconciliation. Equivalent evidence for lock/window, extended China controls, and charging still belongs to Tasks 18-21; every family's live provider behavior remains unverified until separately approved.
 - Availability of safe test accounts/vehicles for every regional read and write matrix.
 - ANZ side-by-side session effects remain untested. Task 6 prevents every password login without explicit one-shot consent and prevents automatic `607501` reclaim loops; Task 12 now presents that consent as a default-unchecked warning and the project still recommends a dedicated shared vehicle account.
 - ANZ `110641`, current token-expiry/rotation behavior, verification delivery/expiry, AU-versus-NZ differences, and unknown `checkSMSCode` failures lack sanitized current-service evidence; unknown errors stop without attempting the final login.
@@ -1396,4 +1410,4 @@ Task 17 will add direct climate command parity through the Task 14 journal, incl
 - Whether the final client is bundled for HACS or published as a separately versioned Python dependency.
 - Whether existing users perform one fresh authentication or use a temporary secured state-export path.
 - Blocking certificate/key workers finish protected temporary-file cleanup before propagating cancellation, so a cancelled authentication may return after its nominal deadline even though no network stage may continue past that deadline.
-- Live confirmation that each regional/platform provider returns every command identifier needed by the Task 14 journal before result polling can begin; until the corresponding Task 17-20 fixture and live gates pass, that write family remains disabled.
+- Live confirmation that each regional/platform provider returns every command identifier needed by the Task 14 journal before release/cutover confidence can be claimed; Task 17 proves the climate contract offline only, and later write families remain disabled until their checkpoints pass.

@@ -1,0 +1,41 @@
+{
+  "schema_version": 1,
+  "sequence_number": "0123456789abcdef0123456789abcdef1234",
+  "security_password_hash": "8fe4c11451281c094a6578e6ddbf5eed",
+  "vin": "LGWTEST0000000099",
+  "regions": {
+    "eu": {
+      "country": "DE",
+      "device_id": "0123456789abcdef",
+      "modify_origin": "https://eu-h5-gateway.gwmcloud.com",
+      "send_origin": "https://eu-app-gateway.gwmcloud.com",
+      "modify_vin_header": false,
+      "send_vin_header": false,
+      "result_vin_header": false,
+      "security_check": false,
+      "type": 2
+    },
+    "aus": {
+      "country": "AU",
+      "device_id": "0123456789abcdef",
+      "modify_origin": "https://aus-h5-gateway.gwmcloud.com",
+      "send_origin": "https://aus-h5-gateway.gwmcloud.com",
+      "modify_vin_header": false,
+      "send_vin_header": false,
+      "result_vin_header": true,
+      "security_check": false,
+      "type": 2
+    },
+    "rus": {
+      "country": "RU",
+      "device_id": "feedface-dead-beef-cafe-0123456789ab",
+      "modify_origin": "https://rus-h5-gateway.gwmcloud.com",
+      "send_origin": "https://rus-app-gateway.gwmcloud.com",
+      "modify_vin_header": true,
+      "send_vin_header": true,
+      "result_vin_header": true,
+      "security_check": true,
+      "type": 3
+    }
+  }
+}

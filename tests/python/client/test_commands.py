@@ -1,0 +1,225 @@
+"""Offline regional climate write, result correlation, and rejection tests."""
+
+from __future__ import annotations
+
+import json
+import ssl
+from pathlib import Path
+from typing import Any
+from urllib.parse import urlsplit
+
+import pytest
+
+from gwm_ora_client import (
+    ClimateCommand,
+    GwmApiError,
+    GwmClient,
+    GwmClientConfig,
+    GwmConfigurationError,
+    GwmSession,
+    Region,
+    RemoteCommandResultItem,
+    VehicleIdentifier,
+    create_gwm_ssl_context,
+    select_remote_command_result,
+)
+from gwm_ora_client._protocol import _Deadline, _TransportRequest, _TransportResponse
+
+FIXTURE_PATH = Path(__file__).with_name("fixtures") / "command_contracts_v1.json"
+
+
+class _RecordingTransport:
+    def __init__(self, responses: list[_TransportResponse]) -> None:
+        self.responses = list(responses)
+        self.requests: list[_TransportRequest] = []
+
+    async def execute(
+        self,
+        request: _TransportRequest,
+        *,
+        deadline: _Deadline,
+        connect_timeout: float,
+        read_timeout: float,
+    ) -> _TransportResponse:
+        assert deadline.remaining(0) > 0
+        assert connect_timeout > 0
+        assert read_timeout > 0
+        self.requests.append(request)
+        return self.responses.pop(0)
+
+    async def aclose(self) -> None:
+        return None
+
+
+def _fixture() -> dict[str, Any]:
+    return json.loads(FIXTURE_PATH.read_text(encoding="utf-8"))
+
+
+def _response(data: object = None, *, code: str = "000000") -> _TransportResponse:
+    return _TransportResponse(
+        200,
+        {"content-type": "application/json"},
+        json.dumps({"code": code, "data": data}, separators=(",", ":")).encode(),
+    )
+
+
+def _context(region: Region) -> ssl.SSLContext:
+    return ssl.create_default_context() if region is Region.ANZ else create_gwm_ssl_context()
+
+
+def _body(request: _TransportRequest) -> dict[str, Any]:
+    assert request.body is not None
+    return json.loads(request.body)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("region", list(Region))
+async def test_regional_climate_contracts_are_closed_and_header_exact(region: Region) -> None:
+    fixture = _fixture()
+    case = fixture["regions"][region.value]
+    sequence = fixture["sequence_number"]
+    result_data = [
+        {
+            "hwCommandId": sequence,
+            "remoteType": "0x04",
+            "resultCode": "0",
+            "resultMsg": "Success",
+        }
+    ]
+    response_count = 4 if case["security_check"] else 3
+    responses = [_response() for _ in range(response_count - 1)] + [_response(result_data)]
+    transport = _RecordingTransport(responses)
+    client = GwmClient(
+        GwmClientConfig(region),
+        GwmSession(
+            country=case["country"],
+            device_id=case["device_id"],
+            access_token="SYNTHETIC-COMMAND-TOKEN",
+            app_ssl_context=_context(region),
+        ),
+        transport=transport,
+        sequence_source=lambda: sequence,
+    )
+    identifier = VehicleIdentifier(fixture["vin"])
+
+    await client.update_climate_defaults(
+        identifier,
+        temperature=21,
+        operation_time_minutes=10,
+    )
+    acceptance = await client.send_climate_command(
+        ClimateCommand(identifier, "cool", 21, 10),
+        security_password_hash=fixture["security_password_hash"],
+    )
+    results = await client.get_remote_command_results(identifier, acceptance.command_id)
+
+    assert acceptance.command_id == sequence
+    assert results[0].result_code == "0"
+    modify = transport.requests[0]
+    assert urlsplit(modify.url).scheme + "://" + urlsplit(modify.url).netloc == case["modify_origin"]
+    assert urlsplit(modify.url).path.endswith("/vehicle/modifyVehicleRemoteCtlInfo")
+    assert (modify.headers.get("vin") == fixture["vin"]) is case["modify_vin_header"]
+    assert _body(modify) == {
+        "airConditionerTemperature": "21",
+        "airConditionerTime": "600",
+        "vin": fixture["vin"],
+    }
+
+    send_index = 2 if case["security_check"] else 1
+    if case["security_check"]:
+        check = transport.requests[1]
+        assert urlsplit(check.url).path.endswith("/userAuth/checkSecurityPassword")
+        assert "vin" not in check.headers
+        assert _body(check) == {
+            "securityPassword": fixture["security_password_hash"],
+            "type": "3",
+        }
+    send = transport.requests[send_index]
+    assert urlsplit(send.url).scheme + "://" + urlsplit(send.url).netloc == case["send_origin"]
+    assert urlsplit(send.url).path.endswith("/vehicle/T5/sendCmd")
+    assert (send.headers.get("vin") == fixture["vin"]) is case["send_vin_header"]
+    assert _body(send) == {
+        "instructions": {
+            "0x04": {
+                "airConditioner": {
+                    "operationTime": "10",
+                    "switchOrder": "1",
+                    "temperature": "21",
+                }
+            }
+        },
+        "remoteType": "0",
+        "securityPassword": fixture["security_password_hash"],
+        "seqNo": sequence,
+        "type": case["type"],
+        "vin": fixture["vin"],
+    }
+    result_request = transport.requests[-1]
+    assert urlsplit(result_request.url).path.endswith("/vehicle/getRemoteCtrlResultT5")
+    assert urlsplit(result_request.url).query == "seqNo=" + sequence
+    assert (result_request.headers.get("vin") == fixture["vin"]) is case["result_vin_header"]
+
+
+@pytest.mark.asyncio
+async def test_provider_rejection_does_not_return_an_accepted_identifier() -> None:
+    fixture = _fixture()
+    case = fixture["regions"]["aus"]
+    transport = _RecordingTransport([_response(code="607777")])
+    client = GwmClient(
+        GwmClientConfig(Region.ANZ),
+        GwmSession(
+            country=case["country"],
+            device_id=case["device_id"],
+            access_token="SYNTHETIC-COMMAND-TOKEN",
+            app_ssl_context=_context(Region.ANZ),
+        ),
+        transport=transport,
+        sequence_source=lambda: fixture["sequence_number"],
+    )
+    command = ClimateCommand(VehicleIdentifier(fixture["vin"]), "cool", 22, 15)
+    with pytest.raises(GwmApiError):
+        await client.send_climate_command(
+            command,
+            security_password_hash=fixture["security_password_hash"],
+        )
+    assert len(transport.requests) == 1
+
+
+@pytest.mark.asyncio
+async def test_overseas_heat_is_rejected_before_transport() -> None:
+    fixture = _fixture()
+    case = fixture["regions"]["aus"]
+    transport = _RecordingTransport([])
+    client = GwmClient(
+        GwmClientConfig(Region.ANZ),
+        GwmSession(
+            country=case["country"],
+            device_id=case["device_id"],
+            access_token="SYNTHETIC-COMMAND-TOKEN",
+            app_ssl_context=_context(Region.ANZ),
+        ),
+        transport=transport,
+        sequence_source=lambda: fixture["sequence_number"],
+    )
+    with pytest.raises(GwmConfigurationError):
+        await client.send_climate_command(
+            ClimateCommand(VehicleIdentifier(fixture["vin"]), "heat", 24, 15),
+            security_password_hash=fixture["security_password_hash"],
+        )
+    assert transport.requests == []
+
+
+def test_result_selection_preserves_russian_and_default_semantics() -> None:
+    sequence = _fixture()["sequence_number"]
+    stale = RemoteCommandResultItem("stale", "0x04", "0", "Success")
+    current = RemoteCommandResultItem(sequence, "0x04", "1000", "Waiting")
+    assert select_remote_command_result(
+        (stale, current), command_id=sequence, region=Region.RUSSIA
+    ).state == "pending"
+    success = RemoteCommandResultItem(None, "0x04", "6", "Done")
+    assert select_remote_command_result(
+        (stale, success), command_id=sequence, region=Region.RUSSIA
+    ).state == "completed"
+    assert select_remote_command_result(
+        (stale, current), command_id=sequence, region=Region.EU
+    ).state == "failed"

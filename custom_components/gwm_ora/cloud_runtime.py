@@ -1,4 +1,4 @@
-"""Read-only direct-cloud runtime and bounded config-flow handoff.
+"""Direct-cloud runtime and bounded config-flow handoff.
 
 A successful config, reauth, or reconfigure flow stages one validated overseas
 read session for immediate entry setup. The bounded handoff is only an
@@ -19,6 +19,7 @@ from homeassistant.core import HomeAssistant
 from gwm_ora_client import (
     AnzAuthenticated,
     AnzAuthState,
+    ClimateCommand,
     CloudVehicle,
     CloudVehicleBasics,
     CloudVehicleStatus,
@@ -29,8 +30,11 @@ from gwm_ora_client import (
     GwmConfigurationError,
     GwmOptionalEndpointError,
     GwmProtocolError,
+    GwmRoutePolicyError,
     GwmSession,
     Region,
+    RemoteCommandAcceptance,
+    RemoteCommandResultItem,
     RussiaAuthenticated,
     RussiaAuthState,
     VehicleIdentifier,
@@ -72,6 +76,27 @@ class _OverseasReadClient(Protocol):
         identifier: VehicleIdentifier,
     ) -> CloudVehicleBasics: ...
 
+    async def update_climate_defaults(
+        self,
+        identifier: VehicleIdentifier,
+        *,
+        temperature: int,
+        operation_time_minutes: int,
+    ) -> None: ...
+
+    async def send_climate_command(
+        self,
+        command: ClimateCommand,
+        *,
+        security_password_hash: str,
+    ) -> RemoteCommandAcceptance: ...
+
+    async def get_remote_command_results(
+        self,
+        identifier: VehicleIdentifier,
+        command_id: str,
+    ) -> tuple[RemoteCommandResultItem, ...]: ...
+
     async def aclose(self) -> None: ...
 
 
@@ -80,6 +105,15 @@ class _AuthStateStore(Protocol):
         self,
         entry_data: dict[str, object],
     ) -> None: ...
+
+
+@dataclass(frozen=True, slots=True, repr=False)
+class DirectClimateContext:
+    """Fresh regional prerequisites used to resolve one climate request."""
+
+    vehicle: CloudVehicle = field(repr=False)
+    basics: CloudVehicleBasics = field(repr=False)
+    status: CloudVehicleStatus | None = field(default=None, repr=False)
 
 
 @dataclass(frozen=True, slots=True, repr=False)
@@ -205,6 +239,7 @@ class DirectCloudReadClient:
         bootstrap: DirectCloudBootstrap | None = None,
         state_store: _AuthStateStore | None = None,
         entry_data: dict[str, object] | None = None,
+        climate_commands_enabled: bool = False,
     ) -> None:
         if region not in {REGION_EU, REGION_ANZ, REGION_RUSSIA}:
             raise GwmConfigurationError(operation="request")
@@ -214,6 +249,10 @@ class DirectCloudReadClient:
         self._bootstrap = bootstrap
         self._state_store = state_store
         self._entry_data = dict(entry_data or {})
+        if type(climate_commands_enabled) is not bool:
+            raise GwmConfigurationError(operation="request")
+        self._climate_commands_enabled = climate_commands_enabled
+        self._vehicles: dict[str, CloudVehicle] = {}
 
     @classmethod
     def from_entry_data(
@@ -223,6 +262,7 @@ class DirectCloudReadClient:
         bootstrap: DirectCloudBootstrap,
         *,
         state_store: _AuthStateStore | None = None,
+        climate_commands_enabled: bool = False,
     ) -> DirectCloudReadClient:
         """Validate a staged handoff against the current config entry."""
 
@@ -258,6 +298,7 @@ class DirectCloudReadClient:
             bootstrap=bootstrap,
             state_store=state_store,
             entry_data=data,
+            climate_commands_enabled=climate_commands_enabled,
         )
 
     @property
@@ -283,27 +324,90 @@ class DirectCloudReadClient:
 
         refreshed_at = self._clock()
         try:
-            snapshots = [
-                map_vehicle_snapshot(
+            snapshots = []
+            for vehicle, status, basics in records:
+                snapshot = map_vehicle_snapshot(
                     vehicle,
                     status,
                     basics,
                     refreshed_at=refreshed_at,
-                    # Write support is deliberately unavailable until Tasks
-                    # 17-20, even when the user has opted in already.
+                    # Later command tasks continue to key their entities from
+                    # the broader capability. Task 17 exposes climate only.
                     remote_commands_available=False,
                 ).as_dict()
-                for vehicle, status, basics in records
-            ]
+                capability_data = snapshot.get("capabilities")
+                if not isinstance(capability_data, dict):
+                    raise TypeError("capabilities_invalid")
+                capabilities = dict(capability_data)
+                capabilities["climate_commands"] = self._climate_commands_enabled
+                snapshot["capabilities"] = capabilities
+                snapshots.append(snapshot)
         except (TypeError, ValueError):
             raise GwmProtocolError(operation="request") from None
 
+        self._vehicles = {
+            vehicle.identifier.value: vehicle for vehicle, _status, _basics in records
+        }
+
         return {
             "region": self.region,
-            "remote_commands_enabled": False,
+            "remote_commands_enabled": self._climate_commands_enabled,
             "charging_control_enabled": False,
             "vehicles": snapshots,
         }
+
+    async def async_get_climate_context(
+        self,
+        identifier: VehicleIdentifier,
+        *,
+        include_status: bool,
+    ) -> DirectClimateContext:
+        """Fetch current prerequisites without allowing an undiscovered VIN route."""
+
+        if type(identifier) is not VehicleIdentifier or type(include_status) is not bool:
+            raise GwmRoutePolicyError(operation="send_climate_command")
+        vehicle = self._vehicles.get(identifier.value)
+        if vehicle is None:
+            raise GwmRoutePolicyError(operation="send_climate_command")
+        try:
+            basics = await self._client.get_vehicle_basics(identifier)
+        except GwmOptionalEndpointError:
+            if self.region != REGION_ANZ:
+                raise
+            basics = CloudVehicleBasics()
+        status = await self._client.get_last_status(identifier) if include_status else None
+        return DirectClimateContext(vehicle=vehicle, basics=basics, status=status)
+
+    async def async_update_climate_defaults(
+        self,
+        identifier: VehicleIdentifier,
+        *,
+        temperature: int,
+        operation_time_minutes: int,
+    ) -> None:
+        await self._client.update_climate_defaults(
+            identifier,
+            temperature=temperature,
+            operation_time_minutes=operation_time_minutes,
+        )
+
+    async def async_send_climate_command(
+        self,
+        command: ClimateCommand,
+        *,
+        security_password_hash: str,
+    ) -> RemoteCommandAcceptance:
+        return await self._client.send_climate_command(
+            command,
+            security_password_hash=security_password_hash,
+        )
+
+    async def async_get_remote_command_results(
+        self,
+        identifier: VehicleIdentifier,
+        command_id: str,
+    ) -> tuple[RemoteCommandResultItem, ...]:
+        return await self._client.get_remote_command_results(identifier, command_id)
 
     async def aclose(self) -> None:
         """Close the owned regional transport."""

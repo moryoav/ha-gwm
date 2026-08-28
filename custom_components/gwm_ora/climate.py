@@ -54,7 +54,7 @@ class GwmOraClimate(GwmOraEntity, ClimateEntity):
         """Return whether climate control is available."""
         return (
             super().available
-            and self.remote_commands_available
+            and self.climate_commands_available
             and not self.is_china_beantech
         )
 

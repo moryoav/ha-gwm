@@ -1,9 +1,9 @@
-"""Production-structured, HA-independent mainland-China authentication and reads.
+"""Production-structured, HA-independent mainland-China authentication and protocol.
 
 The China app protocol spans three independently authenticated services.  This
 module deliberately does not extend the overseas ``Region``/``GwmClient``
 abstractions: its immutable state, bounded initialization, gzip transport, and
-platform-routed read policy remain isolated until the later Home Assistant tasks.
+    platform-routed policy remain isolated until the later Home Assistant tasks.
 """
 
 from __future__ import annotations
@@ -41,6 +41,11 @@ from .china_transport import (
     _ChinaTransportRequest,
     _ChinaTransportResponse,
 )
+from .commands import (
+    ClimateCommand,
+    RemoteCommandAcceptance,
+    RemoteCommandResultItem,
+)
 from .config import RequestTimeouts
 from .errors import (
     GwmApiError,
@@ -73,6 +78,9 @@ __all__ = [
     "ChinaVehicle",
     "ChinaVehicleStatus",
     "ChinaVerificationRequired",
+    "ClimateCommand",
+    "RemoteCommandAcceptance",
+    "RemoteCommandResultItem",
 ]
 
 type _ChinaService = Literal["bean_tech", "auto_ai"]
@@ -86,6 +94,8 @@ _REFRESH_URL = _G_APP_BASE + "api-guser/v5/token/refresh"
 _BEAN_TECH_LOGIN_URL = _BEAN_TECH_BASE + "app-api/api/v1.0/userAuth/loginSSOAccount"
 _BEAN_TECH_STATUS_PATH = "/app-api/api/v2.0/vehicle/getLastStatus"
 _BEAN_TECH_STATUS_URL = _BEAN_TECH_BASE.rstrip("/") + _BEAN_TECH_STATUS_PATH
+_BEAN_TECH_RESULT_PATH = "/app-api/api/v3.0/vehicle/remote-ctrl/result"
+_BEAN_TECH_RESULT_URL = _BEAN_TECH_BASE.rstrip("/") + _BEAN_TECH_RESULT_PATH
 _AUTO_AI_LOGIN_URL = _G_APP_BASE + "tsp/v1/proxy/navinfo/GW.M.APP_LOGIN"
 _DISCOVERY_URL = _G_APP_BASE + "gcar/v1/app/android/vehicle/query-vehicle-list"
 _SOURCE_APP_VERSION = "2.1.5"
@@ -357,7 +367,7 @@ class _ChinaRiskControlError(GwmApiError):
 
 
 class ChinaClient:
-    """Lifecycle-managed China SMS authentication and routed read client."""
+    """Lifecycle-managed China SMS authentication and platform-routed client."""
 
     def __init__(
         self,
@@ -527,6 +537,51 @@ class ChinaClient:
             operation,
             timeout=timeout,
             action=lambda deadline: self._get_last_status_locked(identifier, deadline=deadline),
+        )
+
+    async def send_climate_command(
+        self,
+        command: ClimateCommand,
+        *,
+        timeout: float | None = None,
+    ) -> RemoteCommandAcceptance:
+        """Send a NavInfo climate command; BeanTech remains deliberately unsupported."""
+
+        operation: Literal["send_climate_command"] = "send_climate_command"
+        if type(command) is not ClimateCommand:
+            raise GwmConfigurationError(operation=operation)
+        return await self._run_read(
+            operation,
+            timeout=timeout,
+            action=lambda deadline: self._send_climate_command_locked(command, deadline=deadline),
+        )
+
+    async def get_remote_command_results(
+        self,
+        identifier: VehicleIdentifier,
+        command_id: str,
+        *,
+        timeout: float | None = None,
+    ) -> tuple[RemoteCommandResultItem, ...]:
+        """Poll the NavInfo transaction result through the signed BeanTech stream."""
+
+        operation = "get_remote_command_result"
+        if (
+            type(identifier) is not VehicleIdentifier
+            or not isinstance(command_id, str)
+            or not command_id
+            or len(command_id) > 512
+            or any(ord(character) < 0x21 or ord(character) > 0x7E for character in command_id)
+        ):
+            raise GwmConfigurationError(operation=operation)
+        return await self._run_read(
+            operation,
+            timeout=timeout,
+            action=lambda deadline: self._get_remote_command_results_locked(
+                identifier,
+                command_id,
+                deadline=deadline,
+            ),
         )
 
     async def _authenticate_locked(
@@ -946,6 +1001,99 @@ class ChinaClient:
         except (RecursionError, OverflowError, TypeError, ValueError):
             raise GwmSchemaError(operation="get_last_status") from None
 
+    async def _send_climate_command_locked(
+        self,
+        command: ClimateCommand,
+        *,
+        deadline: _Deadline,
+    ) -> RemoteCommandAcceptance:
+        operation: Literal["send_climate_command"] = "send_climate_command"
+        state = self._required_session(operation=operation)
+        vehicle = self._vehicles.get(command.identifier.value.casefold())
+        if vehicle is None:
+            raise GwmRoutePolicyError(operation=operation)
+        platform = None if vehicle.platform is None else vehicle.platform.strip().casefold()
+        # Climate payloads for BeanTech have not been verified and must never fall
+        # through to the NavInfo route merely because a vehicle was discovered.
+        if platform != "navinfo":
+            raise GwmRoutePolicyError(operation=operation)
+        if state.auto_ai_token_id is None or state.auto_ai_user_id is None:
+            raise GwmAuthenticationError(operation=operation)
+        body: dict[str, object] = {
+            "flag": 1,
+            "signStr": hashlib.md5(
+                (command.identifier.value + state.auto_ai_token_id).encode("utf-8"),
+                usedforsecurity=False,
+            ).hexdigest(),
+            "userId": state.auto_ai_user_id,
+            "userType": "0",
+            "vin": command.identifier.value,
+        }
+        if command.mode == "off":
+            function = "GW.M.SEND_COMMON_COMMAND"
+            body["cmdCode"] = 7
+        else:
+            function = "GW.M.SET_AIR_PRM" if command.currently_on else "GW.M.SET_AND_OPEN_COMMAND"
+            if not command.currently_on:
+                body["cmdCode"] = 6
+            body["airParams"] = {
+                "runTime": command.operation_time_minutes,
+                "temperature": command.temperature,
+                "coldSwitch": "1" if command.mode == "cool" else "0",
+                "heatSwitch": "1" if command.mode == "heat" else "0",
+                "engineControl": 0,
+            }
+        response = await self._send_locked(
+            self._build_auto_ai_request(
+                operation=operation,
+                state=state,
+                function=function,
+                body=body,
+                url=_AUTO_AI_DIRECT,
+                include_token=True,
+            ),
+            deadline=deadline,
+        )
+        try:
+            result = _decode_auto_ai_envelope(response, operation=operation)
+            command_id = _scalar_text(_property(result, "transactionId"))
+            if (
+                command_id is None
+                or not command_id
+                or len(command_id) > 512
+                or any(ord(character) < 0x21 or ord(character) > 0x7E for character in command_id)
+            ):
+                raise ValueError("command_acceptance_invalid")
+            return RemoteCommandAcceptance(command_id)
+        except GwmClientError:
+            raise
+        except (RecursionError, OverflowError, TypeError, ValueError):
+            raise GwmSchemaError(operation=operation) from None
+
+    async def _get_remote_command_results_locked(
+        self,
+        identifier: VehicleIdentifier,
+        command_id: str,
+        *,
+        deadline: _Deadline,
+    ) -> tuple[RemoteCommandResultItem, ...]:
+        operation = "get_remote_command_result"
+        state = self._required_session(operation=operation)
+        vehicle = self._vehicles.get(identifier.value.casefold())
+        if vehicle is None or (vehicle.platform or "").strip().casefold() != "navinfo":
+            raise GwmRoutePolicyError(operation=operation)
+        response = await self._send_locked(
+            self._build_bean_tech_result_request(state, identifier, command_id),
+            deadline=deadline,
+        )
+        try:
+            data = _decode_g_app_envelope(response, operation=operation)
+            return _parse_navinfo_command_results(data, command_id=command_id)
+        except GwmClientError:
+            raise
+        except (RecursionError, OverflowError, TypeError, ValueError):
+            raise GwmSchemaError(operation=operation) from None
+
     async def _send_locked(
         self,
         request: _ChinaTransportRequest,
@@ -1165,10 +1313,71 @@ class ChinaClient:
             body=None,
         )
 
+    def _build_bean_tech_result_request(
+        self,
+        state: ChinaAuthState,
+        identifier: VehicleIdentifier,
+        command_id: str,
+    ) -> _ChinaTransportRequest:
+        operation: Literal["get_remote_command_result"] = "get_remote_command_result"
+        instant = self._read_clock(operation=operation)
+        timestamp = str(_epoch_milliseconds(instant))
+        try:
+            nonce = self._nonce_source()
+        except Exception:
+            raise GwmConfigurationError(operation=operation) from None
+        if not isinstance(nonce, str) or _NONCE.fullmatch(nonce) is None:
+            raise GwmConfigurationError(operation=operation)
+        bean_id = state.bean_tech_bean_id or state.bean_id
+        if state.bean_tech_access_token is None or bean_id is None or state.auto_ai_token_id is None:
+            raise GwmAuthenticationError(operation=operation)
+        query = (
+            "seqNo="
+            + quote(command_id, safe="", encoding="utf-8", errors="strict")
+            + "&vin="
+            + identifier.encoded
+            + "&msgType=remote"
+        )
+        parameter = "msgtype=remote" + "seqno=" + command_id + "vin=" + identifier.value
+        headers = {
+            "bt-auth-appkey": BEAN_TECH_APP_KEY,
+            "bt-auth-nonce": nonce,
+            "bt-auth-timestamp": timestamp,
+            "bt-auth-sign": bean_tech_sign(
+                "GET",
+                _BEAN_TECH_RESULT_PATH,
+                nonce,
+                timestamp,
+                parameter,
+            ),
+            "rs": "2",
+            "appId": "097a7099af30d960",
+            "brand": "10",
+            "terminal": "GW_APP_GWM",
+            "enterPriseId": "CC01",
+            "accessToken": state.bean_tech_access_token,
+            "beanId": bean_id,
+            "cVer": _SOURCE_APP_VERSION,
+            "vin": identifier.value,
+            "tenantId": "1",
+            "operatorRole": "0",
+            "tokenId": state.auto_ai_token_id,
+            "Accept-Encoding": "gzip",
+            "User-Agent": _OFFICIAL_USER_AGENT,
+        }
+        return _ChinaTransportRequest(
+            operation=operation,
+            service="bean_tech",
+            method="GET",
+            url=_BEAN_TECH_RESULT_URL + "?" + query,
+            headers=headers,
+            body=None,
+        )
+
     def _build_auto_ai_request(
         self,
         *,
-        operation: Literal["initialize_auto_ai", "get_last_status"],
+        operation: Literal["initialize_auto_ai", "get_last_status", "send_climate_command"],
         state: ChinaAuthState,
         function: str,
         body: Mapping[str, object],
@@ -1462,6 +1671,53 @@ def _parse_vehicles(value: object) -> tuple[ChinaVehicle, ...]:
             )
         )
     return tuple(vehicles)
+
+
+def _parse_navinfo_command_results(
+    value: object,
+    *,
+    command_id: str,
+) -> tuple[RemoteCommandResultItem, ...]:
+    messages = _property(value, "messageList")
+    if messages is None:
+        return ()
+    if not isinstance(messages, list):
+        raise ValueError("command_result_invalid")
+    results: list[RemoteCommandResultItem] = []
+    for message in messages:
+        if not isinstance(message, Mapping):
+            continue
+        message_data = _property(message, "messageData")
+        if message_data is None:
+            message_data = message
+        if isinstance(message_data, str):
+            if not message_data.strip():
+                continue
+            try:
+                message_data = _decode_json_bytes(message_data.encode("utf-8"))
+            except (UnicodeError, json.JSONDecodeError, RecursionError, ValueError):
+                continue
+        if not isinstance(message_data, Mapping):
+            continue
+        transaction = _scalar_text(_property(message_data, "transactionId"))
+        if transaction and transaction.casefold() != command_id.casefold():
+            continue
+        result_code = _scalar_text(_property(message_data, "resultCode"))
+        if not result_code:
+            continue
+        normalized_code = "2000" if result_code in {"2", "3"} else result_code
+        result_message = _scalar_text(_property(message_data, "resultMessage"))
+        if not result_message and normalized_code == "2000":
+            result_message = "Command is still running"
+        results.append(
+            RemoteCommandResultItem(
+                command_id=command_id,
+                remote_type=_scalar_text(_property(message, "messageType")),
+                result_code=normalized_code,
+                result_message=result_message,
+            )
+        )
+    return tuple(results)
 
 
 def _optional_bool(value: object, *, default: bool) -> bool:

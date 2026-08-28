@@ -301,7 +301,10 @@ def test_only_closed_operation_surfaces_and_typed_public_methods_exist() -> None
         "authenticate_eu",
         "authenticate_russia",
         "get_last_status",
+        "get_remote_command_results",
         "get_vehicle_basics",
+        "send_climate_command",
+        "update_climate_defaults",
     }
     for forbidden in (
         "request",

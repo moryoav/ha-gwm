@@ -142,7 +142,7 @@
         },
         "data_description": {
           "poll_interval_seconds": "Seconds between account-level cloud polls (30-3600).",
-          "enable_remote_commands": "Explicit opt-in only; this does not enable commands before their implementation checkpoints.",
+          "enable_remote_commands": "Explicit opt-in; only command families whose integration-only migration checkpoints have passed are enabled.",
           "enable_charging_control": "Independent explicit opt-in for charging schedules.",
           "security_pin": "Required for remote commands outside mainland China and redacted from diagnostics.",
           "log_level": "Integration-specific diagnostic verbosity."

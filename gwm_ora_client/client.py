@@ -1,4 +1,4 @@
-"""Typed async GWM client for authenticated read-only vehicle access."""
+"""Typed async GWM client for authenticated overseas reads and closed commands."""
 
 from __future__ import annotations
 
@@ -7,12 +7,14 @@ import json
 import math
 import re
 import ssl
-from collections.abc import Callable, Mapping
+import uuid
+from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass, field
 from types import MappingProxyType
 from typing import Self, cast
-from urllib.parse import urlsplit
+from urllib.parse import quote, urlsplit
 
+from ._dotnet_json import encode_dotnet_json
 from ._protocol import _AsyncTransport, _Deadline, _TransportRequest, _TransportResponse
 from .anz_auth import (
     AnzAuthenticated,
@@ -22,6 +24,13 @@ from .anz_auth import (
     _AnzAuthProgress,
 )
 from .anz_auth import authenticate_anz as _run_anz_authentication
+from .commands import (
+    ClimateCommand,
+    RemoteCommandAcceptance,
+    RemoteCommandResultItem,
+    parse_remote_command_results,
+    validate_overseas_command_inputs,
+)
 from .config import GwmClientConfig
 from .errors import (
     GwmApiError,
@@ -121,7 +130,7 @@ _READ_ENDPOINTS = MappingProxyType(
 
 
 class GwmClient:
-    """A lifecycle-managed regional authentication and read-only vehicle client."""
+    """A lifecycle-managed regional authentication, read, and command client."""
 
     def __init__(
         self,
@@ -129,6 +138,7 @@ class GwmClient:
         session: GwmSession | None = None,
         *,
         transport: _AsyncTransport | None = None,
+        sequence_source: Callable[[], str] | None = None,
     ) -> None:
         if type(config) is not GwmClientConfig:
             raise GwmConfigurationError()
@@ -136,6 +146,10 @@ class GwmClient:
         self._protocol = get_region_protocol(config.region)
         self._session = None if session is None else self._validated_session(session)
         self._session_revision = 0
+        if sequence_source is not None and not callable(sequence_source):
+            raise GwmConfigurationError()
+        self._sequence_source = sequence_source or (lambda: uuid.uuid4().hex + "1234")
+        self._h5_ssl_context = ssl.create_default_context(ssl.Purpose.SERVER_AUTH)
         self._transport: _AsyncTransport
         if transport is None:
             self._transport = AiohttpTransport.create_owned(
@@ -521,6 +535,278 @@ class GwmClient:
         timeout: float | None = None,
     ) -> CloudVehicleBasics:
         return await self._execute(_VEHICLE_BASICS, identifier=identifier, timeout=timeout)
+
+    async def update_climate_defaults(
+        self,
+        identifier: VehicleIdentifier,
+        *,
+        temperature: int,
+        operation_time_minutes: int,
+        timeout: float | None = None,
+    ) -> None:
+        """Persist the temperature/runtime pair used by the next climate command."""
+
+        operation = "update_climate_defaults"
+        if (
+            type(identifier) is not VehicleIdentifier
+            or isinstance(temperature, bool)
+            or not isinstance(temperature, int)
+            or not 16 <= temperature <= 32
+            or isinstance(operation_time_minutes, bool)
+            or not isinstance(operation_time_minutes, int)
+            or not 5 <= operation_time_minutes <= 30
+        ):
+            raise GwmConfigurationError(operation=operation)
+        body = encode_dotnet_json(
+            {
+                "airConditionerTemperature": str(temperature),
+                "airConditionerTime": str(operation_time_minutes * 60),
+                "vin": identifier.value,
+            }
+        )
+
+        async def action(session: GwmSession, deadline: _Deadline) -> None:
+            request = self._prepare_command_request(
+                operation=operation,
+                gateway_role=GatewayRole.H5_V1,
+                method="POST",
+                path="vehicle/modifyVehicleRemoteCtlInfo",
+                body=body,
+                session=session,
+                vin_header=identifier if self.region is Region.RUSSIA else None,
+            )
+            await self._send_command_request(request, deadline=deadline)
+
+        await self._execute_authenticated_command(operation, timeout=timeout, action=action)
+
+    async def send_climate_command(
+        self,
+        command: ClimateCommand,
+        *,
+        security_password_hash: str,
+        timeout: float | None = None,
+    ) -> RemoteCommandAcceptance:
+        """Send one overseas climate operation and return its provider sequence."""
+
+        operation = "send_climate_command"
+        try:
+            sequence_number = self._sequence_source()
+            validate_overseas_command_inputs(
+                command,
+                security_password_hash=security_password_hash,
+                sequence_number=sequence_number,
+                region=self.region,
+            )
+        except (TypeError, ValueError):
+            raise GwmConfigurationError(operation=operation) from None
+        switch_order = "0" if command.mode == "off" else "1"
+        command_type = 3 if self.region is Region.RUSSIA else 2
+        body = encode_dotnet_json(
+            {
+                "instructions": {
+                    "0x04": {
+                        "airConditioner": {
+                            "operationTime": str(command.operation_time_minutes),
+                            "switchOrder": switch_order,
+                            "temperature": str(command.temperature),
+                        }
+                    }
+                },
+                "remoteType": "0",
+                "securityPassword": security_password_hash,
+                "seqNo": sequence_number,
+                "type": command_type,
+                "vin": command.identifier.value,
+            }
+        )
+
+        async def action(session: GwmSession, deadline: _Deadline) -> RemoteCommandAcceptance:
+            if self.region is Region.RUSSIA:
+                check_body = encode_dotnet_json(
+                    {"securityPassword": security_password_hash, "type": "3"}
+                )
+                check = self._prepare_command_request(
+                    operation=operation,
+                    gateway_role=GatewayRole.H5_V1,
+                    method="POST",
+                    path="userAuth/checkSecurityPassword",
+                    body=check_body,
+                    session=session,
+                    vin_header=None,
+                )
+                await self._send_command_request(check, deadline=deadline)
+            request = self._prepare_command_request(
+                operation=operation,
+                gateway_role=GatewayRole.APP_V1,
+                method="POST",
+                path="vehicle/T5/sendCmd",
+                body=body,
+                session=session,
+                vin_header=command.identifier if self.region is Region.RUSSIA else None,
+            )
+            await self._send_command_request(request, deadline=deadline)
+            return RemoteCommandAcceptance(sequence_number)
+
+        return await self._execute_authenticated_command(operation, timeout=timeout, action=action)
+
+    async def get_remote_command_results(
+        self,
+        identifier: VehicleIdentifier,
+        command_id: str,
+        *,
+        timeout: float | None = None,
+    ) -> tuple[RemoteCommandResultItem, ...]:
+        """Return the bounded result candidates for one accepted climate command."""
+
+        operation = "get_remote_command_result"
+        if (
+            type(identifier) is not VehicleIdentifier
+            or not isinstance(command_id, str)
+            or not command_id
+            or len(command_id) > 512
+            or any(ord(character) < 0x21 or ord(character) > 0x7E for character in command_id)
+        ):
+            raise GwmConfigurationError(operation=operation)
+        encoded_command_id = quote(command_id, safe="", encoding="utf-8", errors="strict")
+
+        async def action(
+            session: GwmSession,
+            deadline: _Deadline,
+        ) -> tuple[RemoteCommandResultItem, ...]:
+            request = self._prepare_command_request(
+                operation=operation,
+                gateway_role=GatewayRole.APP_V1,
+                method="GET",
+                path=f"vehicle/getRemoteCtrlResultT5?seqNo={encoded_command_id}",
+                body=None,
+                session=session,
+                vin_header=(
+                    identifier if self.region in {Region.ANZ, Region.RUSSIA} else None
+                ),
+            )
+            data = await self._send_command_request(request, deadline=deadline)
+            try:
+                return parse_remote_command_results(
+                    data,
+                    allow_integer_strings=self.region is Region.RUSSIA,
+                )
+            except (TypeError, ValueError):
+                raise GwmSchemaError(operation=operation) from None
+
+        return await self._execute_authenticated_command(operation, timeout=timeout, action=action)
+
+    async def _execute_authenticated_command[T](
+        self,
+        operation: str,
+        *,
+        timeout: float | None,
+        action: Callable[[GwmSession, _Deadline], Awaitable[T]],
+    ) -> T:
+        if self._closed or self._closing:
+            raise GwmClosedError(operation=operation)
+        total_timeout = self._validated_timeout(timeout, operation=operation)
+        loop = asyncio.get_running_loop()
+        deadline = _Deadline(loop.time() + total_timeout)
+        attempt_revision: int | None = None
+        failure: GwmClientError | None = None
+        try:
+            async with asyncio.timeout_at(deadline.expires_at):
+                async with self._request_lock:
+                    if self._closed or self._closing:
+                        raise GwmClosedError(operation=operation)
+                    if self._session is None:
+                        raise GwmAuthenticationError(operation=operation)
+                    attempt_revision = self._session_revision
+                    session = self._validated_session(self._session)
+                    result = await action(session, deadline)
+                    if deadline.remaining(loop.time()) <= 0:
+                        raise GwmDeadlineExceededError(operation=operation)
+                    return result
+        except asyncio.CancelledError:
+            raise
+        except GwmClientError as error:
+            if (
+                self.region in {Region.ANZ, Region.RUSSIA}
+                and attempt_revision is not None
+                and type(error) is GwmAuthenticationError
+            ):
+                self._replace_session_if_revision(
+                    expected_revision=attempt_revision,
+                    session=None,
+                )
+            failure = (
+                GwmDeadlineExceededError(operation=operation)
+                if deadline.remaining(loop.time()) <= 0
+                else _sanitized_client_error(error, operation=operation)
+            )
+        except TimeoutError:
+            failure = GwmDeadlineExceededError(operation=operation)
+        except Exception:
+            failure = (
+                GwmDeadlineExceededError(operation=operation)
+                if deadline.remaining(loop.time()) <= 0
+                else GwmNetworkError(operation=operation)
+            )
+        raise failure or GwmNetworkError(operation=operation)
+
+    def _prepare_command_request(
+        self,
+        *,
+        operation: str,
+        gateway_role: GatewayRole,
+        method: str,
+        path: str,
+        body: str | None,
+        session: GwmSession,
+        vin_header: VehicleIdentifier | None,
+    ) -> _TransportRequest:
+        try:
+            gateway = self._protocol.gateway(gateway_role)
+            unsigned_url = gateway.base_url + path
+            signed = sign_request(gateway.signing_profile, method, unsigned_url, body)
+            headers = {
+                **self._protocol.authenticated_headers(
+                    country=session.country,
+                    device_id=session.device_id,
+                    access_token=session.access_token,
+                ),
+                "Accept": "application/json",
+                **signed.headers,
+            }
+            if body is not None:
+                headers["Content-Type"] = "application/json; charset=utf-8"
+            if vin_header is not None:
+                headers["vin"] = vin_header.value
+            return _TransportRequest(
+                operation=operation,
+                method=method,
+                url=signed.url,
+                headers=headers,
+                ssl_context=(
+                    session.app_ssl_context
+                    if gateway_role is GatewayRole.APP_V1
+                    else self._h5_ssl_context
+                ),
+                body=None if body is None else body.encode("utf-8"),
+            )
+        except (TypeError, UnicodeError, ValueError):
+            raise GwmRoutePolicyError(operation=operation) from None
+
+    async def _send_command_request(
+        self,
+        request: _TransportRequest,
+        *,
+        deadline: _Deadline,
+    ) -> object:
+        response = await self._transport.execute(
+            request,
+            deadline=deadline,
+            connect_timeout=self._config.timeouts.connect,
+            read_timeout=self._config.timeouts.read,
+        )
+        if type(response) is not _TransportResponse:
+            raise GwmProtocolError(operation=request.operation)
+        return _decode_envelope(response, operation=request.operation)
 
     async def _execute[T](
         self,

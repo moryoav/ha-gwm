@@ -22,6 +22,14 @@ from .china_client import (
     ChinaVerificationRequired,
 )
 from .client import GwmClient
+from .commands import (
+    ClimateCommand,
+    ClimateMode,
+    RemoteCommandAcceptance,
+    RemoteCommandResult,
+    RemoteCommandResultItem,
+    select_remote_command_result,
+)
 from .config import GwmClientConfig, RequestTimeouts
 from .crypto import (
     GeneratedClientCertificateRequest,
@@ -133,6 +141,8 @@ __all__ = [
     "CloudVehicleBasics",
     "CloudVehicleStatus",
     "ClimateSnapshot",
+    "ClimateCommand",
+    "ClimateMode",
     "ChinaAuthenticated",
     "ChinaAuthenticationResult",
     "ChinaAuthState",
@@ -186,6 +196,9 @@ __all__ = [
     "OPERATION_TIME_STEP_MINUTES",
     "RUSSIA_GWM_AUTH",
     "Region",
+    "RemoteCommandAcceptance",
+    "RemoteCommandResult",
+    "RemoteCommandResultItem",
     "RequestTimeouts",
     "RawItemSnapshot",
     "RussiaAuthenticated",
@@ -216,6 +229,7 @@ __all__ = [
     "normalize_operation_time",
     "normalize_temperature",
     "recover_transformed_private_key",
+    "select_remote_command_result",
     "sign_request",
     "valid_temperature",
 ]

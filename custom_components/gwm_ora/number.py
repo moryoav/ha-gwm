@@ -59,7 +59,7 @@ class GwmOraClimateRunTimeNumber(GwmOraEntity, NumberEntity):
         """Return whether the climate run-time setting is available."""
         return (
             super().available
-            and self.remote_commands_available
+            and self.climate_commands_available
             and not self.is_china_beantech
         )
 

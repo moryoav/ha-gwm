@@ -30,6 +30,7 @@ from gwm_ora_client import (
 
 from .api import GwmOraApiAuthError, GwmOraApiClient, GwmOraApiError, GwmOraApiUnavailable
 from .cloud_auth import DirectCloudAuthenticator
+from .cloud_commands import DirectClimateCommandApi
 from .cloud_runtime import (
     DirectCloudBootstrap,
     DirectCloudReadClient,
@@ -48,7 +49,9 @@ from .const import (
     ATTR_START_TIME,
     ATTR_VIN,
     CONF_CONNECTION_TYPE,
+    CONF_ENABLE_REMOTE_COMMANDS,
     CONF_POLL_INTERVAL_SECONDS,
+    CONF_SECURITY_PIN,
     CONF_TOKEN,
     CONNECTION_TYPE_CLOUD,
     DEFAULT_NAME,
@@ -68,7 +71,7 @@ from .entity import async_call_addon_api
 class GwmOraRuntimeData:
     """Runtime data for a GWM config entry."""
 
-    api: GwmOraApiClient | DirectReadOnlyCommandApi
+    api: GwmOraApiClient | DirectReadOnlyCommandApi | DirectClimateCommandApi
     coordinator: GwmOraDataUpdateCoordinator
     cloud: DirectCloudReadClient | None = None
     state_store: DirectCloudStateStore | None = None
@@ -237,18 +240,33 @@ async def _async_setup_direct_entry(
     bootstrap = await _async_load_direct_bootstrap(hass, entry, state_store)
 
     try:
+        command_enabled = entry.options.get(CONF_ENABLE_REMOTE_COMMANDS) is True
+        security_pin = entry.options.get(CONF_SECURITY_PIN)
+        climate_enabled = command_enabled and isinstance(security_pin, str) and bool(security_pin.strip())
         cloud = DirectCloudReadClient.from_entry_data(
             dict(entry.data),
             entry.unique_id,
             bootstrap,
             state_store=state_store,
+            climate_commands_enabled=climate_enabled,
         )
     except (GwmConfigurationError, TypeError, ValueError) as err:
         raise ConfigEntryAuthFailed(
             "Direct GWM cloud authentication handoff is invalid"
         ) from err
 
-    api = DirectReadOnlyCommandApi()
+    try:
+        credentials = credentials_for_auth_state(dict(entry.data), bootstrap.state)
+        api = DirectClimateCommandApi(
+            cloud,
+            state_store,
+            credentials,
+            enabled=command_enabled,
+            security_pin=security_pin if isinstance(security_pin, str) else None,
+        )
+    except (TypeError, ValueError) as err:
+        await cloud.aclose()
+        raise ConfigEntryAuthFailed("Direct GWM command context is invalid") from err
     coordinator = GwmOraDataUpdateCoordinator(
         hass,
         api,
@@ -263,6 +281,8 @@ async def _async_setup_direct_entry(
     )
     try:
         await coordinator.async_config_entry_first_refresh()
+        for command in await api.async_restore(dict(entry.data)):
+            coordinator.async_track_command(command)
         entry.runtime_data = GwmOraRuntimeData(
             api=api,
             coordinator=coordinator,

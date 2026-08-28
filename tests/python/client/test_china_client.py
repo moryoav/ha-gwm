@@ -9,6 +9,7 @@ from collections.abc import Mapping
 from datetime import datetime
 from pathlib import Path
 from typing import Any
+from urllib.parse import unquote, urlsplit
 
 import pytest
 
@@ -29,6 +30,7 @@ from gwm_ora_client.china_transport import (
     _ChinaTransportRequest,
     _ChinaTransportResponse,
 )
+from gwm_ora_client.commands import ClimateCommand
 from gwm_ora_client.config import RequestTimeouts
 from gwm_ora_client.errors import (
     GwmApiError,
@@ -802,6 +804,111 @@ async def test_discovery_models_retain_only_safe_mapping_metadata_and_navinfo_is
     before = len(transport.calls)
     with pytest.raises(GwmRoutePolicyError):
         await client.get_last_status(VehicleIdentifier(UNSUPPORTED_VIN))
+    assert len(transport.calls) == before
+
+
+def _auto_ai_payload(request: _ChinaTransportRequest) -> dict[str, Any]:
+    parsed = urlsplit(request.url)
+    assert parsed.query.startswith("p=")
+    return json.loads(unquote(parsed.query[2:]))
+
+
+@pytest.mark.asyncio
+async def test_navinfo_climate_start_heat_update_stop_and_result_contracts() -> None:
+    transaction_ids = ("TX-START-1", "TX-HEAT-2", "TX-STOP-3")
+    transport = _FakeTransport(
+        acquire_vehicles=[FIXTURE["responses"]["discovery"]],
+        send_climate_command=[
+            {"header": {"c": "0"}, "body": {"transactionId": value}}
+            for value in transaction_ids
+        ],
+        get_remote_command_result=[
+            {
+                "code": "000000",
+                "data": {
+                    "messageList": [
+                        {
+                            "messageType": "remote",
+                            "messageData": json.dumps(
+                                {
+                                    "transactionId": transaction_ids[1],
+                                    "resultCode": "3",
+                                },
+                                separators=(",", ":"),
+                            ),
+                        }
+                    ]
+                },
+            }
+        ],
+    )
+    client = _client(transport)
+    authenticated = await client.authenticate(_credentials(), state=_complete_state())
+    assert isinstance(authenticated, ChinaAuthenticated)
+    identifier = VehicleIdentifier(VIN)
+
+    started = await client.send_climate_command(
+        ClimateCommand(identifier, "cool", 21, 10, currently_on=False)
+    )
+    heated = await client.send_climate_command(
+        ClimateCommand(identifier, "heat", 26, 20, currently_on=True)
+    )
+    stopped = await client.send_climate_command(
+        ClimateCommand(identifier, "off", 22, 15, currently_on=True)
+    )
+    results = await client.get_remote_command_results(identifier, heated.command_id)
+
+    assert (started.command_id, heated.command_id, stopped.command_id) == transaction_ids
+    command_requests = [
+        request for request in transport.calls if request.operation == "send_climate_command"
+    ]
+    start_payload, heat_payload, stop_payload = map(_auto_ai_payload, command_requests)
+    assert start_payload["header"]["fn"] == "GW.M.SET_AND_OPEN_COMMAND"
+    assert start_payload["body"]["cmdCode"] == 6
+    assert start_payload["body"]["airParams"] == {
+        "runTime": 10,
+        "temperature": 21,
+        "coldSwitch": "1",
+        "heatSwitch": "0",
+        "engineControl": 0,
+    }
+    assert heat_payload["header"]["fn"] == "GW.M.SET_AIR_PRM"
+    assert "cmdCode" not in heat_payload["body"]
+    assert heat_payload["body"]["airParams"] == {
+        "runTime": 20,
+        "temperature": 26,
+        "coldSwitch": "0",
+        "heatSwitch": "1",
+        "engineControl": 0,
+    }
+    assert stop_payload["header"]["fn"] == "GW.M.SEND_COMMON_COMMAND"
+    assert stop_payload["body"]["cmdCode"] == 7
+    assert "airParams" not in stop_payload["body"]
+
+    result_request = transport.calls[-1]
+    assert result_request.service == "bean_tech"
+    assert urlsplit(result_request.url).path == "/app-api/api/v3.0/vehicle/remote-ctrl/result"
+    assert urlsplit(result_request.url).query == (
+        "seqNo=TX-HEAT-2&vin=" + VIN + "&msgType=remote"
+    )
+    assert results[0].command_id == transaction_ids[1]
+    assert results[0].result_code == "2000"
+    assert results[0].result_message == "Command is still running"
+
+
+@pytest.mark.asyncio
+async def test_beantech_climate_is_rejected_before_command_transport() -> None:
+    transport = _FakeTransport(acquire_vehicles=[FIXTURE["responses"]["discovery"]])
+    client = _client(transport)
+    authenticated = await client.authenticate(_credentials(), state=_complete_state())
+    assert isinstance(authenticated, ChinaAuthenticated)
+    before = len(transport.calls)
+
+    with pytest.raises(GwmRoutePolicyError):
+        await client.send_climate_command(
+            ClimateCommand(VehicleIdentifier("LGWTEST0000000003"), "cool", 22, 15)
+        )
+
     assert len(transport.calls) == before
 
 

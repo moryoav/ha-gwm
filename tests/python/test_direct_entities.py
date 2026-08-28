@@ -15,6 +15,8 @@ from custom_components.gwm_ora.climate import GwmOraClimate
 from custom_components.gwm_ora.cloud_runtime import DirectReadOnlyCommandApi
 from custom_components.gwm_ora.coordinator import GwmOraDataUpdateCoordinator
 from custom_components.gwm_ora.entity import setup_vehicle_entities
+from custom_components.gwm_ora.lock import GwmOraDoorLock
+from custom_components.gwm_ora.number import GwmOraClimateRunTimeNumber
 from custom_components.gwm_ora.sensor import (
     SENSORS,
     GwmOraSensor,
@@ -28,6 +30,7 @@ def _vehicle(
     *,
     platform: str | None = None,
     charge_soc: float | None = None,
+    climate_commands: bool = False,
 ) -> dict[str, Any]:
     return {
         "vin": vin,
@@ -36,7 +39,11 @@ def _vehicle(
         "manufacturer": "GWM",
         "model": "Synthetic",
         "serial_number": f"SERIAL-{vin[-1]}",
-        "capabilities": {"remote_commands": False, "charging_control": False},
+        "capabilities": {
+            "remote_commands": False,
+            "climate_commands": climate_commands,
+            "charging_control": False,
+        },
         "values": {"soc": soc, "charge_soc": charge_soc},
         "timestamps": {},
         "climate": {},
@@ -154,3 +161,43 @@ async def test_direct_coordinator_keeps_mixed_china_platform_entities_isolated()
     assert by_vehicle["SYNTHETIC-BEANTECH"]["charge_soc"].native_value == 82.5
     assert all(not entity.remote_commands_available for entity in added)
     assert all(not entity.charging_control_available for entity in added)
+
+
+@pytest.mark.asyncio
+async def test_task17_capability_exposes_only_climate_and_keeps_beantech_hidden() -> None:
+    coordinator = GwmOraDataUpdateCoordinator(
+        HomeAssistant("synthetic-config"),
+        DirectReadOnlyCommandApi(),
+        direct_client=SimpleNamespace(),  # type: ignore[arg-type]
+    )
+    coordinator.async_set_updated_data(
+        {
+            "region": "eu",
+            "vehicles": [_vehicle("SYNTHETIC-A", 80, climate_commands=True)],
+        }
+    )
+    assert GwmOraClimate(DirectReadOnlyCommandApi(), coordinator, "SYNTHETIC-A").available
+    assert GwmOraClimateRunTimeNumber(
+        DirectReadOnlyCommandApi(), coordinator, "SYNTHETIC-A"
+    ).available
+    assert not GwmOraDoorLock(DirectReadOnlyCommandApi(), coordinator, "SYNTHETIC-A").available
+
+    coordinator.async_set_updated_data(
+        {
+            "region": "cn",
+            "vehicles": [
+                _vehicle(
+                    "SYNTHETIC-BEANTECH",
+                    70,
+                    platform="beantech",
+                    climate_commands=True,
+                )
+            ],
+        }
+    )
+    assert not GwmOraClimate(
+        DirectReadOnlyCommandApi(), coordinator, "SYNTHETIC-BEANTECH"
+    ).available
+    assert not GwmOraClimateRunTimeNumber(
+        DirectReadOnlyCommandApi(), coordinator, "SYNTHETIC-BEANTECH"
+    ).available

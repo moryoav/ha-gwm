@@ -58,6 +58,8 @@ type _ChinaOperation = Literal[
     "initialize_auto_ai",
     "acquire_vehicles",
     "get_last_status",
+    "send_climate_command",
+    "get_remote_command_result",
 ]
 
 _G_APP_ORIGIN = "https://gapp-api.gwmapp-h.com"
@@ -71,6 +73,10 @@ _BEAN_TECH_STATUS_URL = (
     "https://gw-app-gateway.gwmapp-h.com/app-api/api/v2.0/vehicle/getLastStatus"
 )
 _BEAN_TECH_STATUS_PATH = "/app-api/api/v2.0/vehicle/getLastStatus"
+_BEAN_TECH_RESULT_URL = (
+    "https://gw-app-gateway.gwmapp-h.com/app-api/api/v3.0/vehicle/remote-ctrl/result"
+)
+_BEAN_TECH_RESULT_PATH = "/app-api/api/v3.0/vehicle/remote-ctrl/result"
 _AUTO_AI_LOGIN_ORIGIN = _G_APP_ORIGIN
 _AUTO_AI_LOGIN_PATH = "/tsp/v1/proxy/navinfo/GW.M.APP_LOGIN"
 _DISCOVERY_URL = "https://gapp-api.gwmapp-h.com/gcar/v1/app/android/vehicle/query-vehicle-list"
@@ -92,6 +98,7 @@ _DEVICE_ID = re.compile(r"[0-9A-Fa-f]{32}")
 _VIN = re.compile(r"[A-HJ-NPR-Z0-9]{17}", re.IGNORECASE)
 _G_APP_ENVELOPE = re.compile(r"G_A\([A-Za-z0-9+/]+={0,2},1\)")
 _LOWER_HEX_16 = re.compile(r"[0-9a-f]{16}")
+_LOWER_HEX_32 = re.compile(r"[0-9a-f]{32}")
 _LOWER_HEX_64 = re.compile(r"[0-9a-f]{64}")
 _BASE64_SHA1 = re.compile(r"[A-Za-z0-9+/]{27}=")
 _G_APP_BASE_HEADERS = frozenset(
@@ -241,6 +248,10 @@ class _ChinaTransportRequest:
             _validate_discovery_request(self, copied)
         elif self.operation == "get_last_status":
             _validate_status_request(self, copied)
+        elif self.operation == "send_climate_command":
+            _validate_climate_command_request(self, copied)
+        elif self.operation == "get_remote_command_result":
+            _validate_remote_command_result_request(self, copied)
         else:  # pragma: no cover - the Literal is still a runtime boundary
             raise ValueError("operation_invalid")
         object.__setattr__(self, "headers", MappingProxyType(copied))
@@ -885,6 +896,104 @@ def _validate_status_request(request: _ChinaTransportRequest, headers: Mapping[s
         raise ValueError("route_invalid")
 
 
+def _validate_climate_command_request(
+    request: _ChinaTransportRequest,
+    headers: Mapping[str, str],
+) -> None:
+    valid_route = any(
+        _valid_auto_ai_url(
+            request.url,
+            headers,
+            origin=_AUTO_AI_ORIGIN,
+            path=_AUTO_AI_PATH,
+            function=function,
+            body_validator=_climate_body_validator(variant),
+            token_required=True,
+        )
+        for function, variant in (
+            ("GW.M.SEND_COMMON_COMMAND", "off"),
+            ("GW.M.SET_AND_OPEN_COMMAND", "start"),
+            ("GW.M.SET_AIR_PRM", "update"),
+        )
+    )
+    if (
+        request.service != "auto_ai"
+        or request.method != "GET"
+        or request.body is not None
+        or set(headers) != _STATUS_HEADERS
+        or not _valid_auto_ai_headers(headers, token_required=True)
+        or not valid_route
+    ):
+        raise ValueError("route_invalid")
+
+
+def _validate_remote_command_result_request(
+    request: _ChinaTransportRequest,
+    headers: Mapping[str, str],
+) -> None:
+    vin = headers.get("vin", "")
+    try:
+        parsed = urlsplit(request.url)
+        tokens = parsed.query.split("&")
+        if len(tokens) != 3:
+            raise ValueError
+        sequence_token, vin_token, message_token = tokens
+        if not sequence_token.startswith("seqNo=") or not vin_token.startswith("vin="):
+            raise ValueError
+        sequence = unquote_to_bytes(sequence_token[6:]).decode("utf-8", errors="strict")
+        query_vin = unquote_to_bytes(vin_token[4:]).decode("utf-8", errors="strict")
+        canonical_url = (
+            _BEAN_TECH_RESULT_URL
+            + "?seqNo="
+            + quote(sequence, safe="", encoding="utf-8", errors="strict")
+            + "&vin="
+            + quote(query_vin, safe="", encoding="utf-8", errors="strict")
+            + "&msgType=remote"
+        )
+    except (UnicodeError, ValueError):
+        raise ValueError("route_invalid") from None
+    if (
+        request.service != "bean_tech"
+        or request.method != "GET"
+        or request.body is not None
+        or parsed.scheme != "https"
+        or parsed.hostname != "gw-app-gateway.gwmapp-h.com"
+        or parsed.port is not None
+        or parsed.path != _BEAN_TECH_RESULT_PATH
+        or message_token != "msgType=remote"
+        or request.url != canonical_url
+        or query_vin != vin
+        or not _safe_wire_text(sequence, maximum=512)
+        or set(headers) != _BEAN_TECH_STATUS_HEADERS
+        or _VIN.fullmatch(vin) is None
+        or headers.get("bt-auth-appkey") != BEAN_TECH_APP_KEY
+        or _LOWER_HEX_16.fullmatch(headers.get("bt-auth-nonce", "")) is None
+        or not _epoch_milliseconds(headers.get("bt-auth-timestamp", ""))
+        or headers.get("rs") != "2"
+        or headers.get("appId") != "097a7099af30d960"
+        or headers.get("brand") != "10"
+        or headers.get("terminal") != "GW_APP_GWM"
+        or headers.get("enterPriseId") != "CC01"
+        or not _safe_wire_text(headers.get("accessToken"), maximum=16 * 1024)
+        or not _safe_wire_text(headers.get("beanId"), maximum=16 * 1024)
+        or headers.get("cVer") != "2.1.5"
+        or headers.get("tenantId") != "1"
+        or headers.get("operatorRole") != "0"
+        or not _safe_wire_text(headers.get("tokenId"), maximum=16 * 1024)
+        or headers.get("Accept-Encoding") != "gzip"
+        or headers.get("User-Agent") != _OFFICIAL_USER_AGENT
+        or headers.get("bt-auth-sign")
+        != bean_tech_sign(
+            "GET",
+            _BEAN_TECH_RESULT_PATH,
+            headers["bt-auth-nonce"],
+            headers["bt-auth-timestamp"],
+            "msgtype=remote" + "seqno=" + sequence + "vin=" + vin,
+        )
+    ):
+        raise ValueError("route_invalid")
+
+
 def _validate_bean_tech_status_request(
     request: _ChinaTransportRequest,
     headers: Mapping[str, str],
@@ -955,6 +1064,60 @@ def _valid_auto_ai_headers(headers: Mapping[str, str], *, token_required: bool) 
 
 def _valid_status_body(body: Mapping[str, object]) -> bool:
     return list(body) == ["vin"] and _safe_wire_text(body.get("vin"), maximum=512)
+
+
+def _valid_climate_body(body: Mapping[str, object], variant: str) -> bool:
+    base_keys = ["flag", "signStr", "userId", "userType", "vin"]
+    if (
+        list(body)[:5] != base_keys
+        or body.get("flag") != 1
+        or _LOWER_HEX_32.fullmatch(str(body.get("signStr", ""))) is None
+        or not _safe_wire_text(body.get("userId"), maximum=16 * 1024)
+        or body.get("userType") != "0"
+        or _VIN.fullmatch(str(body.get("vin", ""))) is None
+    ):
+        return False
+    if variant == "off":
+        return list(body) == [*base_keys, "cmdCode"] and body.get("cmdCode") == 7
+    if variant not in {"start", "update"}:
+        return False
+    expected_keys = [
+        *base_keys,
+        *(("cmdCode",) if variant == "start" else ()),
+        "airParams",
+    ]
+    if list(body) != expected_keys or (variant == "start" and body.get("cmdCode") != 6):
+        return False
+    air = body.get("airParams")
+    return (
+        isinstance(air, dict)
+        and list(air) == [
+            "runTime",
+            "temperature",
+            "coldSwitch",
+            "heatSwitch",
+            "engineControl",
+        ]
+        and isinstance(air.get("runTime"), int)
+        and not isinstance(air.get("runTime"), bool)
+        and 5 <= air["runTime"] <= 30
+        and isinstance(air.get("temperature"), int)
+        and not isinstance(air.get("temperature"), bool)
+        and 16 <= air["temperature"] <= 32
+        and air.get("coldSwitch") in {"0", "1"}
+        and air.get("heatSwitch") in {"0", "1"}
+        and air.get("coldSwitch") != air.get("heatSwitch")
+        and air.get("engineControl") == 0
+    )
+
+
+def _climate_body_validator(
+    variant: str,
+) -> Callable[[Mapping[str, object]], bool]:
+    def validate(body: Mapping[str, object]) -> bool:
+        return _valid_climate_body(body, variant)
+
+    return validate
 
 
 def _valid_auto_ai_url(

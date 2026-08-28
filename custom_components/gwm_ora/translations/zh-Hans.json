@@ -142,7 +142,7 @@
         },
         "data_description": {
           "poll_interval_seconds": "账号级云轮询之间的秒数（30–3600）。",
-          "enable_remote_commands": "仅表示明确选择；在相应实现任务完成前不会启用命令。",
+          "enable_remote_commands": "明确选择启用；仅开放已通过纯集成迁移检查点的命令类别。",
           "enable_charging_control": "定时充电的独立明确开关。",
           "security_pin": "中国大陆以外的远程命令需要此 PIN，诊断信息中会将其隐藏。",
           "log_level": "此集成的诊断日志详细程度。"

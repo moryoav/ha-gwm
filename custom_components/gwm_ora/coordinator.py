@@ -17,6 +17,7 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, Upda
 from gwm_ora_client import GwmAuthenticationError, GwmClientError
 
 from .api import GwmOraApiAuthError, GwmOraApiClient, GwmOraApiError, GwmOraApiUnavailable
+from .cloud_commands import DirectClimateCommandApi
 from .cloud_runtime import DirectCloudReadClient, DirectReadOnlyCommandApi
 from .const import DOMAIN
 
@@ -31,7 +32,7 @@ class GwmOraDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     def __init__(
         self,
         hass: HomeAssistant,
-        api: GwmOraApiClient | DirectReadOnlyCommandApi,
+        api: GwmOraApiClient | DirectReadOnlyCommandApi | DirectClimateCommandApi,
         *,
         config_entry: ConfigEntry | None = None,
         direct_client: DirectCloudReadClient | None = None,
@@ -134,12 +135,15 @@ class GwmOraDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
     async def _async_follow_command(self, command_id: str) -> None:
         """Poll one command until the add-on reports a terminal state."""
-        deadline = time.monotonic() + 130
+        direct_command = self.direct_client is not None
+        deadline_seconds = 310 if direct_command and self.region == "rus" else 130
+        poll_interval = 5 if direct_command else 2
+        deadline = time.monotonic() + deadline_seconds
         while time.monotonic() < deadline:
-            await asyncio.sleep(2)
+            await asyncio.sleep(poll_interval)
             try:
                 command = await self.api.async_get_command(command_id)
-            except (GwmOraApiUnavailable, GwmOraApiError) as err:
+            except (GwmOraApiUnavailable, GwmOraApiError, GwmClientError) as err:
                 _LOGGER.debug("Could not refresh GWM command %s status: %s", command_id, err)
                 continue
 
@@ -153,7 +157,12 @@ class GwmOraDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
     async def _async_refresh_after_completed_command(self) -> None:
         """Refresh cached vehicle data immediately after a successful command."""
-        with suppress(GwmOraApiUnavailable, GwmOraApiError, GwmOraApiAuthError):
+        with suppress(
+            GwmOraApiUnavailable,
+            GwmOraApiError,
+            GwmOraApiAuthError,
+            GwmClientError,
+        ):
             self.async_set_updated_data(await self.api.async_refresh())
 
     def _apply_command_status(self, command: dict[str, Any]) -> None:
