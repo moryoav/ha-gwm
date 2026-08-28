@@ -57,9 +57,33 @@ class GwmOraEntity(CoordinatorEntity[GwmOraDataUpdateCoordinator]):
         return bool(capabilities.get("remote_commands"))
 
     @property
+    def vehicle_platform(self) -> str:
+        """Return the normalized vehicle backend platform."""
+        return str((self.vehicle or {}).get("platform") or "").lower()
+
+    @property
+    def is_china_beantech(self) -> bool:
+        """Return whether this is a BeanTech vehicle on the China gateway."""
+        return self.coordinator.region == "cn" and self.vehicle_platform == "beantech"
+
+    @property
     def charging_control_available(self) -> bool:
-        """Return whether charging control is enabled in the add-on."""
-        return bool((self.coordinator.data or {}).get("charging_control_enabled"))
+        """Return whether charging control is available for this vehicle."""
+        return _vehicle_charging_control_available(
+            self.vehicle,
+            self.coordinator.data,
+        )
+
+
+def _vehicle_charging_control_available(
+    vehicle: dict[str, Any] | None,
+    coordinator_data: dict[str, Any] | None,
+) -> bool:
+    """Return the per-vehicle capability with old add-on fallback."""
+    capabilities = (vehicle or {}).get("capabilities") or {}
+    if "charging_control" in capabilities:
+        return bool(capabilities["charging_control"])
+    return bool((coordinator_data or {}).get("charging_control_enabled"))
 
 
 def vehicle_value(vehicle: dict[str, Any] | None, key: str) -> Any:

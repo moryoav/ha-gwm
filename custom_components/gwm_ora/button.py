@@ -25,6 +25,25 @@ CHINA_REMOTE_BUTTONS: tuple[tuple[str, str], ...] = (
     ("sunroof_full", "fully_open_sunroof"),
 )
 
+BEANTECH_REMOTE_ACTIONS = {
+    "remote_start",
+    "remote_stop",
+    "horn",
+    "flash_lights",
+    "sunroof_close",
+}
+
+
+def _china_remote_buttons_for_vehicle(
+    vehicle: dict,
+) -> tuple[tuple[str, str], ...]:
+    """Return remote buttons mapped for the vehicle platform."""
+    if str(vehicle.get("platform") or "").lower() != "beantech":
+        return CHINA_REMOTE_BUTTONS
+    return tuple(
+        item for item in CHINA_REMOTE_BUTTONS if item[0] in BEANTECH_REMOTE_ACTIONS
+    )
+
 
 async def async_setup_entry(
     hass: HomeAssistant,
@@ -51,7 +70,7 @@ async def async_setup_entry(
                     action,
                     translation_key,
                 )
-                for action, translation_key in CHINA_REMOTE_BUTTONS
+                for action, translation_key in _china_remote_buttons_for_vehicle(vehicle)
             )
         return entities
 

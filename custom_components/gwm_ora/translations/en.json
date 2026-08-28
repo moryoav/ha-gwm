@@ -96,6 +96,7 @@
           "disconnected": "Disconnected",
           "connected": "Connected",
           "charging": "Charging",
+          "charging_complete": "Charging complete",
           "awaiting_charging": "Awaiting charging",
           "waiting_for_power": "Waiting for power",
           "error": "Error"
@@ -133,7 +134,18 @@
       "sunroof_position_code": { "name": "Sunroof position code" },
       "acquisition_time": { "name": "Acquisition time" },
       "update_time": { "name": "Update time" },
-      "command_status": { "name": "Remote command status" }
+      "command_status": { "name": "Remote command status" },
+      "charge_soc": { "name": "Charge SOC" },
+      "charging_gun_model": { "name": "Charging gun model", "state": { "not_plugged": "Not plugged", "0": "AC slow charging", "1": "DC fast charging" } },
+      "hcu_powertrain_state": { "name": "Powertrain state", "state": { "1": "Standby", "3": "Power-on", "6": "Charging" } },
+      "power": { "name": "Power" },
+      "battery_pack_state": { "name": "Battery pack state" },
+      "acc_clean_off": { "name": "Accessory clean off" },
+      "tbox_state": { "name": "T-Box state", "state": { "0": "Normal", "1": "Sleep" } },
+      "wireless_level": { "name": "Wireless level" },
+      "oil_segments": { "name": "Oil segments" },
+      "aux_battery": { "name": "Auxiliary battery" },
+      "remaining_usable_charge": { "name": "Remaining usable charge" }
     },
     "binary_sensor": {
       "charging_active": { "name": "Charging active" },
@@ -154,7 +166,21 @@
       "rear_defroster": { "name": "Rear defroster" },
       "steering_wheel_heater": { "name": "Steering wheel heater" },
       "front_windscreen_heater": { "name": "Front windscreen heater" },
-      "gps_authorized": { "name": "GPS authorized" }
+      "gps_authorized": { "name": "GPS authorized" },
+      "near_beam": { "name": "Near beam" },
+      "far_beam": { "name": "Far beam" },
+      "left_turn_lamp": { "name": "Left turn lamp" },
+      "right_turn_lamp": { "name": "Right turn lamp" },
+      "oil_alarm": { "name": "Oil alarm" },
+      "engine_door": { "name": "Engine door" },
+      "back_door": { "name": "Back door" },
+      "ac_auto_mode": { "name": "A/C auto mode" },
+      "air_clean": { "name": "Air clean" },
+      "cabin_clean": { "name": "Cabin clean" },
+      "tire_pressure_indicator_front_left": { "name": "Tire pressure indicator front left" },
+      "tire_pressure_indicator_front_right": { "name": "Tire pressure indicator front right" },
+      "tire_pressure_indicator_rear_left": { "name": "Tire pressure indicator rear left" },
+      "tire_pressure_indicator_rear_right": { "name": "Tire pressure indicator rear right" }
     },
     "device_tracker": {
       "location": { "name": "Location" }

@@ -21,9 +21,9 @@ Vehicle models and regions expose different status signals. Optional fuel, comfo
 
 The **Climate run time** number entity saves a duration from 5 to 30 minutes, in one-minute steps, for the next A/C command. Changing it does not start or stop the A/C.
 
-For experimental mainland-China accounts, the climate entity also offers heating and the button platform exposes remote start/stop, horn/lights, tailgate, and sunroof controls when remote commands are enabled. These commands are model-dependent and should be tested one at a time with the vehicle parked and visible.
+For experimental mainland-China accounts, status reading supports NavInfo and BeanTech vehicles. BeanTech status was live-tested on a Tank 300 Hi4-T. NavInfo climate also offers heating and the button platform exposes remote start/stop, horn/lights, tailgate, and sunroof controls when remote commands are enabled. BeanTech currently exposes unverified mappings for lock/unlock, close windows, remote start/stop, horn, flashing lights, and closing the sunroof. Test one command at a time with the vehicle parked and visible.
 
-The optional **Scheduled charging** switch and `gwm_ora.set_charging_plan` / `gwm_ora.clear_charging_plan` actions require `enable_charging_control: true` in the add-on. See the root README for behavior, safety notes, and examples.
+The optional **Scheduled charging** switch and `gwm_ora.set_charging_plan` / `gwm_ora.clear_charging_plan` actions require `enable_charging_control: true` in the add-on. China charging control currently supports NavInfo only, so this switch is not exposed for BeanTech vehicles. See the root README for behavior, safety notes, and examples.
 
 ## Setup
 

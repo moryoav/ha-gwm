@@ -1,0 +1,233 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "GWM 加载项",
+        "description": "连接到正在运行的 GWM 加载项。主要用于开发或非 Supervisor 安装。",
+        "data": {
+          "host": "主机",
+          "port": "端口",
+          "token": "API 令牌"
+        },
+        "data_description": {
+          "host": "加载项主机名或开发主机。",
+          "port": "加载项 API 端口，打包版默认 8099。",
+          "token": "加载项生成的 API 令牌。GWM 账号凭据不会填在这里。"
+        }
+      },
+      "reconfigure": {
+        "title": "重新配置 GWM 加载项",
+        "description": "更新此集成使用的加载项 API 连接。对于正常的 Home Assistant 加载项安装，重启加载项应会自动重新发现并更新这些值。",
+        "data": {
+          "host": "主机",
+          "port": "端口",
+          "token": "API 令牌"
+        },
+        "data_description": {
+          "host": "加载项主机名或开发主机。",
+          "port": "加载项 API 端口，打包版默认 8099。",
+          "token": "加载项生成的 API 令牌。GWM 账号凭据不会填在这里。"
+        }
+      },
+      "reauth_confirm": {
+        "title": "重新连接 GWM 加载项",
+        "description": "加载项拒绝了已存储的 API 令牌。请先重启加载项；如果是开发安装，请输入更新后的主机、端口和令牌。",
+        "data": {
+          "host": "主机",
+          "port": "端口",
+          "token": "API 令牌"
+        },
+        "data_description": {
+          "host": "加载项主机名或开发主机。",
+          "port": "加载项 API 端口，打包版默认 8099。",
+          "token": "加载项生成的 API 令牌。GWM 账号凭据不会填在这里。"
+        }
+      },
+      "hassio_confirm": {
+        "title": "发现 GWM 加载项",
+        "description": "设置发现的 GWM 加载项 {host}。"
+      }
+    },
+    "error": {
+      "cannot_connect": "无法连接到加载项。",
+      "invalid_auth": "加载项 API 令牌被拒绝。"
+    },
+    "abort": {
+      "already_configured": "GWM 已配置。"
+    }
+  },
+  "exceptions": {
+    "addon_auth_failed": {
+      "message": "GWM 加载项拒绝了已存储的 API 令牌。"
+    },
+    "addon_request_failed": {
+      "message": "GWM 加载项无法完成请求。"
+    },
+    "addon_unavailable": {
+      "message": "GWM 加载项不可达。"
+    },
+    "remote_command_unavailable": {
+      "message": "远程命令不可用。请在加载项中启用远程命令并配置安全 PIN。"
+    },
+    "charging_control_unavailable": {
+      "message": "充电控制不可用。请在加载项中启用充电控制并重启。"
+    },
+    "invalid_climate_run_time": {
+      "message": "空调运行时长必须是 5 到 30 分钟之间的整数。"
+    }
+  },
+  "issues": {
+    "addon_auth_failed": {
+      "title": "GWM 加载项认证失败",
+      "description": "集成可以访问 GWM 加载项，但加载项拒绝了已存储的 API 令牌。请先重启加载项让 Supervisor 重新发现。对于开发或非 Supervisor 安装，请使用重新配置输入当前的加载项 API 令牌。"
+    }
+  },
+  "entity": {
+    "sensor": {
+      "soc": { "name": "电量" },
+      "range": { "name": "续航里程" },
+      "fuel_level": { "name": "油量" },
+      "fuel_range": { "name": "燃油续航" },
+      "odometer": { "name": "总里程" },
+      "remaining_charging_time": { "name": "剩余充电时间" },
+      "charging_status": {
+        "name": "充电状态",
+        "state": {
+          "disconnected": "未连接",
+          "connected": "已连接",
+          "charging": "充电中",
+          "charging_complete": "充电完成",
+          "awaiting_charging": "等待充电",
+          "waiting_for_power": "等待供电",
+          "error": "错误"
+        }
+      },
+      "soce": { "name": "SOCE" },
+      "interior_temperature": { "name": "车内温度" },
+      "tire_pressure_front_left": { "name": "左前轮胎压" },
+      "tire_pressure_front_right": { "name": "右前轮胎压" },
+      "tire_pressure_rear_left": { "name": "左后轮胎压" },
+      "tire_pressure_rear_right": { "name": "右后轮胎压" },
+      "tire_temperature_front_left": { "name": "左前轮胎温" },
+      "tire_temperature_front_right": { "name": "右前轮胎温" },
+      "tire_temperature_rear_left": { "name": "左后轮胎温" },
+      "tire_temperature_rear_right": { "name": "右后轮胎温" },
+      "tire_pressure_state_front_left": { "name": "左前轮胎压状态" },
+      "tire_pressure_state_front_right": { "name": "右前轮胎压状态" },
+      "tire_pressure_state_rear_left": { "name": "左后轮胎压状态" },
+      "tire_pressure_state_rear_right": { "name": "右后轮胎压状态" },
+      "tire_temperature_state_front_left": { "name": "左前轮胎温状态" },
+      "tire_temperature_state_front_right": { "name": "右前轮胎温状态" },
+      "tire_temperature_state_rear_left": { "name": "左后轮胎温状态" },
+      "tire_temperature_state_rear_right": { "name": "右后轮胎温状态" },
+      "window_learn_front_left": { "name": "左前车窗学习" },
+      "window_learn_front_right": { "name": "右前车窗学习" },
+      "window_learn_rear_left": { "name": "左后车窗学习" },
+      "window_learn_rear_right": { "name": "右后车窗学习" },
+      "rear_left_seat_heater_level": { "name": "左后座椅加热档位" },
+      "rear_right_seat_heater_level": { "name": "右后座椅加热档位" },
+      "engine_state_code": { "name": "发动机状态码" },
+      "front_driver_seat_heater_level": { "name": "主驾座椅加热档位" },
+      "front_passenger_seat_heater_level": { "name": "副驾座椅加热档位" },
+      "front_driver_seat_vent_level": { "name": "主驾座椅通风档位" },
+      "front_passenger_seat_vent_level": { "name": "副驾座椅通风档位" },
+      "sunroof_position_code": { "name": "天窗位置码" },
+      "acquisition_time": { "name": "采集时间" },
+      "update_time": { "name": "更新时间" },
+      "command_status": { "name": "远程命令状态" },
+      "charge_soc": { "name": "充电SOC" },
+      "charging_gun_model": { "name": "充电枪型号", "state": { "not_plugged": "未插枪", "0": "交流慢充", "1": "直流快充" } },
+      "hcu_powertrain_state": { "name": "动力系统状态", "state": { "1": "待机", "3": "通电中", "6": "充电中" } },
+      "power": { "name": "功率" },
+      "battery_pack_state": { "name": "电池包状态" },
+      "acc_clean_off": { "name": "附件清洁关闭" },
+      "tbox_state": { "name": "T-Box状态", "state": { "0": "正常", "1": "休眠" } },
+      "wireless_level": { "name": "无线信号格数" },
+      "oil_segments": { "name": "油量分段" },
+      "aux_battery": { "name": "蓄电池电量" },
+      "remaining_usable_charge": { "name": "剩余可用电量" }
+    },
+    "binary_sensor": {
+      "charging_active": { "name": "充电中" },
+      "charge_plug": { "name": "充电枪连接" },
+      "ac_active": { "name": "空调开启" },
+      "lock_open": { "name": "门锁打开" },
+      "window_front_driver": { "name": "主驾车窗" },
+      "window_front_passenger": { "name": "副驾车窗" },
+      "window_rear_driver_side": { "name": "左后车窗" },
+      "window_rear_passenger_side": { "name": "右后车窗" },
+      "door_front_driver": { "name": "主驾车门" },
+      "door_front_passenger": { "name": "副驾车门" },
+      "door_rear_driver_side": { "name": "左后车门" },
+      "door_rear_passenger_side": { "name": "右后车门" },
+      "trunk": { "name": "后备箱" },
+      "air_circulation": { "name": "空气循环" },
+      "front_defroster": { "name": "前除霜" },
+      "rear_defroster": { "name": "后除霜" },
+      "steering_wheel_heater": { "name": "方向盘加热" },
+      "front_windscreen_heater": { "name": "前挡风加热" },
+      "gps_authorized": { "name": "GPS 已授权" },
+      "near_beam": { "name": "近光灯" },
+      "far_beam": { "name": "远光灯" },
+      "left_turn_lamp": { "name": "左转向灯" },
+      "right_turn_lamp": { "name": "右转向灯" },
+      "oil_alarm": { "name": "油量报警" },
+      "engine_door": { "name": "发动机盖" },
+      "back_door": { "name": "后门" },
+      "ac_auto_mode": { "name": "空调自动模式" },
+      "air_clean": { "name": "空气净化" },
+      "cabin_clean": { "name": "座舱清洁" },
+      "tire_pressure_indicator_front_left": { "name": "左前胎压指示" },
+      "tire_pressure_indicator_front_right": { "name": "右前胎压指示" },
+      "tire_pressure_indicator_rear_left": { "name": "左后胎压指示" },
+      "tire_pressure_indicator_rear_right": { "name": "右后胎压指示" }
+    },
+    "device_tracker": {
+      "location": { "name": "位置" }
+    },
+    "climate": {
+      "ac_climate": { "name": "空调" }
+    },
+    "number": {
+      "climate_run_time": { "name": "空调运行时长" }
+    },
+    "lock": {
+      "door_lock": { "name": "门锁" }
+    },
+    "button": {
+      "close_windows": { "name": "关闭车窗" },
+      "remote_start": { "name": "远程启动" },
+      "remote_stop": { "name": "远程停止" },
+      "sound_horn": { "name": "鸣笛" },
+      "flash_lights": { "name": "闪灯" },
+      "horn_and_lights": { "name": "鸣笛并闪灯" },
+      "open_tailgate": { "name": "打开尾门" },
+      "close_tailgate": { "name": "关闭尾门" },
+      "close_sunroof": { "name": "关闭天窗" },
+      "tilt_sunroof": { "name": "天窗翘起" },
+      "half_open_sunroof": { "name": "天窗半开" },
+      "fully_open_sunroof": { "name": "天窗全开" }
+    },
+    "switch": {
+      "charging_schedule": { "name": "定时充电" }
+    }
+  },
+  "services": {
+    "set_charging_plan": {
+      "name": "设置充电计划",
+      "description": "设置车辆的充电计划。车辆仅在时间窗内充电；未来开始的时间窗会暂停充电直到该时刻。需要在加载项中启用充电控制。",
+      "fields": {
+        "vin": { "name": "VIN", "description": "设备上显示的车辆 VIN（可读序列号）。" },
+        "start_time": { "name": "开始时间", "description": "允许开始充电的时间。设为未来时间可暂停充电直到该时刻。" },
+        "end_time": { "name": "结束时间", "description": "停止充电的时间。时间窗至少 5 分钟。" }
+      }
+    },
+    "clear_charging_plan": {
+      "name": "清除充电计划",
+      "description": "清除车辆的充电计划，使车辆在插枪时随时充电。",
+      "fields": {
+        "vin": { "name": "VIN", "description": "设备上显示的车辆 VIN。" }
+      }
+    }
+  }
+}

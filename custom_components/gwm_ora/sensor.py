@@ -23,10 +23,25 @@ CHARGING_STATUS_OPTIONS = [
     "disconnected",
     "connected",
     "charging",
+    "charging_complete",
     "awaiting_charging",
     "waiting_for_power",
     "error",
 ]
+
+BEANTECH_SENSOR_KEYS = {
+    "charge_soc",
+    "charging_gun_model",
+    "hcu_powertrain_state",
+    "power",
+    "battery_pack_state",
+    "acc_clean_off",
+    "tbox_state",
+    "wireless_level",
+    "oil_segments",
+    "aux_battery_level",
+    "remaining_usable_charge_percent",
+}
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -38,6 +53,32 @@ class GwmOraSensorEntityDescription(SensorEntityDescription):
 
 def _value(key: str) -> Callable[[dict[str, Any] | None], Any]:
     return lambda vehicle: vehicle_value(vehicle, key)
+
+
+def _enum_value(
+    key: str, options: set[str]
+) -> Callable[[dict[str, Any] | None], str | None]:
+    def read(vehicle: dict[str, Any] | None) -> str | None:
+        value = vehicle_value(vehicle, key)
+        normalized = str(value) if value is not None else None
+        return normalized if normalized in options else None
+
+    return read
+
+
+def _charging_gun_model_value(vehicle: dict[str, Any] | None) -> str | None:
+    """Return the charging gun model, or a sentinel when no gun is plugged in."""
+    if vehicle is None:
+        return None
+    values = vehicle.get("values") or {}
+    plugged = values.get("charge_plug_connected")
+    if plugged is False:
+        return "not_plugged"
+    if plugged is not True:
+        return None
+    model = values.get("charging_gun_model")
+    normalized = str(model) if model is not None else None
+    return normalized if normalized in {"0", "1"} else None
 
 
 def _timestamp(key: str) -> Callable[[dict[str, Any] | None], datetime | None]:
@@ -343,7 +384,106 @@ SENSORS: tuple[GwmOraSensorEntityDescription, ...] = (
         entity_category=EntityCategory.DIAGNOSTIC,
         value_fn=lambda vehicle: None if vehicle is None else vehicle.get("command_status"),
     ),
+    GwmOraSensorEntityDescription(
+        key="charge_soc",
+        translation_key="charge_soc",
+        native_unit_of_measurement=PERCENTAGE,
+        state_class=SensorStateClass.MEASUREMENT,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+        value_fn=_value("charge_soc"),
+    ),
+    GwmOraSensorEntityDescription(
+        key="charging_gun_model",
+        translation_key="charging_gun_model",
+        device_class=SensorDeviceClass.ENUM,
+        options=["not_plugged", "0", "1"],
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+        value_fn=_charging_gun_model_value,
+    ),
+    GwmOraSensorEntityDescription(
+        key="hcu_powertrain_state",
+        translation_key="hcu_powertrain_state",
+        device_class=SensorDeviceClass.ENUM,
+        options=["1", "3", "6"],
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+        value_fn=_enum_value("hcu_powertrain_state", {"1", "3", "6"}),
+    ),
+    GwmOraSensorEntityDescription(
+        key="power",
+        translation_key="power",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+        value_fn=_value("power"),
+    ),
+    GwmOraSensorEntityDescription(
+        key="battery_pack_state",
+        translation_key="battery_pack_state",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+        value_fn=_value("battery_pack_state"),
+    ),
+    GwmOraSensorEntityDescription(
+        key="acc_clean_off",
+        translation_key="acc_clean_off",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+        value_fn=_value("acc_clean_off"),
+    ),
+    GwmOraSensorEntityDescription(
+        key="tbox_state",
+        translation_key="tbox_state",
+        device_class=SensorDeviceClass.ENUM,
+        options=["0", "1"],
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+        value_fn=_enum_value("tbox_state", {"0", "1"}),
+    ),
+    GwmOraSensorEntityDescription(
+        key="wireless_level",
+        translation_key="wireless_level",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+        value_fn=_value("wireless_level"),
+    ),
+    GwmOraSensorEntityDescription(
+        key="oil_segments",
+        translation_key="oil_segments",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+        value_fn=_value("oil_segments"),
+    ),
+    GwmOraSensorEntityDescription(
+        key="aux_battery_level",
+        translation_key="aux_battery",
+        device_class=SensorDeviceClass.BATTERY,
+        native_unit_of_measurement=PERCENTAGE,
+        state_class=SensorStateClass.MEASUREMENT,
+        entity_registry_enabled_default=False,
+        value_fn=_value("aux_battery_level"),
+    ),
+    GwmOraSensorEntityDescription(
+        key="remaining_usable_charge_percent",
+        translation_key="remaining_usable_charge",
+        device_class=SensorDeviceClass.BATTERY,
+        native_unit_of_measurement=PERCENTAGE,
+        state_class=SensorStateClass.MEASUREMENT,
+        entity_registry_enabled_default=False,
+        value_fn=_value("remaining_usable_charge_percent"),
+    ),
 )
+
+
+def _sensor_descriptions_for_vehicle(
+    vehicle: dict[str, Any],
+    region: str,
+) -> tuple[GwmOraSensorEntityDescription, ...]:
+    """Return descriptions supported by the vehicle backend."""
+    if str(region or "").lower() == "cn" and str(vehicle.get("platform") or "").lower() == "beantech":
+        return SENSORS
+    return tuple(description for description in SENSORS if description.key not in BEANTECH_SENSOR_KEYS)
 
 
 async def async_setup_entry(
@@ -356,7 +496,10 @@ async def async_setup_entry(
         entry,
         async_add_entities,
         lambda vehicle: (
-            GwmOraSensor(entry.runtime_data.coordinator, vehicle["vin"], description) for description in SENSORS
+            GwmOraSensor(entry.runtime_data.coordinator, vehicle["vin"], description)
+            for description in _sensor_descriptions_for_vehicle(
+                vehicle, entry.runtime_data.coordinator.region
+            )
         ),
     )
 

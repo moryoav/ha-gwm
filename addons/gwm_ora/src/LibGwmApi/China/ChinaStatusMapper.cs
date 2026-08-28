@@ -90,6 +90,191 @@ internal static class ChinaStatusMapper
         };
     }
 
+    internal static VehicleStatus MapBeanTech(JsonNode responseBody, Vehicle vehicle)
+    {
+        var data = Property(responseBody, "data") ?? responseBody;
+        var status = Property(data, "vehicleStatusInfo") ?? data;
+        var door = Property(status, "door");
+        var tirePress = Property(status, "tirePress");
+        var tireTemp = Property(status, "tireTemp");
+        var seat = Property(status, "seat");
+        var windows = Property(status, "windows");
+        var charge = Property(status, "charge");
+        var lighting = Property(status, "lighting");
+
+        var items = new List<VehicleStatusItems>();
+
+        var (mileage, mileageUnit) = SplitNumberUnit(status, "mileage");
+        AddNonNegativeNumber(items, "2103010", mileage, mileageUnit);
+
+        var (range, rangeUnit) = SplitNumberUnit(status, "batteryPreMileage");
+        AddNonNegativeNumber(items, "2011501", range, rangeUnit);
+
+        var (fuelRange, fuelRangeUnit) = SplitNumberUnit(status, "preMileage");
+        AddNonNegativeNumber(items, "2011007", fuelRange, fuelRangeUnit);
+
+        var (oil, oilUnit) = SplitNumberUnit(status, "remainOil");
+        AddNonNegativeNumber(items, "2017002", oil, oilUnit);
+
+        var (soc, socUnit) = SplitNumberUnit(status, "powerBatteryDisplayVal");
+        AddPercentage(items, "2013021", soc, socUnit);
+
+        // BeanTech reports the displayed SOC and the BMS usable charge separately.
+        // Keep this value out of 2041301, which is SOCE/SOH on existing platforms.
+        var (remainingUsable, remainingUsableUnit) = SplitNumberUnit(status, "powerBatteryPercent");
+        AddPercentage(items, "9000025", remainingUsable, remainingUsableUnit);
+
+        var (auxBattery, auxBatteryUnit) = SplitNumberUnit(status, "remainElectricPercent");
+        AddPercentage(items, "9000024", auxBattery, auxBatteryUnit);
+
+        var (tpLf, tpLfUnit) = SplitNumberUnit(tirePress, "lfTirePressVal");
+        Add(items, "2101001", tpLf, tpLfUnit);
+        var (tpRf, tpRfUnit) = SplitNumberUnit(tirePress, "rfTirePressVal");
+        Add(items, "2101002", tpRf, tpRfUnit);
+        var (tpLb, tpLbUnit) = SplitNumberUnit(tirePress, "lbTirePressVal");
+        Add(items, "2101003", tpLb, tpLbUnit);
+        var (tpRb, tpRbUnit) = SplitNumberUnit(tirePress, "rbTirePressVal");
+        Add(items, "2101004", tpRb, tpRbUnit);
+
+        var (ttLf, ttLfUnit) = SplitNumberUnit(tireTemp, "lfTireTempVal");
+        Add(items, "2101005", ttLf, ttLfUnit);
+        var (ttRf, ttRfUnit) = SplitNumberUnit(tireTemp, "rfTireTempVal");
+        Add(items, "2101006", ttRf, ttRfUnit);
+        var (ttLb, ttLbUnit) = SplitNumberUnit(tireTemp, "lbTireTempVal");
+        Add(items, "2101007", ttLb, ttLbUnit);
+        var (ttRb, ttRbUnit) = SplitNumberUnit(tireTemp, "rbTireTempVal");
+        Add(items, "2101008", ttRb, ttRbUnit);
+
+        Add(items, "2102001", Value(tirePress, "lfTirePressSts"));
+        Add(items, "2102002", Value(tirePress, "rfTirePressSts"));
+        Add(items, "2102003", Value(tirePress, "lbTirePressSts"));
+        Add(items, "2102004", Value(tirePress, "rbTirePressSts"));
+
+        Add(items, "2102007", Value(tireTemp, "lfTireTempSts"));
+        Add(items, "2102008", Value(tireTemp, "rfTireTempSts"));
+        Add(items, "2102009", Value(tireTemp, "lbTireTempSts"));
+        Add(items, "2102010", Value(tireTemp, "rbTireTempSts"));
+
+        Add(items, "2208001", Value(door, "mainDrveDoorLockSts"));
+        Add(items, "2206002", Value(door, "mainDrveDoorSts"));
+        Add(items, "2206004", Value(door, "viceDoorSts"));
+        Add(items, "2206003", Value(door, "lbDoorSts"));
+        Add(items, "2206005", Value(door, "rbDoorSts"));
+        Add(items, "2206001", Value(door, "tailgateOpenUpSts"));
+
+        Add(items, "2210001", WindowClosedCode(windows, "lfWinPosnSts"));
+        Add(items, "2210002", WindowClosedCode(windows, "rfWinPosnSts"));
+        // The snapshot contract uses 2210004 for the rear driver side and
+        // 2210003 for the rear passenger side. China vehicles are left-hand drive.
+        Add(items, "2210004", WindowClosedCode(windows, "lbWinPosnSts"));
+        Add(items, "2210003", WindowClosedCode(windows, "rbWinPosnSts"));
+        Add(items, "2210005", Value(windows, "skyLightSts"));
+
+        Add(items, "2220001", Value(seat, "mainDriverSeatHeatSts"));
+        Add(items, "2220002", Value(seat, "viceSeatHeatSts"));
+        Add(items, "2220003", Value(seat, "mainDriverSeatVentSts"));
+        Add(items, "2220004", Value(seat, "viceSeatVentSts"));
+
+        Add(items, "2016001", Value(status, "engineSts"));
+        Add(items, "2202001", Value(status, "airConditionSts"));
+        Add(items, "2041142", Value(charge, "chargeStatus"));
+        Add(items, "2042082", Value(charge, "chargingGunStatus"));
+        var (chargingTime, chargingTimeUnit) = SplitNumberUnit(charge, "chargingTime");
+        AddNonNegativeNumber(items, "2013022", chargingTime, chargingTimeUnit ?? "min");
+
+        Add(items, "2210011", Value(windows, "lfWinLearnSts"));
+        Add(items, "2210010", Value(windows, "rfWinLearnSts"));
+        Add(items, "2210013", Value(windows, "lbWinLearnSts"));
+        Add(items, "2210012", Value(windows, "rbWinLearnSts"));
+
+        Add(items, "2210032", Value(status, "backFrost"));
+        Add(items, "2222001", Value(status, "frontFrost"));
+        Add(items, "2060016", Value(status, "steerWheelHeatdSts"));
+
+        var (inCarTemp, _) = SplitNumberUnit(status, "inCarTemperature");
+        if (double.TryParse(inCarTemp, NumberStyles.Float, CultureInfo.InvariantCulture, out var tempC))
+        {
+            Add(items, "2201001", (tempC * 10).ToString("0", CultureInfo.InvariantCulture));
+        }
+
+        // BeanTech-only lighting signals.
+        Add(items, "9000001", Value(lighting, "nearBeamSts"));
+        Add(items, "9000002", Value(lighting, "farBeamSts"));
+        Add(items, "9000003", Value(lighting, "leftTurnLampSts"));
+        Add(items, "9000004", Value(lighting, "rightTurnLampSts"));
+
+        // BeanTech-only body and state signals.
+        Add(items, "9000005", Value(status, "oilAlarmSts"));
+        Add(items, "9000006", Value(status, "engineDoorSts"));
+        Add(items, "9000007", Value(status, "acAutoModeSts"));
+        Add(items, "9000008", Value(status, "airCleanSts"));
+        Add(items, "9000009", Value(status, "cabinClean"));
+        Add(items, "9000010", Value(door, "backDoorSts"));
+
+        // BeanTech-only charging and diagnostic signals.
+        var (chargeSoc, chargeSocUnit) = SplitNumberUnit(charge, "chargeSoc");
+        AddPercentage(items, "9000011", chargeSoc, chargeSocUnit ?? "%");
+        Add(items, "9000012", Value(charge, "chargingGunModel"));
+        Add(items, "9000013", Value(status, "hcuPowertrainSts"));
+        Add(items, "9000014", Value(status, "power"));
+        Add(items, "9000015", Value(status, "batteryPackSts"));
+        Add(items, "9000016", Value(status, "accBnClnOff"));
+        Add(items, "9000017", Value(status, "tboxState"));
+        Add(items, "9000018", Value(status, "wirelessLevel"));
+        Add(items, "9000019", Value(status, "oilQty"));
+
+        // BeanTech-only tire warning signals.
+        Add(items, "9000020", Value(tirePress, "lfTirePressIndcrSts"));
+        Add(items, "9000021", Value(tirePress, "rfTirePressIndcrSts"));
+        Add(items, "9000022", Value(tirePress, "lbTirePressIndcrSts"));
+        Add(items, "9000023", Value(tirePress, "rbTirePressIndcrSts"));
+
+        var latitude = Double(Property(data, "latitude"));
+        var longitude = Double(Property(data, "longitude"));
+        if (latitude.HasValue && longitude.HasValue)
+        {
+            Add(items, "2310001", "1");
+        }
+
+        var updateTime = Long(Property(data, "updateTime")) ?? 0;
+
+        return new VehicleStatus
+        {
+            AcquisitionTime = Long(Property(data, "acquisitionTime")) ?? 0,
+            UpdateTime = updateTime,
+            UploadTime = updateTime,
+            DeviceId = FirstNonEmpty(Value(data, "deviceId"), vehicle.VehicleId, vehicle.Vin),
+            Latitude = latitude,
+            Longitude = longitude,
+            Items = items.ToArray(),
+            GlobalStatusList = Array.Empty<object>()
+        };
+    }
+
+    private static (string? Value, string? Unit) SplitNumberUnit(JsonNode? node, string property)
+    {
+        var raw = Value(node, property);
+        if (String.IsNullOrWhiteSpace(raw))
+        {
+            return (null, null);
+        }
+
+        var comma = raw.IndexOf(',');
+        return comma < 0
+            ? (raw.Trim(), null)
+            : (raw[..comma].Trim(), raw[(comma + 1)..].Trim());
+    }
+
+    private static string? WindowClosedCode(JsonNode? node, string property)
+    {
+        return Integer(Property(node, property)) switch
+        {
+            5 => "1",
+            >= 0 and <= 4 => "0",
+            _ => null
+        };
+    }
+
     internal static ChargingInfos ChargingInfo(JsonNode responseBody, string vin)
     {
         var vehicleStatus = Property(responseBody, "vehicleSts") ?? responseBody;
@@ -326,6 +511,34 @@ internal static class ChinaStatusMapper
         }
 
         items.Add(new VehicleStatusItems { Code = code, Value = value, Unit = unit });
+    }
+
+    private static void AddNonNegativeNumber(
+        List<VehicleStatusItems> items,
+        string code,
+        string? value,
+        string? unit = null)
+    {
+        if (System.Double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var number)
+            && System.Double.IsFinite(number)
+            && number >= 0)
+        {
+            Add(items, code, number.ToString(CultureInfo.InvariantCulture), unit);
+        }
+    }
+
+    private static void AddPercentage(
+        List<VehicleStatusItems> items,
+        string code,
+        string? value,
+        string? unit = null)
+    {
+        if (System.Double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var number)
+            && System.Double.IsFinite(number)
+            && number is >= 0 and <= 100)
+        {
+            Add(items, code, number.ToString(CultureInfo.InvariantCulture), unit);
+        }
     }
 
     private static JsonNode? Property(JsonNode? node, string name)

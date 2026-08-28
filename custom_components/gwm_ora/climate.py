@@ -52,7 +52,11 @@ class GwmOraClimate(GwmOraEntity, ClimateEntity):
     @property
     def available(self) -> bool:
         """Return whether climate control is available."""
-        return super().available and self.remote_commands_available
+        return (
+            super().available
+            and self.remote_commands_available
+            and not self.is_china_beantech
+        )
 
     @property
     def climate(self) -> dict[str, Any]:
