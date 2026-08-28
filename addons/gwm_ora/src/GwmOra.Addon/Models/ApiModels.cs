@@ -29,6 +29,7 @@ public sealed class VehiclesResponse
 public sealed class VehicleSnapshot
 {
     public string Vin { get; init; } = String.Empty;
+    public string? Platform { get; init; }
     public string Name { get; init; } = String.Empty;
     public string? Manufacturer { get; init; }
     public string? Model { get; init; }
@@ -58,6 +59,7 @@ public sealed class TimestampSnapshot
 public sealed class VehicleCapabilities
 {
     public bool RemoteCommands { get; init; }
+    public bool ChargingControl { get; init; }
 }
 
 public sealed class VehicleValues
@@ -122,6 +124,31 @@ public sealed class VehicleValues
     public int? FrontPassengerSeatHeaterLevel { get; init; }
     public int? FrontDriverSeatVentLevel { get; init; }
     public int? FrontPassengerSeatVentLevel { get; init; }
+    public bool? NearBeamActive { get; init; }
+    public bool? FarBeamActive { get; init; }
+    public bool? LeftTurnLampActive { get; init; }
+    public bool? RightTurnLampActive { get; init; }
+    public bool? OilAlarmActive { get; init; }
+    public bool? EngineDoorOpen { get; init; }
+    public bool? AcAutoModeActive { get; init; }
+    public bool? AirCleanActive { get; init; }
+    public bool? CabinCleanActive { get; init; }
+    public bool? BackDoorOpen { get; init; }
+    public double? ChargeSoc { get; init; }
+    public int? ChargingGunModel { get; init; }
+    public int? HcuPowertrainState { get; init; }
+    public double? Power { get; init; }
+    public int? BatteryPackState { get; init; }
+    public int? AccCleanOff { get; init; }
+    public int? TboxState { get; init; }
+    public int? WirelessLevel { get; init; }
+    public int? OilSegments { get; init; }
+    public bool? TirePressureIndicatorFrontLeft { get; init; }
+    public bool? TirePressureIndicatorFrontRight { get; init; }
+    public bool? TirePressureIndicatorRearLeft { get; init; }
+    public bool? TirePressureIndicatorRearRight { get; init; }
+    public double? AuxBatteryLevel { get; init; }
+    public double? RemainingUsableChargePercent { get; init; }
 }
 
 public sealed class ClimateSnapshot

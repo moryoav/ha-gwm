@@ -6,6 +6,24 @@ This project follows semantic versioning. HACS uses the latest GitHub release ta
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-08-28
+
+### Added
+
+- Added live-tested BeanTech vehicle status reading for mainland-China accounts, including the Tank 300 Hi4-T.
+- Added BeanTech status values for fuel, charging, doors, windows, tires, lights, battery details, and other model-specific diagnostics.
+- Added Simplified Chinese translations for the Home Assistant integration.
+- Added initial BeanTech remote-command routing for lock, unlock, close windows, remote start and stop, horn, flashing lights, and closing the sunroof. These commands are disabled by default and still need live verification.
+
+### Fixed
+
+- Kept NavInfo, BeanTech, and unsupported China vehicle platforms on explicit and isolated request paths.
+- Kept the existing SOCE meaning for other regions and exposed BeanTech remaining usable charge as a separate value.
+- Kept BeanTech-only entities and charging controls from appearing on unsupported vehicle platforms.
+- Added offline regression tests for BeanTech status, commands, result polling, invalid values, and platform isolation.
+
+Thanks to @tyj365888 for the research, protocol details, and live status testing.
+
 ## [0.12.0] - 2026-08-27
 
 ### Added

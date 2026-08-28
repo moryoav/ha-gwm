@@ -6,11 +6,10 @@ This document is the durable plan, behavior contract, decision log, and test led
 
 - Working branch: `feature/integration-only`
 - Branch point: `1184737` (`Update README GWM logo to SVG`)
-- Current checkpoint: Task 14 complete; private account-bound cloud state, resume-only restart authentication, and the bounded command-journal foundation are wired and lifecycle-tested offline
-- Next checkpoint: Task 15 — synchronize released `main` v0.13.0 and re-establish the integration-only baseline (not yet approved)
-- Synchronized `main`: `9daff32` (`v0.12.0`) through a two-parent merge without rebasing or selective cherry-picks
-- Reviewed but not yet synchronized `main`: `7b599cb` (`v0.13.0`, BeanTech China support); the released delta and required direct-Python follow-up are recorded below
-- Task 14 replaced restart-time memory-only authentication with atomic private storage, persisted every regional complete/partial state shape, added validation/refresh-only resume and exact account-context invalidation, and established a serialized restart-safe command journal without enabling writes or China
+- Current checkpoint: Task 15 complete; released `main` v0.13.0 BeanTech support is merged, conflicts and translation topology are reconciled, and the complete Python/.NET baselines pass
+- Next checkpoint: Task 16 — port BeanTech status transport/mapping into the direct Python client and complete platform-aware read/entity parity (not yet approved)
+- Synchronized `main`: `7b599cb` (`v0.13.0`) through a two-parent merge without rebasing or selective cherry-picks
+- Task 15 preserved the released BeanTech add-on, platform-aware entity, translation, version, and regression contracts alongside every Task 8-14 direct-cloud change; it did not implement the independent Python BeanTech status path, expose direct China, or enable writes
 
 Work proceeds one explicitly approved task at a time. At the end of every task, update this document, run the checks appropriate to that checkpoint, create one focused commit, push it to `feature/integration-only`, report the result, and stop. Do not begin the next task without a new user green light.
 
@@ -268,7 +267,7 @@ After Task 24, packaging, installation migration, documentation, complete tests,
 - [x] Task 12 — Add direct-cloud config, verification, reauth, reconfigure, and options flows.
 - [x] Task 13 — Add the direct read-only coordinator and existing entity platforms.
 - [x] Task 14 — Add persistent account-bound client state and a restart-safe command journal.
-- [ ] Task 15 — Merge released `main` v0.13.0, reconcile its BeanTech-aware integration contract, and re-establish both baselines.
+- [x] Task 15 — Merge released `main` v0.13.0, reconcile its BeanTech-aware integration contract, and re-establish both baselines.
 - [ ] Task 16 — Port BeanTech status transport/mapping into the direct Python client and complete platform-aware read/entity parity.
 - [ ] Task 17 — Add climate command parity, including NavInfo China heating and in-place parameter updates; keep unsupported BeanTech climate hidden.
 - [ ] Task 18 — Add lock/unlock and close-window parity with explicit NavInfo/BeanTech routing and isolated China no-PIN behavior.
@@ -345,6 +344,7 @@ The changed checkpoints stay intentionally narrow:
 | D-050 | 2026-08-28 | Reconcile released `main` v0.13.0 in its own Task 15 merge checkpoint before porting more direct-cloud behavior. | The long-lived branch must retain the released BeanTech add-on, platform-aware entities, Simplified Chinese translations, version metadata, and regression coverage exactly enough to remain a valid replacement baseline. Keeping synchronization separate from the Python port makes merge regressions and new direct behavior independently reviewable and quota-bounded. |
 | D-051 | 2026-08-28 | Treat the discovered China vehicle platform as a mandatory status-routing and capability dimension. | NavInfo status remains on AutoAI, BeanTech status uses its separately signed BeanTech route, and unknown/missing platforms fail locally before status or command traffic. Normalized snapshots must publish a safe lowercase platform plus per-vehicle capabilities so one account can contain vehicles with different backends without leaking entities or operations between them. |
 | D-052 | 2026-08-28 | Carry the released BeanTech capability matrix forward conservatively rather than treating all China vehicles alike. | BeanTech read fields and the released mapped action subset may be ported in their dedicated tasks, while climate/run-time and charging stay unavailable and unmapped controls stay hidden. C# live-read evidence informs fixtures but does not pass the independent Python live gate; all direct writes still require their task approval and separate immediate live-operation confirmation. |
+| D-053 | 2026-08-28 | Merge released v0.13.0 as an explicit second parent and resolve only semantic overlap at the Task 15 checkpoint. | Root/add-on China documentation keeps the branch's partial-live-validation qualification while adding BeanTech coverage. The new Simplified Chinese catalog mirrors all 221 English leaf paths, including direct-cloud flows and current persistent-state wording. Released runtime behavior is preserved without copying its BeanTech C# implementation into Python ahead of Task 16. |
 
 ## Post-Branch Main Drift Review
 
@@ -1079,6 +1079,47 @@ Revised work steps:
 3. Tasks 17-20 add writes by family through the Task 14 journal. Each task must route and expose operations by platform, preserve the released BeanTech exclusions, and fixture-test accepted-ID persistence, result reconciliation, restart behavior, rejection, and timeouts before any separately approved live operation.
 4. Task 21 runs the complete regional/platform lifecycle matrix. Tasks 22-24 then retain the packaging, migration, and final add-on-removal sequence.
 
+## Task 15 v0.13.0 Main Synchronization Evidence
+
+Evidence captured on 2026-08-28 from `feature/integration-only`. Task 15 merged released/tagged `main` commit `7b599cb` as a second parent of the Task 15 merge, without rebasing or selective cherry-picking. It made no live cloud, login, SMS, vehicle, command, charging, publish, pull-request, or release request.
+
+Delivered:
+
+- Preserved the complete released v0.13.0 BeanTech add-on implementation: platform-routed status, strict mapping, per-vehicle platform/capabilities, isolated diagnostic entities, command subset, result polling, Simplified Chinese translations, version metadata, release documentation, and regression fixtures.
+- Preserved every Task 8-14 direct-cloud client, flow, coordinator, entity, persistent-state, and command-journal change. Direct China remains absent from selectors and every direct write remains fail-closed.
+- Resolved the only textual merge conflicts in the root and add-on READMEs by retaining the feature branch's partial-live-validation qualification while adding released NavInfo/BeanTech coverage and capability limits.
+- Reconciled the auto-merged English catalog with the new Simplified Chinese catalog. Both now contain the same 221 leaf paths, including native direct-cloud setup/options, current restart-safe persistence wording, BeanTech diagnostics, and all released entity/service translations.
+- Kept the independent Python BeanTech status route and mapper out of this synchronization checkpoint; that work remains the isolated Task 16 read-only deliverable.
+
+Validation:
+
+```text
+# Merge-sensitive entity/translation/direct-runtime matrix
+# Windows, CPython 3.13.13; Home Assistant 2026.2.3
+python -m pytest -q tests/python/test_entity_descriptions.py tests/python/test_quality_files.py tests/python/test_direct_entities.py tests/python/test_direct_entry.py tests/python/test_config_flow.py tests/python/test_cloud_runtime.py tests/python/test_cloud_storage.py
+70 passed, 1 warning
+
+python -m pytest -q tests/python
+1023 passed, 1 warning
+
+python -m mypy gwm_ora_client
+Success: no issues found in 23 source files
+
+ruff check custom_components/gwm_ora gwm_ora_client tests/python
+All checks passed!
+
+python -m compileall -q custom_components/gwm_ora gwm_ora_client tests/python
+Passed
+
+dotnet test GwmOra.sln --configuration Release --nologo
+153 passed, 0 failed
+
+# English/Simplified-Chinese recursive leaf-path comparison
+221 English leaves; 221 Simplified Chinese leaves; no missing or extra paths
+```
+
+The Home Assistant warning and .NET nullable-annotation warnings remain the unchanged dependency/baseline warnings. Task 15 changes no direct-cloud protocol behavior: it synchronizes the released replacement baseline so Task 16 can port BeanTech status into Python against the exact current add-on and entity contract.
+
 ## Checkpoint Log
 
 ### Task 1 — Branch, baseline, and migration ledger
@@ -1265,9 +1306,21 @@ Delivered:
 - Added a serialized, bounded, restart-safe accepted-command journal with strict legal transitions for the renumbered Tasks 17-20 while keeping every direct write surface fail-closed.
 - Added focused storage, malformed-state, context-invalidation, continuation, token-rotation, restart, retry, reload/unload, removal, journal, and redaction tests and made no live request.
 
+### Task 15 — v0.13.0 main synchronization and baseline re-establishment
+
+Status: complete on 2026-08-28; released BeanTech support and the integration-only work coexist with full baselines passing.
+
+Delivered:
+
+- Merged released `main` v0.13.0 as a second parent without rebasing or selective cherry-picking.
+- Preserved the released BeanTech add-on status, platform isolation, entities, translations, commands, versioning, documentation, and tests alongside all direct-cloud Tasks 8-14.
+- Reconciled the two README conflicts and the English/Simplified-Chinese translation topology, including current persistent-state wording.
+- Re-established 1,023 Python tests, 153 .NET tests, mypy, Ruff, compilation, and merge-sensitive entity/direct-runtime coverage without a live request.
+- Kept the Python BeanTech status port, direct China activation, and every direct write outside this synchronization checkpoint.
+
 ### Next checkpoint (requires explicit approval)
 
-Task 15 will merge released `main` v0.13.0 into `feature/integration-only` without rebasing or selective cherry-picks, resolve only the conflicts created by the direct-flow branch, and re-establish the full Python and .NET baselines. It must preserve the released BeanTech add-on/status/entity behavior, version metadata, and Simplified Chinese translation structure while retaining every Task 8-14 direct-cloud change. It will not port BeanTech status into Python, enable direct China, or send a live request; those are separately bounded by Task 16 and Gate A-CN. Task 15 must not begin without a new user green light.
+Task 16 will add a platform-routed BeanTech read path to the standalone Python China client using the released signed `GET /app-api/api/v2.0/vehicle/getLastStatus` contract and sanitized fixtures. It must port strict BeanTech status mapping, extend the normalized snapshot with safe platform/per-vehicle capability fields and released BeanTech values, prove mixed NavInfo/BeanTech and entity-isolation behavior through the direct coordinator, and reject unknown platforms before status traffic. It remains read-only, must not expose `cn` in Home Assistant before Gate A-CN, and must not implement or send a vehicle command. Task 16 must not begin without a new user green light; any live read still requires separate explicit approval.
 
 ## Open Risks and Questions
 

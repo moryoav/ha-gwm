@@ -18,9 +18,9 @@
 | `username` | yes | GWM account e-mail address, or the registered phone number for `cn`. |
 | `password` | except `cn` | GWM account password. Ignored for `cn`, which uses SMS login. |
 | `verification_code` | no | One-time SMS/e-mail verification code sent by GWM. China login always uses an SMS code; leave this empty on the first China start so the add-on can request one. |
-| `security_pin` | no | Vehicle remote control PIN from the official app. Required for remote commands except in `cn`, whose app protocol does not send a PIN. |
-| `enable_remote_commands` | yes | Enables A/C, lock, unlock, and close-window commands. In China it also exposes experimental remote start/stop, vehicle-search, tailgate, and sunroof controls. |
-| `enable_charging_control` | yes | Enables the **Scheduled charging** switch and the `gwm_ora.set_charging_plan` / `gwm_ora.clear_charging_plan` actions. Default `false`. Independent of `enable_remote_commands` and needs no security PIN. Validated on an ANZ vehicle; the experimental China implementation uses the corresponding China-app command and is untested on a live vehicle. |
+| `security_pin` | no | Vehicle remote control PIN from the official app. Required outside China. NavInfo commands do not send it. The BeanTech encrypted PIN format is not implemented yet. |
+| `enable_remote_commands` | yes | Enables A/C, lock, unlock, and close-window commands. In China it also exposes experimental model-dependent controls. BeanTech commands are unverified. |
+| `enable_charging_control` | yes | Enables the **Scheduled charging** switch and the `gwm_ora.set_charging_plan` / `gwm_ora.clear_charging_plan` actions. Default `false`. Independent of `enable_remote_commands` and needs no security PIN. Validated on an ANZ vehicle. China charging control is currently limited to NavInfo vehicles. |
 | `poll_interval_seconds` | yes | GWM cloud polling interval from 30 to 3600 seconds. |
 | `log_level` | yes | One of `trace`, `debug`, `info`, `warning`, or `error`. |
 
@@ -75,7 +75,7 @@ Russia support has been live-tested, confirmed working, and merged as a supporte
 
 ## Mainland China (`cn` region, experimental)
 
-China support is based on reverse engineering of the mainland-China GWM Android app and offline protocol fixtures. Vehicle discovery, sensors, cooling, lock/unlock, and closing windows have received initial live validation on a contributed WEY VV6. It currently targets vehicles reported by the account as using the `navinfo` / AutoAI platform. Other China vehicle platforms will stop with an explicit unsupported-platform error instead of sending guessed requests.
+China support is based on reverse engineering of the mainland-China GWM Android app and offline protocol fixtures. NavInfo vehicle discovery, sensors, cooling, lock/unlock, and closing windows have received initial live validation on a contributed WEY VV6. BeanTech status reading has been live-tested on a 2024 Tank 300 Hi4-T. NavInfo and BeanTech use separate status and command routes. Any other reported platform stops with an explicit unsupported-platform error.
 
 Start with read-only testing:
 
@@ -89,9 +89,13 @@ Start with read-only testing:
 
 The add-on stores the three China service sessions under `/data` and tries to clear the one-time code after a successful login. If GWM returns risk-control code `1013`, complete the requested challenge in the official app, clear `verification_code`, and restart the add-on to request a new code.
 
-Only after vehicle discovery and the read-only entities look correct should a tester enable controls. Set `enable_remote_commands: true` to expose A/C, lock, unlock, close windows, remote start/stop, horn, lights, combined vehicle search, tailgate open/close, and sunroof close/tilt/half/full controls. China climate also offers experimental heating. The China app protocol does not send the vehicle security PIN, so `security_pin` remains empty. Set `enable_charging_control: true` separately to test charging schedules on a compatible plug-in vehicle.
+Only after vehicle discovery and the read-only entities look correct should a tester enable controls. Set `enable_remote_commands: true` to expose the controls supported by that platform. NavInfo exposes A/C, lock, unlock, close windows, remote start/stop, horn, lights, combined vehicle search, tailgate open/close, and sunroof close/tilt/half/full controls. China climate also offers experimental heating.
 
-The newly added heating, engine, vehicle-search, tailgate, and sunroof commands still need live confirmation. Test one command at a time while the vehicle is visible, parked, clear of people and obstacles, and in a safe state. For sunroof testing, start closed and verify each position before trying the next one. Compare the physical result and the **Remote command status** sensor with the official app after every command.
+BeanTech currently exposes initial mappings for lock/unlock, close windows, remote start/stop, horn, flashing lights, and closing the sunroof. These mappings are not live-verified. The exact command fields and the official app's encrypted PIN format still need more research, so a command may fail without reaching the vehicle. BeanTech climate, combined horn and lights, tailgate, other sunroof positions, and charging schedules stay unavailable until their request formats are known.
+
+Test one command at a time while the vehicle is visible, parked, clear of people and obstacles, and in a safe state. For sunroof testing, start closed. Compare the physical result and the **Remote command status** sensor with the official app after every command. If a command fails, share only sanitized request shape, response code, response message, and result-polling details.
+
+Set `enable_charging_control: true` separately to test charging schedules on a compatible vehicle. The China charging implementation currently supports NavInfo only. The scheduled-charging switch stays unavailable for BeanTech vehicles.
 
 Please report the add-on version, vehicle model, `belongPlatform`, which sensors matched or differed, and the result of each command. Do not post phone numbers, VINs, tokens, SMS codes, or complete debug logs publicly.
 

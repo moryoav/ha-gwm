@@ -17,7 +17,8 @@ public static class VehicleSnapshotMapper
         VehicleStatus status,
         VehicleBasicsInfo basics,
         bool remoteCommandsAvailable,
-        string commandStatus)
+        string commandStatus,
+        bool chargingControlAvailable = false)
     {
         var rawItems = RawItems(status);
         var values = new VehicleValues
@@ -84,7 +85,32 @@ public static class VehicleSnapshotMapper
             FrontDriverSeatHeaterLevel = Level(rawItems, "2220001"),
             FrontPassengerSeatHeaterLevel = Level(rawItems, "2220002"),
             FrontDriverSeatVentLevel = Level(rawItems, "2220003"),
-            FrontPassengerSeatVentLevel = Level(rawItems, "2220004")
+            FrontPassengerSeatVentLevel = Level(rawItems, "2220004"),
+            NearBeamActive = Bool(rawItems, "9000001"),
+            FarBeamActive = Bool(rawItems, "9000002"),
+            LeftTurnLampActive = Bool(rawItems, "9000003"),
+            RightTurnLampActive = Bool(rawItems, "9000004"),
+            OilAlarmActive = Bool(rawItems, "9000005"),
+            EngineDoorOpen = Bool(rawItems, "9000006"),
+            AcAutoModeActive = Bool(rawItems, "9000007"),
+            AirCleanActive = Bool(rawItems, "9000008"),
+            CabinCleanActive = Bool(rawItems, "9000009"),
+            BackDoorOpen = Bool(rawItems, "9000010"),
+            ChargeSoc = Number(rawItems, "9000011"),
+            ChargingGunModel = Integer(rawItems, "9000012"),
+            HcuPowertrainState = Integer(rawItems, "9000013"),
+            Power = Number(rawItems, "9000014"),
+            BatteryPackState = Integer(rawItems, "9000015"),
+            AccCleanOff = Integer(rawItems, "9000016"),
+            TboxState = Integer(rawItems, "9000017"),
+            WirelessLevel = Integer(rawItems, "9000018"),
+            OilSegments = Integer(rawItems, "9000019"),
+            TirePressureIndicatorFrontLeft = Bool(rawItems, "9000020"),
+            TirePressureIndicatorFrontRight = Bool(rawItems, "9000021"),
+            TirePressureIndicatorRearLeft = Bool(rawItems, "9000022"),
+            TirePressureIndicatorRearRight = Bool(rawItems, "9000023"),
+            AuxBatteryLevel = Number(rawItems, "9000024"),
+            RemainingUsableChargePercent = Number(rawItems, "9000025")
         };
 
         var acOn = values.AcActive == true;
@@ -96,6 +122,9 @@ public static class VehicleSnapshotMapper
         return new VehicleSnapshot
         {
             Vin = vehicle.Vin,
+            Platform = String.IsNullOrWhiteSpace(vehicle.BelongPlatform)
+                ? null
+                : vehicle.BelongPlatform.Trim().ToLowerInvariant(),
             Name = FirstNonEmpty(vehicle.AppShowSeriesName, vehicle.VehicleNick?.ToString(), vehicle.ModelName, "GWM vehicle"),
             Manufacturer = FirstNonEmpty(vehicle.BrandName, vehicle.OtBrandName, "GWM"),
             Model = FirstNonEmpty(vehicle.Vtype, vehicle.VTypeName, vehicle.ModelName),
@@ -109,7 +138,8 @@ public static class VehicleSnapshotMapper
             },
             Capabilities = new VehicleCapabilities
             {
-                RemoteCommands = remoteCommandsAvailable
+                RemoteCommands = remoteCommandsAvailable,
+                ChargingControl = chargingControlAvailable
             },
             Values = values,
             Climate = new ClimateSnapshot
@@ -224,6 +254,7 @@ public static class VehicleSnapshotMapper
             0 when Bool(items, "2042082") == true => "connected",
             1 => "charging",
             2 => "awaiting_charging",
+            3 => "charging_complete",
             5 => "waiting_for_power",
             6 => "error",
             _ => null
@@ -235,7 +266,7 @@ public static class VehicleSnapshotMapper
         return Integer(items, "2041142") switch
         {
             1 => true,
-            0 or 2 or 5 or 6 => false,
+            0 or 2 or 3 or 5 or 6 => false,
             _ => null
         };
     }

@@ -20,6 +20,23 @@ from .entity import GwmOraEntity, setup_vehicle_entities, vehicle_value
 
 PARALLEL_UPDATES = 0
 
+BEANTECH_BINARY_SENSOR_KEYS = {
+    "near_beam_active",
+    "far_beam_active",
+    "left_turn_lamp_active",
+    "right_turn_lamp_active",
+    "oil_alarm_active",
+    "engine_door_open",
+    "back_door_open",
+    "ac_auto_mode_active",
+    "air_clean_active",
+    "cabin_clean_active",
+    "tire_pressure_indicator_front_left",
+    "tire_pressure_indicator_front_right",
+    "tire_pressure_indicator_rear_left",
+    "tire_pressure_indicator_rear_right",
+}
+
 
 @dataclass(frozen=True, kw_only=True)
 class GwmOraBinarySensorEntityDescription(BinarySensorEntityDescription):
@@ -153,7 +170,112 @@ BINARY_SENSORS: tuple[GwmOraBinarySensorEntityDescription, ...] = (
         entity_registry_enabled_default=False,
         value_fn=_bool_value("gps_authorized"),
     ),
+    GwmOraBinarySensorEntityDescription(
+        key="near_beam_active",
+        translation_key="near_beam",
+        device_class=BinarySensorDeviceClass.LIGHT,
+        value_fn=_bool_value("near_beam_active"),
+    ),
+    GwmOraBinarySensorEntityDescription(
+        key="far_beam_active",
+        translation_key="far_beam",
+        device_class=BinarySensorDeviceClass.LIGHT,
+        value_fn=_bool_value("far_beam_active"),
+    ),
+    GwmOraBinarySensorEntityDescription(
+        key="left_turn_lamp_active",
+        translation_key="left_turn_lamp",
+        device_class=BinarySensorDeviceClass.LIGHT,
+        value_fn=_bool_value("left_turn_lamp_active"),
+    ),
+    GwmOraBinarySensorEntityDescription(
+        key="right_turn_lamp_active",
+        translation_key="right_turn_lamp",
+        device_class=BinarySensorDeviceClass.LIGHT,
+        value_fn=_bool_value("right_turn_lamp_active"),
+    ),
+    GwmOraBinarySensorEntityDescription(
+        key="oil_alarm_active",
+        translation_key="oil_alarm",
+        device_class=BinarySensorDeviceClass.PROBLEM,
+        value_fn=_bool_value("oil_alarm_active"),
+    ),
+    GwmOraBinarySensorEntityDescription(
+        key="engine_door_open",
+        translation_key="engine_door",
+        device_class=BinarySensorDeviceClass.DOOR,
+        value_fn=_bool_value("engine_door_open"),
+    ),
+    GwmOraBinarySensorEntityDescription(
+        key="back_door_open",
+        translation_key="back_door",
+        device_class=BinarySensorDeviceClass.DOOR,
+        value_fn=_bool_value("back_door_open"),
+    ),
+    GwmOraBinarySensorEntityDescription(
+        key="ac_auto_mode_active",
+        translation_key="ac_auto_mode",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+        value_fn=_bool_value("ac_auto_mode_active"),
+    ),
+    GwmOraBinarySensorEntityDescription(
+        key="air_clean_active",
+        translation_key="air_clean",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+        value_fn=_bool_value("air_clean_active"),
+    ),
+    GwmOraBinarySensorEntityDescription(
+        key="cabin_clean_active",
+        translation_key="cabin_clean",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+        value_fn=_bool_value("cabin_clean_active"),
+    ),
+    GwmOraBinarySensorEntityDescription(
+        key="tire_pressure_indicator_front_left",
+        translation_key="tire_pressure_indicator_front_left",
+        device_class=BinarySensorDeviceClass.PROBLEM,
+        entity_registry_enabled_default=False,
+        value_fn=_bool_value("tire_pressure_indicator_front_left"),
+    ),
+    GwmOraBinarySensorEntityDescription(
+        key="tire_pressure_indicator_front_right",
+        translation_key="tire_pressure_indicator_front_right",
+        device_class=BinarySensorDeviceClass.PROBLEM,
+        entity_registry_enabled_default=False,
+        value_fn=_bool_value("tire_pressure_indicator_front_right"),
+    ),
+    GwmOraBinarySensorEntityDescription(
+        key="tire_pressure_indicator_rear_left",
+        translation_key="tire_pressure_indicator_rear_left",
+        device_class=BinarySensorDeviceClass.PROBLEM,
+        entity_registry_enabled_default=False,
+        value_fn=_bool_value("tire_pressure_indicator_rear_left"),
+    ),
+    GwmOraBinarySensorEntityDescription(
+        key="tire_pressure_indicator_rear_right",
+        translation_key="tire_pressure_indicator_rear_right",
+        device_class=BinarySensorDeviceClass.PROBLEM,
+        entity_registry_enabled_default=False,
+        value_fn=_bool_value("tire_pressure_indicator_rear_right"),
+    ),
 )
+
+
+def _binary_sensor_descriptions_for_vehicle(
+    vehicle: dict[str, Any],
+    region: str,
+) -> tuple[GwmOraBinarySensorEntityDescription, ...]:
+    """Return descriptions supported by the vehicle backend."""
+    if str(region or "").lower() == "cn" and str(vehicle.get("platform") or "").lower() == "beantech":
+        return BINARY_SENSORS
+    return tuple(
+        description
+        for description in BINARY_SENSORS
+        if description.key not in BEANTECH_BINARY_SENSOR_KEYS
+    )
 
 
 async def async_setup_entry(
@@ -167,7 +289,9 @@ async def async_setup_entry(
         async_add_entities,
         lambda vehicle: (
             GwmOraBinarySensor(entry.runtime_data.coordinator, vehicle["vin"], description)
-            for description in BINARY_SENSORS
+            for description in _binary_sensor_descriptions_for_vehicle(
+                vehicle, entry.runtime_data.coordinator.region
+            )
         ),
     )
 

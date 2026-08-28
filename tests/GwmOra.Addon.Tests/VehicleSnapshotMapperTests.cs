@@ -13,6 +13,7 @@ public class VehicleSnapshotMapperTests
         var vehicle = new Vehicle
         {
             Vin = "VIN123",
+            BelongPlatform = "BeanTech",
             AppShowSeriesName = "Vehicle series",
             BrandName = "GWM",
             Vtype = "Vehicle model"
@@ -68,7 +69,11 @@ public class VehicleSnapshotMapperTests
                 Item("2220002", 2, null),
                 Item("2220003", 3, null),
                 Item("2220004", 1, null),
-                Item("2042082", 1, null)
+                Item("2042082", 1, null),
+                Item("9000011", 82.5, "%"),
+                Item("9000014", 12.5, null),
+                Item("9000024", 90, "%"),
+                Item("9000025", 68, "%")
             ]
         };
         var basics = new VehicleBasicsInfo
@@ -80,9 +85,16 @@ public class VehicleSnapshotMapperTests
             }
         };
 
-        var snapshot = VehicleSnapshotMapper.Map(vehicle, status, basics, true, "ok");
+        var snapshot = VehicleSnapshotMapper.Map(
+            vehicle,
+            status,
+            basics,
+            true,
+            "ok",
+            chargingControlAvailable: true);
 
         Assert.Equal("VIN123", snapshot.Vin);
+        Assert.Equal("beantech", snapshot.Platform);
         Assert.Equal(80, snapshot.Values.Soc);
         Assert.Equal(210, snapshot.Values.RangeKm);
         Assert.Equal(45, snapshot.Values.FuelLevelL);
@@ -128,11 +140,16 @@ public class VehicleSnapshotMapperTests
         Assert.Equal(3, snapshot.Values.FrontDriverSeatVentLevel);
         Assert.Equal(1, snapshot.Values.FrontPassengerSeatVentLevel);
         Assert.True(snapshot.Values.ChargePlugConnected);
+        Assert.Equal(82.5, snapshot.Values.ChargeSoc);
+        Assert.Equal(12.5, snapshot.Values.Power);
+        Assert.Equal(90, snapshot.Values.AuxBatteryLevel);
+        Assert.Equal(68, snapshot.Values.RemainingUsableChargePercent);
         Assert.Equal("cool", snapshot.Climate.Mode);
         Assert.Equal(23, snapshot.Climate.TargetTemperatureC);
         Assert.Equal(15, snapshot.Climate.OperationTimeMinutes);
         Assert.NotNull(snapshot.Location);
         Assert.True(snapshot.Capabilities.RemoteCommands);
+        Assert.True(snapshot.Capabilities.ChargingControl);
         Assert.Equal("80", snapshot.RawItems["2013021"].Value);
     }
 
@@ -241,6 +258,7 @@ public class VehicleSnapshotMapperTests
     [InlineData(0, 1, "connected", false)]
     [InlineData(1, 1, "charging", true)]
     [InlineData(2, 1, "awaiting_charging", false)]
+    [InlineData(3, 1, "charging_complete", false)]
     [InlineData(5, 1, "waiting_for_power", false)]
     [InlineData(6, 1, "error", false)]
     [InlineData(7, 1, null, null)]

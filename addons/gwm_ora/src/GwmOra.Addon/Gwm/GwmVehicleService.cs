@@ -1,6 +1,7 @@
 using GwmOra.Addon.Configuration;
 using GwmOra.Addon.Models;
 using GwmOra.Addon.RemoteCommands;
+using libgwmapi.DTO.Vehicle;
 
 namespace GwmOra.Addon.Gwm;
 
@@ -92,7 +93,8 @@ public sealed class GwmVehicleService
                     await statusTask,
                     await basicsTask,
                     RemoteCommandsAvailable,
-                    _remoteCommandStore.GetLastStatus(vehicle.Vin)));
+                    _remoteCommandStore.GetLastStatus(vehicle.Vin),
+                    ChargingControlAvailable(vehicle)));
             }
 
             _vehicles = snapshots.ToArray();
@@ -124,4 +126,9 @@ public sealed class GwmVehicleService
         _options.EnableRemoteCommands
         && (String.Equals(_options.Region, "cn", StringComparison.OrdinalIgnoreCase)
             || !String.IsNullOrWhiteSpace(_options.SecurityPin));
+
+    private bool ChargingControlAvailable(Vehicle vehicle) =>
+        _options.EnableChargingControl
+        && (!String.Equals(_options.Region, "cn", StringComparison.OrdinalIgnoreCase)
+            || String.Equals(vehicle.BelongPlatform?.Trim(), "navinfo", StringComparison.OrdinalIgnoreCase));
 }

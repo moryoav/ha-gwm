@@ -22,13 +22,14 @@ This integration has been tested with:
 - ORA 03
 - ORA 05
 - HAVAL H3
+- Tank 300 Hi4-T (`cn`, BeanTech status reading)
 
 Other GWM models may also work. If you try the integration with another model, please [open a GitHub issue](https://github.com/moryoav/ha-gwm/issues/new/choose) and report the model, region, and which features you tested so this list can be expanded.
 
 ## What You Get
 
 - Battery SOC, range, odometer, charging, plug, cabin temperature, tire, lock, window, door, trunk, A/C, and location entities, plus model-dependent fuel and comfort data.
-- Native Home Assistant controls for A/C mode, temperature, run time, door lock/unlock, and closing windows. Experimental China support also exposes remote start/stop, vehicle search, tailgate, and sunroof controls.
+- Native Home Assistant controls for A/C mode, temperature, run time, door lock/unlock, and closing windows. Experimental China support also exposes model-dependent remote start/stop, vehicle search, tailgate, and sunroof controls.
 - A remote command status sensor that shows progress while commands are being sent to the car.
 - Automatic discovery of the add-on by the integration.
 - A small add-on Web UI showing add-on health and the latest cached vehicle summary.
@@ -72,9 +73,9 @@ log_level: info
 - `country`: Two-letter country where the GWM account was registered, such as `DE`, `GB`, `AU`, `NZ`, `RU`, or `CN`. It must match the account registration country.
 - `username`: E-mail address for the account, or its registered phone number when using `cn`.
 - `password`: Password for `eu`, `aus`, and `rus`. China uses SMS login and ignores this field.
-- `enable_remote_commands`: Enables A/C, lock, unlock, and close-window controls. In China it also enables the experimental remote start/stop, vehicle-search, tailgate, and sunroof buttons. Use `false` for read-only entities.
-- `enable_charging_control`: Enables the **Scheduled charging** switch and the `gwm_ora.set_charging_plan` / `gwm_ora.clear_charging_plan` actions. Default `false`, independent of `enable_remote_commands`, and needs no security PIN. Validated on an ANZ vehicle; the experimental China implementation uses the corresponding China-app command and is untested on a live vehicle.
-- `security_pin`: The remote-control PIN configured in the official GWM app. It is a prerequisite for remote commands outside China. The China app protocol does not send it.
+- `enable_remote_commands`: Enables A/C, lock, unlock, and close-window controls. In China it also enables the experimental model-dependent remote buttons. Use `false` for read-only entities. BeanTech commands are initial unverified mappings and may fail until more protocol details are captured.
+- `enable_charging_control`: Enables the **Scheduled charging** switch and the `gwm_ora.set_charging_plan` / `gwm_ora.clear_charging_plan` actions. Default `false`, independent of `enable_remote_commands`, and needs no security PIN. Validated on an ANZ vehicle. China charging control is currently limited to NavInfo vehicles and is not exposed for BeanTech vehicles.
+- `security_pin`: The remote-control PIN configured in the official GWM app. It is a prerequisite for remote commands outside China. NavInfo commands do not send it. The official BeanTech app uses a separate encrypted PIN format that is not implemented yet.
 - `poll_interval_seconds`: How often the add-on refreshes vehicle data from GWM.
 - `log_level`: Add-on logging verbosity.
 
@@ -120,7 +121,7 @@ You do not enter your GWM username or password in the integration.
 
 - Sensors: SOC, range, odometer, charging status, remaining charging time, SOCE, tire pressures, tire temperatures, interior temperature, optional fuel level/range and seat heating/ventilation levels, acquisition/update timestamps, and remote command status.
 - Binary sensors: charging active, charge plug, A/C active, lock open, driver/passenger windows and doors, trunk, air circulation, defrosters, and optional steering-wheel and windscreen heater states.
-- Disabled diagnostic sensors: raw tire state, window-learning state, engine state code, sunroof position code, and GPS authorization data when supplied by the vehicle.
+- Disabled diagnostic sensors: raw tire state, window-learning state, engine state code, sunroof position code, GPS authorization data, and BeanTech-specific battery, charging, lighting, and body values when supplied by the vehicle.
 - Device tracker: vehicle GPS location when available.
 - Climate: A/C mode `off`/`cool`, target temperature, current cabin temperature. Experimental China support also offers `heat`.
 - Number: climate run time from 5 to 30 minutes in one-minute steps.
@@ -160,11 +161,11 @@ data:
   vin: "LGWTEST00XX000001"
 ```
 
-The add-on records the exact plan it writes. If charging control is later disabled, it retries cleanup of that plan, but leaves a schedule alone when the official GWM app has replaced or changed it. The feature was live-tested on an ANZ ORA 5. The separate China charging implementation remains experimental and untested.
+The add-on records the exact plan it writes. If charging control is later disabled, it retries cleanup of that plan, but leaves a schedule alone when the official GWM app has replaced or changed it. The feature was live-tested on an ANZ ORA 5. The separate China NavInfo charging implementation remains experimental and untested. BeanTech charging control is not implemented.
 
 ### Use the charging status with evcc
 
-The **Charging status** sensor reports `disconnected`, `connected`, `charging`, `awaiting_charging`, `waiting_for_power`, or `error`. When you use this sensor as the vehicle status in evcc, add the two GWM waiting states to evcc's status B mapping:
+The **Charging status** sensor reports `disconnected`, `connected`, `charging`, `charging_complete`, `awaiting_charging`, `waiting_for_power`, or `error`. When you use this sensor as the vehicle status in evcc, add the two GWM waiting states to evcc's status B mapping:
 
 ```yaml
 vehicles:
@@ -200,15 +201,15 @@ This project is designed for vehicles that can be managed through the official G
 
 Regional GWM services and vehicle firmware can differ, so some entities may be unavailable on some cars.
 
-This integration supports accounts on the European GWM cloud (`region: eu`), including EU countries and Israel; the Australia/New Zealand cloud (`region: aus`); and the live-tested Russia cloud (`region: rus`). Experimental, partially live-validated mainland-China support (`region: cn`) is also available for NavInfo/AutoAI vehicles.
+This integration supports accounts on the European GWM cloud (`region: eu`), including EU countries and Israel; the Australia/New Zealand cloud (`region: aus`); and the live-tested Russia cloud (`region: rus`). Experimental, partially live-validated mainland-China support (`region: cn`) is available for NavInfo/AutoAI and BeanTech vehicles.
 
 ### Mainland China experimental testing
 
-China support was derived from the mainland-China GWM Android app. Vehicle discovery, sensors, cooling, lock/unlock, and closing windows have received initial live validation on a WEY VV6. Heating, remote start/stop, horn/lights, tailgate, sunroof, and charging schedules remain experimental until each command is confirmed on a live vehicle.
+China support was derived from the mainland-China GWM Android app. NavInfo vehicle discovery, sensors, cooling, lock/unlock, and closing windows have received initial live validation on a WEY VV6. BeanTech status reading has been live-tested on a 2024 Tank 300 Hi4-T. BeanTech status uses its own endpoint and does not change the NavInfo or established regional request paths.
 
 For a China account, set `region: cn`, `country: CN`, and put the registered phone number in `username`. Leave `password`, `verification_code`, and `security_pin` empty on the first start. The add-on requests an SMS code and reports `verification_required`; enter that code in `verification_code`, save, and restart. Keep both command opt-ins off until vehicle discovery and sensor values have been compared with the official app.
 
-The first implementation only supports vehicles whose account data reports `belongPlatform: navinfo`. After read-only validation, enable and test one control at a time with the vehicle visible and in a safe state. See the [detailed China test procedure](addons/gwm_ora/DOCS.md#mainland-china-cn-region-experimental). Never post phone numbers, VINs, tokens, SMS codes, or complete debug logs publicly.
+BeanTech command support is an initial unverified implementation. It currently maps lock/unlock, close windows, remote start/stop, horn, flashing lights, and closing the sunroof. Climate, combined horn and lights, tailgate, other sunroof positions, the BeanTech PIN format, and charging control are not implemented for BeanTech yet. After read-only validation, enable and test one mapped command at a time with the vehicle visible and in a safe state. See the [detailed China test procedure](addons/gwm_ora/DOCS.md#mainland-china-cn-region-experimental). Never post phone numbers, VINs, tokens, SMS codes, or complete debug logs publicly.
 
 ### Australia/New Zealand account sessions
 
