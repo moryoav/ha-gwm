@@ -24,6 +24,7 @@ public sealed class RemoteCommandService
     private readonly RemoteCommandStore _store;
     private readonly IHostApplicationLifetime _lifetime;
     private readonly ILogger<RemoteCommandService> _logger;
+    private readonly SemaphoreSlim _commandQueue = new(1, 1);
 
     public RemoteCommandService(
         AddonOptions options,
@@ -45,6 +46,24 @@ public sealed class RemoteCommandService
 
     public RemoteCommandSnapshot? Get(string id) => _store.Get(id);
 
+    private void QueueCommand(Func<Task> execute)
+    {
+        _ = Task.Run(
+            async () =>
+            {
+                await _commandQueue.WaitAsync(_lifetime.ApplicationStopping);
+                try
+                {
+                    await execute();
+                }
+                finally
+                {
+                    _commandQueue.Release();
+                }
+            },
+            CancellationToken.None);
+    }
+
     public RemoteCommandSnapshot EnqueueClimate(string vin, ClimateCommandRequest request)
     {
         EnsureRemoteCommandsAvailable();
@@ -57,16 +76,16 @@ public sealed class RemoteCommandService
 
         var commandName = mode is null && !request.Temperature.HasValue ? "A/C run time" : "A/C";
         var command = _store.Create(vin, commandName);
-        _ = Task.Run(() => ExecuteClimateAsync(command.Id, request, _lifetime.ApplicationStopping), CancellationToken.None);
+        QueueCommand(() => ExecuteClimateAsync(command.Id, request, _lifetime.ApplicationStopping));
         return command;
     }
 
     public static void ValidateClimateRequest(ClimateCommandRequest request)
     {
         var mode = request.Mode?.Trim().ToLowerInvariant();
-        if (mode is not null and not ("cool" or "heat" or "off"))
+        if (mode is not null and not ("cool" or "heat" or "off" or "auto"))
         {
-            throw new ArgumentException("Climate command mode must be 'cool', 'heat', or 'off'.", nameof(request));
+            throw new ArgumentException("Climate command mode must be 'cool', 'heat', 'auto', or 'off'.", nameof(request));
         }
 
         if (request.OperationTimeMinutes is int operationTime
@@ -97,7 +116,7 @@ public sealed class RemoteCommandService
         }
 
         var command = _store.Create(vin, normalized == "lock" ? "Door lock" : "Door unlock");
-        _ = Task.Run(() => ExecuteLockAsync(command.Id, normalized == "lock", _lifetime.ApplicationStopping), CancellationToken.None);
+        QueueCommand(() => ExecuteLockAsync(command.Id, normalized == "lock", _lifetime.ApplicationStopping));
         return command;
     }
 
@@ -105,7 +124,7 @@ public sealed class RemoteCommandService
     {
         EnsureRemoteCommandsAvailable();
         var command = _store.Create(vin, "Window close");
-        _ = Task.Run(() => ExecuteWindowCloseAsync(command.Id, _lifetime.ApplicationStopping), CancellationToken.None);
+        QueueCommand(() => ExecuteWindowCloseAsync(command.Id, _lifetime.ApplicationStopping));
         return command;
     }
 
@@ -133,6 +152,27 @@ public sealed class RemoteCommandService
             "sunroof_tilt" => "Sunroof tilt",
             "sunroof_half" => "Sunroof half open",
             "sunroof_full" => "Sunroof fully open",
+            "seat_heating_driver" => "Driver seat heating",
+            "seat_heating_passenger" => "Passenger seat heating",
+            "seat_ventilation_driver" => "Driver seat ventilation",
+            "seat_ventilation_passenger" => "Passenger seat ventilation",
+            "seat_heating_stop" => "Seat heating off",
+            "seat_ventilation_stop" => "Seat ventilation off",
+            "steering_wheel_heating" => "Steering wheel heating",
+            "steering_wheel_heating_stop" => "Steering wheel heating off",
+            "defrost_front" => "Front defrost",
+            "defrost_front_stop" => "Front defrost off",
+            "defrost_back" => "Rear defrost",
+            "defrost_back_stop" => "Rear defrost off",
+            "cabin_cleaning" => "Cabin cleaning",
+            "comfort_warm" => "Comfort (warm)",
+            "comfort_cool" => "Comfort (cool)",
+            "comfort_last" => "Comfort (last)",
+            "comfort_off" => "Comfort off",
+            "battery_gun_heat" => "Battery pack heating (plugged in)",
+            "battery_gun_heat_stop" => "Battery pack heating off (plugged in)",
+            "battery_initiative_heat" => "Battery pack active heating",
+            "battery_initiative_heat_stop" => "Battery pack active heating off",
             _ => throw new ArgumentException($"Unsupported China vehicle-control action '{request.Action}'.", nameof(request))
         };
 
@@ -143,13 +183,12 @@ public sealed class RemoteCommandService
         }
 
         var command = _store.Create(vin, commandName);
-        _ = Task.Run(
+        QueueCommand(
             () => ExecuteVehicleControlAsync(
                 command.Id,
                 action,
                 request.RunTimeMinutes,
-                _lifetime.ApplicationStopping),
-            CancellationToken.None);
+                _lifetime.ApplicationStopping));
         return command;
     }
 
@@ -207,7 +246,7 @@ public sealed class RemoteCommandService
                                     basics.Config?.AirConditionerStatusTime,
                                     VehicleSnapshotMapper.DefaultOperationTimeMinutes);
 
-            if (mode is not null and not ("cool" or "heat" or "off"))
+            if (mode is not null and not ("cool" or "heat" or "off" or "auto"))
             {
                 _store.Update(id, "failed", $"{command.Name}: failed - unsupported mode '{request.Mode}'");
                 return;
@@ -235,6 +274,7 @@ public sealed class RemoteCommandService
             var sendCommand = IsChinaRegion
                 ? RemoteCommandFactory.CreateChinaClimateCommand(
                     command.Vin,
+                    SecurityPassword,
                     effectiveMode,
                     temperature,
                     operationTime,
@@ -305,21 +345,44 @@ public sealed class RemoteCommandService
             {
                 "remote_start" => RemoteCommandFactory.CreateChinaCommand(
                     command.Vin,
+                    SecurityPassword,
                     ChinaRemoteCommandKind.EngineStart,
                     15,
                     runTimeMinutes ?? VehicleSnapshotMapper.DefaultOperationTimeMinutes),
-                "remote_stop" => RemoteCommandFactory.CreateChinaCommand(command.Vin, ChinaRemoteCommandKind.Common, 16),
-                "horn" => RemoteCommandFactory.CreateChinaCommand(command.Vin, ChinaRemoteCommandKind.Common, 19),
-                "flash_lights" => RemoteCommandFactory.CreateChinaCommand(command.Vin, ChinaRemoteCommandKind.Common, 20),
-                "horn_and_lights" => RemoteCommandFactory.CreateChinaCommand(command.Vin, ChinaRemoteCommandKind.Common, 5),
-                "tailgate_open" => RemoteCommandFactory.CreateChinaCommand(command.Vin, ChinaRemoteCommandKind.Common, 17),
-                "tailgate_close" => RemoteCommandFactory.CreateChinaCommand(command.Vin, ChinaRemoteCommandKind.Common, 18),
-                "sunroof_close" => RemoteCommandFactory.CreateChinaCommand(command.Vin, ChinaRemoteCommandKind.Common, 28),
+                "remote_stop" => RemoteCommandFactory.CreateChinaCommand(command.Vin, SecurityPassword, ChinaRemoteCommandKind.Common, 16),
+                "horn" => RemoteCommandFactory.CreateChinaCommand(command.Vin, SecurityPassword, ChinaRemoteCommandKind.Common, 19),
+                "flash_lights" => RemoteCommandFactory.CreateChinaCommand(command.Vin, SecurityPassword, ChinaRemoteCommandKind.Common, 20),
+                "horn_and_lights" => RemoteCommandFactory.CreateChinaCommand(command.Vin, SecurityPassword, ChinaRemoteCommandKind.Common, 5),
+                "tailgate_open" => RemoteCommandFactory.CreateChinaCommand(command.Vin, SecurityPassword, ChinaRemoteCommandKind.Common, 17),
+                "tailgate_close" => RemoteCommandFactory.CreateChinaCommand(command.Vin, SecurityPassword, ChinaRemoteCommandKind.Common, 18),
+                "sunroof_close" => RemoteCommandFactory.CreateChinaCommand(command.Vin, SecurityPassword, ChinaRemoteCommandKind.Common, 28),
                 // AutoAI reports closed as 0 and numbers the three opening positions from
                 // fully open toward the vent position.
-                "sunroof_full" => RemoteCommandFactory.CreateChinaCommand(command.Vin, ChinaRemoteCommandKind.SunroofOpen, 29, openAngle: 1),
-                "sunroof_half" => RemoteCommandFactory.CreateChinaCommand(command.Vin, ChinaRemoteCommandKind.SunroofOpen, 29, openAngle: 2),
-                "sunroof_tilt" => RemoteCommandFactory.CreateChinaCommand(command.Vin, ChinaRemoteCommandKind.SunroofOpen, 29, openAngle: 3),
+                "sunroof_full" => RemoteCommandFactory.CreateChinaCommand(command.Vin, SecurityPassword, ChinaRemoteCommandKind.SunroofOpen, 29, openAngle: 1),
+                "sunroof_half" => RemoteCommandFactory.CreateChinaCommand(command.Vin, SecurityPassword, ChinaRemoteCommandKind.SunroofOpen, 29, openAngle: 2),
+                "sunroof_tilt" => RemoteCommandFactory.CreateChinaCommand(command.Vin, SecurityPassword, ChinaRemoteCommandKind.SunroofOpen, 29, openAngle: 3),
+                "seat_heating_driver" => RemoteCommandFactory.CreateChinaCommand(command.Vin, SecurityPassword, ChinaRemoteCommandKind.Common, 30),
+                "seat_heating_passenger" => RemoteCommandFactory.CreateChinaCommand(command.Vin, SecurityPassword, ChinaRemoteCommandKind.Common, 31),
+                "seat_ventilation_driver" => RemoteCommandFactory.CreateChinaCommand(command.Vin, SecurityPassword, ChinaRemoteCommandKind.Common, 32),
+                "seat_ventilation_passenger" => RemoteCommandFactory.CreateChinaCommand(command.Vin, SecurityPassword, ChinaRemoteCommandKind.Common, 33),
+                "seat_heating_stop" => RemoteCommandFactory.CreateChinaCommand(command.Vin, SecurityPassword, ChinaRemoteCommandKind.Common, 34),
+                "seat_ventilation_stop" => RemoteCommandFactory.CreateChinaCommand(command.Vin, SecurityPassword, ChinaRemoteCommandKind.Common, 35),
+                "steering_wheel_heating" => RemoteCommandFactory.CreateChinaCommand(command.Vin, SecurityPassword, ChinaRemoteCommandKind.Common, 36),
+                "steering_wheel_heating_stop" => RemoteCommandFactory.CreateChinaCommand(command.Vin, SecurityPassword, ChinaRemoteCommandKind.Common, 37),
+                "defrost_front" => RemoteCommandFactory.CreateChinaCommand(command.Vin, SecurityPassword, ChinaRemoteCommandKind.Common, 38),
+                "defrost_front_stop" => RemoteCommandFactory.CreateChinaCommand(command.Vin, SecurityPassword, ChinaRemoteCommandKind.Common, 39),
+                "defrost_back" => RemoteCommandFactory.CreateChinaCommand(command.Vin, SecurityPassword, ChinaRemoteCommandKind.Common, 40),
+                "defrost_back_stop" => RemoteCommandFactory.CreateChinaCommand(command.Vin, SecurityPassword, ChinaRemoteCommandKind.Common, 41),
+                "cabin_cleaning" => RemoteCommandFactory.CreateChinaCommand(command.Vin, SecurityPassword, ChinaRemoteCommandKind.Common, 42),
+                "comfort_warm" => RemoteCommandFactory.CreateChinaCommand(command.Vin, SecurityPassword, ChinaRemoteCommandKind.Common, 43),
+                "comfort_cool" => RemoteCommandFactory.CreateChinaCommand(command.Vin, SecurityPassword, ChinaRemoteCommandKind.Common, 44),
+                "comfort_last" => RemoteCommandFactory.CreateChinaCommand(command.Vin, SecurityPassword, ChinaRemoteCommandKind.Common, 45),
+                "comfort_off" => RemoteCommandFactory.CreateChinaCommand(command.Vin, SecurityPassword, ChinaRemoteCommandKind.Common, 46),
+                // 电池包保温（frida 实测 2026-08-29，需 PIN）
+                "battery_gun_heat" => RemoteCommandFactory.CreateChinaCommand(command.Vin, SecurityPassword, ChinaRemoteCommandKind.Common, 47),
+                "battery_gun_heat_stop" => RemoteCommandFactory.CreateChinaCommand(command.Vin, SecurityPassword, ChinaRemoteCommandKind.Common, 48),
+                "battery_initiative_heat" => RemoteCommandFactory.CreateChinaCommand(command.Vin, SecurityPassword, ChinaRemoteCommandKind.Common, 49),
+                "battery_initiative_heat_stop" => RemoteCommandFactory.CreateChinaCommand(command.Vin, SecurityPassword, ChinaRemoteCommandKind.Common, 50),
                 _ => throw new ArgumentException($"Unsupported China vehicle-control action '{action}'.")
             };
             await SendAndPollAsync(client, id, request, cancellationToken);
@@ -332,6 +395,97 @@ public sealed class RemoteCommandService
 
     // Charging schedules use the authenticated account but no vehicle security PIN. A plan window
     // gates charging start/stop; clearing it reverts to charge-on-plug.
+    // 智能预约充电（beantech）。不走命令追踪那套（那是 msgType=remote 的远控命令），
+    // 这里就是一次设置读写，状态靠再读一次确认。
+    public async Task<ChargingModeState> GetChargingModeAsync(string vin, CancellationToken cancellationToken)
+    {
+        ValidateVin(vin);
+        var client = await AuthenticatedClientAsync(cancellationToken);
+        var (enabled, startTime, endTime) = await client.GetBeanTechChargeSettingAsync(vin, cancellationToken);
+        return new ChargingModeState
+        {
+            Enabled = enabled,
+            StartTime = startTime,
+            EndTime = endTime
+        };
+    }
+
+    public RemoteCommandSnapshot SetChargingMode(string vin, bool enable)
+    {
+        EnsureChargingControlAvailable();
+        ValidateVin(vin);
+        var command = _store.Create(
+            vin,
+            enable ? "Smart scheduled charging on" : "Smart scheduled charging off");
+        QueueCommand(
+            () => ExecuteChargingModeAsync(command.Id, enable, _lifetime.ApplicationStopping));
+        return command;
+    }
+
+    private async Task ExecuteChargingModeAsync(string id, bool enable, CancellationToken cancellationToken)
+    {
+        var command = _store.Get(id)!;
+        try
+        {
+            var client = await AuthenticatedClientAsync(cancellationToken);
+            _store.Update(id, "in_progress", $"{command.Name}: sending setting to GWM");
+            var seqNo = await client.SetBeanTechChargingModeAsync(command.Vin, enable, cancellationToken);
+            _store.Update(id, "in_progress", $"{command.Name}: accepted by GWM, waiting for result", seqNo);
+
+            for (var attempt = 1; attempt <= DefaultMaxResultPolls; attempt++)
+            {
+                await Task.Delay(ResultPollInterval, cancellationToken);
+                var (resultCode, resultMessage) = await client.GetBeanTechChargeResultAsync(
+                    seqNo,
+                    command.Vin,
+                    cancellationToken);
+
+                if (String.IsNullOrWhiteSpace(resultCode))
+                {
+                    _store.Update(
+                        id,
+                        "in_progress",
+                        $"{command.Name}: waiting for result ({attempt}/{DefaultMaxResultPolls})",
+                        seqNo);
+                    continue;
+                }
+
+                // resultCode "2" = 远控指令待执行（还没落地），"0" = 成功。
+                if (String.Equals(resultCode, "2", StringComparison.Ordinal))
+                {
+                    _store.Update(
+                        id,
+                        "in_progress",
+                        $"{command.Name}: in progress ({attempt}/{DefaultMaxResultPolls}) - " +
+                        $"{resultMessage} [{resultCode}]",
+                        seqNo);
+                    continue;
+                }
+
+                var succeeded = String.Equals(resultCode, "0", StringComparison.Ordinal);
+                _store.Update(
+                    id,
+                    succeeded ? "completed" : "failed",
+                    $"{command.Name}: {(succeeded ? "completed" : "failed")} - {resultMessage} [{resultCode}]",
+                    seqNo,
+                    resultCode,
+                    resultMessage);
+                return;
+            }
+
+            _store.Update(
+                id,
+                "failed",
+                $"{command.Name}: failed - no result from the vehicle after " +
+                $"{DefaultMaxResultPolls} polls",
+                seqNo);
+        }
+        catch (Exception ex)
+        {
+            FailCommand(id, command.Name, ex);
+        }
+    }
+
     public async Task<ChargingInfos> GetChargingPlanAsync(string vin, CancellationToken cancellationToken)
     {
         ValidateVin(vin);
@@ -624,7 +778,7 @@ public sealed class RemoteCommandService
     }
 
     private string SecurityPassword => IsChinaRegion
-        ? String.Empty
+        ? _options.SecurityPin ?? String.Empty // 中国区 security_pin 填加密后的 securityPwd（setPasswordEncryptionForBB 结果）
         : new CheckSecurityPassword(_options.SecurityPin!).Md5Hash;
 
     private bool IsRussianRegion =>

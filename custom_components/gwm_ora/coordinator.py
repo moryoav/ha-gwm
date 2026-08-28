@@ -34,6 +34,8 @@ class GwmOraDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.api = api
         self._command_tasks: dict[str, asyncio.Task[None]] = {}
         self._charging_plan_active: dict[str, bool] = {}
+        self._remote_start_run_time: dict[str, int] = {}
+        self._local_flags: dict[tuple[str, str], bool] = {}
 
     async def _async_update_data(self) -> dict[str, Any]:
         try:
@@ -83,6 +85,33 @@ class GwmOraDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     def set_charging_plan_active(self, vin: str, active: bool) -> None:
         """Update a vehicle's locally known charging-plan state."""
         self._charging_plan_active[vin] = active
+        self.async_update_listeners()
+
+    def remote_start_run_time(self, vin: str) -> int | None:
+        """Return how long remote start should run the engine, in minutes.
+
+        The car only stores one run time and uses it for the A/C, so this one is
+        kept in Home Assistant and sent along with each remote-start command.
+        """
+        return self._remote_start_run_time.get(vin)
+
+    def set_remote_start_run_time(self, vin: str, minutes: int) -> None:
+        """Update a vehicle's locally stored remote-start run time."""
+        self._remote_start_run_time[vin] = minutes
+        self.async_update_listeners()
+
+    def local_flag(self, vin: str, key: str) -> bool:
+        """Return a locally tracked on/off flag for a vehicle.
+
+        For features the vehicle accepts commands for but never reports back --
+        battery pack heating, for one -- so the switch can at least show what was
+        last sent from Home Assistant.
+        """
+        return self._local_flags.get((vin, key), False)
+
+    def set_local_flag(self, vin: str, key: str, value: bool) -> None:
+        """Update a locally tracked on/off flag."""
+        self._local_flags[(vin, key)] = value
         self.async_update_listeners()
 
     def async_track_command(self, command: dict[str, Any]) -> None:

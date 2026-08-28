@@ -62,6 +62,21 @@
       },
       "fully_open_sunroof": {
         "default": "mdi:car-select"
+      },
+      "comfort_warm": {
+        "default": "mdi:weather-sunny"
+      },
+      "comfort_cool": {
+        "default": "mdi:snowflake"
+      },
+      "comfort_last": {
+        "default": "mdi:history"
+      },
+      "comfort_off": {
+        "default": "mdi:power"
+      },
+      "cabin_cleaning": {
+        "default": "mdi:air-purifier"
       }
     },
     "climate": {
@@ -137,6 +152,45 @@
     },
     "switch": {
       "charging_schedule": {
+        "default": "mdi:calendar-clock"
+      },
+      "remote_start": {
+        "default": "mdi:engine"
+      },
+      "seat_heating_driver": {
+        "default": "mdi:car-seat-heater"
+      },
+      "seat_heating_passenger": {
+        "default": "mdi:car-seat-heater"
+      },
+      "seat_ventilation_driver": {
+        "default": "mdi:car-seat-cooler"
+      },
+      "seat_ventilation_passenger": {
+        "default": "mdi:car-seat-cooler"
+      },
+      "steering_wheel_heating": {
+        "default": "mdi:steering"
+      },
+      "defrost_front": {
+        "default": "mdi:car-defrost-front"
+      },
+      "defrost_back": {
+        "default": "mdi:car-defrost-rear"
+      },
+      "fast_cool": {
+        "default": "mdi:thermometer-chevron-down"
+      },
+      "fast_heat": {
+        "default": "mdi:thermometer-chevron-up"
+      },
+      "battery_initiative_heat": {
+        "default": "mdi:battery-heart-variant"
+      },
+      "battery_gun_heat": {
+        "default": "mdi:ev-plug-type2"
+      },
+      "smart_charge": {
         "default": "mdi:calendar-clock"
       }
     }

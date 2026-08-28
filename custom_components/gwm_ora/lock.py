@@ -40,7 +40,11 @@ class GwmOraDoorLock(GwmOraEntity, LockEntity):
     @property
     def available(self) -> bool:
         """Return whether lock commands are available."""
-        return super().available and self.remote_commands_available
+        return (
+            super().available
+            and self.remote_commands_available
+            and (not self.is_china_beantech or self.security_pin_configured)
+        )
 
     @property
     def is_locked(self) -> bool | None:

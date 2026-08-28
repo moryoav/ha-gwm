@@ -382,7 +382,15 @@ public sealed class ChinaProtocolClientTests
                 return Json(BeanTechStatusBody);
             }
 
-            if (request.RequestUri.AbsolutePath.EndsWith("/T5/sendCmd", StringComparison.Ordinal))
+            // BeanTech commands are a two-step flow: mint a security token, then send
+            // the command to remote-ctrl/timely and poll remote-ctrl/result.
+            if (request.RequestUri.AbsolutePath.EndsWith("/security/generate-token", StringComparison.Ordinal))
+            {
+                Assert.Equal(HttpMethod.Post, request.Method);
+                return Json("{\"code\":\"000000\",\"data\":\"security-token\"}");
+            }
+
+            if (request.RequestUri.AbsolutePath.EndsWith("/remote-ctrl/timely", StringComparison.Ordinal))
             {
                 Assert.Equal(HttpMethod.Post, request.Method);
                 var body = JsonNode.Parse(request.Content!.ReadAsStringAsync().GetAwaiter().GetResult())!.AsObject();
@@ -392,12 +400,14 @@ public sealed class ChinaProtocolClientTests
             }
 
             Assert.Equal(
-                "/app-api/api/v1.0/vehicle/getRemoteCtrlResultT5",
+                "/app-api/api/v3.0/vehicle/remote-ctrl/result",
                 request.RequestUri.AbsolutePath);
             Assert.Equal(HttpMethod.Get, request.Method);
-            Assert.Equal("?seqNo=" + sentSequence, request.RequestUri.Query);
+            Assert.Equal(
+                "?seqNo=" + sentSequence + "&vin=" + Vin + "&msgType=remote",
+                request.RequestUri.Query);
             return Json("""
-                {"code":"000000","data":[{"resultCode":"0","resultMsg":"Success"}]}
+                {"code":"000000","data":{"messageList":[{"messageData":{"resultCode":"0","resultMessage":"Success"}}]}}
                 """);
         }));
         using var unusedGApp = new HttpClient(new DelegateHandler(_ =>
@@ -806,7 +816,10 @@ public sealed class ChinaProtocolClientTests
             command =>
             {
                 Assert.Equal("GW.M.SET_AIR_PRM", command.Function);
-                Assert.False(command.Body.ContainsKey("cmdCode"));
+                // cmdCode is always set on China climate commands (6 = start, 7 = stop),
+                // including when the A/C is already on -- it used to be missing there,
+                // which the server rejected with CN_UNSUPPORTED_COMMAND.
+                Assert.Equal(6, command.Body["cmdCode"]!.GetValue<int>());
                 Assert.Equal(Vin, command.Body["vin"]!.GetValue<string>());
                 Assert.Equal(20, command.Body["airParams"]!["runTime"]!.GetValue<int>());
                 Assert.Equal(26, command.Body["airParams"]!["temperature"]!.GetValue<int>());

@@ -189,12 +189,18 @@
       "ac_climate": { "name": "A/C climate" }
     },
     "number": {
+      "remote_start_run_time": { "name": "Remote start run time" },
       "climate_run_time": { "name": "Climate run time" }
     },
     "lock": {
       "door_lock": { "name": "Door lock" }
     },
     "button": {
+      "cabin_cleaning": { "name": "Cabin cleaning" },
+      "comfort_warm": { "name": "Comfort (warm mode)" },
+      "comfort_cool": { "name": "Comfort (cool mode)" },
+      "comfort_last": { "name": "Comfort (last mode)" },
+      "comfort_off": { "name": "Comfort (turn off)" },
       "close_windows": { "name": "Close windows" },
       "remote_start": { "name": "Remote start" },
       "remote_stop": { "name": "Remote stop" },
@@ -209,6 +215,19 @@
       "fully_open_sunroof": { "name": "Fully open sunroof" }
     },
     "switch": {
+      "remote_start": { "name": "Remote start" },
+      "seat_heating_driver": { "name": "Driver seat heating" },
+      "seat_heating_passenger": { "name": "Passenger seat heating" },
+      "seat_ventilation_driver": { "name": "Driver seat ventilation" },
+      "seat_ventilation_passenger": { "name": "Passenger seat ventilation" },
+      "steering_wheel_heating": { "name": "Steering wheel heating" },
+      "defrost_front": { "name": "Front defroster" },
+      "defrost_back": { "name": "Rear defroster" },
+      "fast_cool": { "name": "Fast cool" },
+      "fast_heat": { "name": "Fast heat" },
+      "battery_initiative_heat": { "name": "Battery pack active heating" },
+      "battery_gun_heat": { "name": "Battery pack heating while plugged in" },
+      "smart_charge": { "name": "Smart scheduled charging" },
       "charging_schedule": { "name": "Scheduled charging" }
     }
   },

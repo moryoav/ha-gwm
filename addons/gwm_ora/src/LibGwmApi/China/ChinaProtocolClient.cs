@@ -370,6 +370,12 @@ public sealed class ChinaProtocolClient
         JsonObject command,
         CancellationToken cancellationToken)
     {
+        if ((command["cmdCode"]?.GetValue<int>() ?? 0) == 46)
+        {
+            await SendBeanTechComfortOffAsync(request, cancellationToken);
+            return;
+        }
+
         var (controlType, cmdBody) = MapBeanTechControl(command);
         if (controlType is null)
         {
@@ -378,33 +384,121 @@ public sealed class ChinaProtocolClient
                 "Beantech platform does not map this command yet.");
         }
 
+        // 只有安全相关命令（解锁/锁/关窗/关天窗/启动/熄火/电池包保温）需要 PIN 验证。
+        // 电池包保温经 frida 实测确认会带 securityToken（App 侧因缓存了 token 所以不再弹窗，
+        // 但请求头里确实有）。
+        string? securityToken = null;
+        if (controlType is "VEHICLE_UNLOCK" or "VEHICLE_LOCK" or "WINDOW_CLOSE"
+            or "SKYLIGNT_CLOSE" or "ENGINE_START" or "ENGINE_STOP"
+            or "BATTERY_GUN_HEAT_START" or "BATTERY_GUN_HEAT_STOP"
+            or "BATTERY_INITIATIVE_HEAT_START" or "BATTERY_INITIATIVE_HEAT_STOP")
+        {
+            securityToken = await GenerateBeanTechSecurityTokenAsync(request, cancellationToken);
+        }
+
         var commandItem = new JsonObject
         {
-            ["controlType"] = controlType,
-            ["cmdBody"] = cmdBody
+            ["controlType"] = controlType
         };
+        if (cmdBody is not null)
+        {
+            commandItem["cmdBody"] = cmdBody;
+        }
 
         var seqNo = Guid.NewGuid().ToString("N")
                     + Random.Shared.Next(1000, 10000).ToString(CultureInfo.InvariantCulture);
+        _commandTransactions[request.SeqNo] = seqNo;
 
         var body = new JsonObject
         {
             ["vin"] = request.Vin,
             ["seqNo"] = seqNo,
             ["sendType"] = 0,
-            ["commands"] = new JsonArray { commandItem },
-            ["isSaveConfig"] = null
+            ["commands"] = new JsonArray { commandItem }
         };
 
-        _logger.LogWarning(
-            "Sending unverified BeanTech remote command {ControlType}; live protocol validation is still required",
-            controlType);
         await SendBeanTechPostAsync(
-            BeanTechBaseUrl + "app-api/api/v1.0/vehicle/T5/sendCmd",
+            BeanTechBaseUrl + "app-api/api/v3.0/vehicle/remote-ctrl/timely",
+            body,
+            request.Vin,
+            cancellationToken,
+            securityToken);
+    }
+
+    private async Task SendBeanTechComfortOffAsync(
+        SendCmd request,
+        CancellationToken cancellationToken)
+    {
+        var seqNo = Guid.NewGuid().ToString("N")
+                    + Random.Shared.Next(1000, 10000).ToString(CultureInfo.InvariantCulture);
+        _commandTransactions[request.SeqNo] = seqNo;
+
+        var body = new JsonObject
+        {
+            ["vin"] = request.Vin,
+            ["seqNo"] = seqNo,
+            ["sendType"] = 1,
+            ["commands"] = new JsonArray
+            {
+                new JsonObject { ["controlType"] = "AIR_CONDITIONER_STOP" },
+                new JsonObject
+                {
+                    ["controlType"] = "SEAT_HEATING_STOP",
+                    ["cmdBody"] = new JsonObject { ["leftFront"] = 0, ["operationMode"] = 1, ["rightFront"] = 0 }
+                },
+                new JsonObject
+                {
+                    ["controlType"] = "SEAT_VENTILATION_STOP",
+                    ["cmdBody"] = new JsonObject { ["leftFront"] = 0, ["operationMode"] = 2, ["rightFront"] = 0 }
+                },
+                new JsonObject { ["controlType"] = "STEERING_WHEEL_HEATLESS" }
+            }
+        };
+
+        await SendBeanTechPostAsync(
+            BeanTechBaseUrl + "app-api/api/v3.0/vehicle/remote-ctrl/timely",
             body,
             request.Vin,
             cancellationToken);
-        _commandTransactions[request.SeqNo] = seqNo;
+    }
+
+    private async Task<string> GenerateBeanTechSecurityTokenAsync(
+        SendCmd request,
+        CancellationToken cancellationToken)
+    {
+        var body = new JsonObject
+        {
+            ["securityPwd"] = request.SecurityPassword,
+            ["eventType"] = 2,
+            ["version"] = 1
+        };
+
+        var data = await SendBeanTechPostAsync(
+            BeanTechBaseUrl + "app-api/api/v3.0/vehicle/security/generate-token",
+            body,
+            request.Vin,
+            cancellationToken);
+
+        string? token = null;
+        if (data is JsonValue jsonValue && jsonValue.TryGetValue<string>(out var rawToken))
+        {
+            // data 直接就是 securityToken 字符串（JWT）
+            token = rawToken;
+        }
+        else
+        {
+            token = Value(data, "securityToken")
+                    ?? Value(data, "security_token")
+                    ?? Value(data, "token");
+        }
+
+        if (String.IsNullOrWhiteSpace(token))
+        {
+            throw new GwmApiException(
+                "CN_SECURITY_TOKEN",
+                $"Beantech generate-token did not return a security token. Response data: {data?.ToJsonString()}");
+        }
+        return token;
     }
 
     private static (string? ControlType, JsonObject? CmdBody) MapBeanTechControl(JsonObject command)
@@ -428,6 +522,23 @@ public sealed class ChinaProtocolClient
                 var engineParams = command["engineParams"] as JsonObject;
                 var operationTime = (engineParams?["runTime"]?.GetValue<int>() ?? 5) * 60;
                 return ("ENGINE_START", new JsonObject { ["operationTime"] = operationTime });
+            case 6:
+            {
+                var airParams = command["airParams"] as JsonObject;
+                var airTemperature = airParams?["temperature"]?.GetValue<int>() ?? 22;
+                var airRunTime = airParams?["runTime"]?.GetValue<int>() ?? 15;
+                var allowStartEng = airParams?["heatSwitch"]?.GetValue<string>() == "1" ? 1 : 0;
+                return ("AIR_CONDITIONER_START", new JsonObject
+                {
+                    ["temperature"] = airTemperature,
+                    ["operationTime"] = airRunTime * 60,
+                    ["allowStartEng"] = allowStartEng
+                });
+            }
+            case 7:
+                return ("AIR_CONDITIONER_STOP", null);
+            case 5:
+                return ("WHISTLE_FLASH", null);
             case 16:
                 return ("ENGINE_STOP", null);
             case 19:
@@ -436,6 +547,47 @@ public sealed class ChinaProtocolClient
                 return ("FLASH", null);
             case 28:
                 return ("SKYLIGNT_CLOSE", new JsonObject { ["skyLight"] = 0 });
+            case 30:
+                return ("SEAT_HEATING_START", new JsonObject { ["leftFront"] = 3, ["operationTime"] = 600 });
+            case 31:
+                return ("SEAT_HEATING_START", new JsonObject { ["rightFront"] = 3, ["operationTime"] = 600 });
+            case 32:
+                return ("SEAT_VENTILATION_START", new JsonObject { ["leftFront"] = 3, ["operationTime"] = 600 });
+            case 33:
+                return ("SEAT_VENTILATION_START", new JsonObject { ["rightFront"] = 3, ["operationTime"] = 600 });
+            case 34:
+                return ("SEAT_HEATING_STOP", new JsonObject { ["leftFront"] = 0, ["operationMode"] = 1, ["rightFront"] = 0 });
+            case 35:
+                return ("SEAT_VENTILATION_STOP", new JsonObject { ["leftFront"] = 0, ["operationMode"] = 2, ["rightFront"] = 0 });
+            case 36:
+                return ("STEERING_WHEEL_HEATING", new JsonObject { ["operationTime"] = 600 });
+            case 37:
+                return ("STEERING_WHEEL_HEATLESS", null);
+            case 38:
+                return ("DEFROST_FRONT_START", new JsonObject { ["operationTime"] = 900 });
+            case 39:
+                return ("DEFROST_FRONT_STOP", null);
+            case 40:
+                return ("DEFROST_BACK_START", new JsonObject { ["operationTime"] = 900 });
+            case 41:
+                return ("DEFROST_BACK_STOP", null);
+            case 42:
+                return ("CABIN_CLEANING_START", new JsonObject { ["operationTime"] = 60 });
+            case 43:
+                return ("COMFORT_MODE_CTRL", new JsonObject { ["action"] = 1, ["modeId"] = "4982234", ["type"] = "1" });
+            case 44:
+                return ("COMFORT_MODE_CTRL", new JsonObject { ["action"] = 1, ["modeId"] = "4982235", ["type"] = "2" });
+            case 45:
+                return ("COMFORT_MODE_CTRL", new JsonObject { ["action"] = 1, ["modeId"] = "4982235", ["type"] = "2" });
+            // 电池包保温（frida 实测 2026-08-29）：无 cmdBody，只有 controlType
+            case 47:
+                return ("BATTERY_GUN_HEAT_START", null);
+            case 48:
+                return ("BATTERY_GUN_HEAT_STOP", null);
+            case 49:
+                return ("BATTERY_INITIATIVE_HEAT_START", null);
+            case 50:
+                return ("BATTERY_INITIATIVE_HEAT_STOP", null);
             default:
                 return (null, null);
         }
@@ -479,7 +631,7 @@ public sealed class ChinaProtocolClient
                     break;
                 }
 
-                if (climateMode is not ("cool" or "heat"))
+                if (climateMode is not ("cool" or "heat" or "auto"))
                 {
                     throw new GwmApiException(
                         "CN_CLIMATE_MODE",
@@ -492,17 +644,14 @@ public sealed class ChinaProtocolClient
                 function = request.AirAlreadyOn
                     ? "GW.M.SET_AIR_PRM"
                     : "GW.M.SET_AND_OPEN_COMMAND";
-                if (!request.AirAlreadyOn)
-                {
-                    command["cmdCode"] = 6;
-                }
+                command["cmdCode"] = 6;
 
                 command["airParams"] = new JsonObject
                 {
                     ["runTime"] = request.RunTimeMinutes ?? 15,
                     ["temperature"] = request.Temperature ?? 22,
                     ["coldSwitch"] = climateMode == "cool" ? "1" : "0",
-                    ["heatSwitch"] = climateMode == "heat" ? "1" : "0",
+                    ["heatSwitch"] = climateMode is "heat" or "auto" ? "1" : "0",
                     // This is the app's linked hybrid-engine-heating switch. Leave it disabled;
                     // ordinary engine start is a separate, explicit user command.
                     ["engineControl"] = 0
@@ -617,28 +766,140 @@ public sealed class ChinaProtocolClient
         string vin,
         CancellationToken cancellationToken)
     {
+        // The v3.0 result endpoint answers with messageList[].messageData =
+        // {resultCode, resultMessage, transactionId, ...}. Map it onto the shared
+        // RemoteCtrlResultT5 shape so the caller's pending/success checks work
+        // unchanged. resultCode "2" = still pending, "0" = success.
         var data = await SendBeanTechGetAsync(
-            BeanTechBaseUrl + "app-api/api/v1.0/vehicle/getRemoteCtrlResultT5",
-            new Dictionary<string, string>(StringComparer.Ordinal) { ["seqNo"] = transactionId },
+            BeanTechBaseUrl + "app-api/api/v3.0/vehicle/remote-ctrl/result",
+            new Dictionary<string, string>(StringComparer.Ordinal)
+            {
+                ["seqNo"] = transactionId,
+                ["vin"] = vin,
+                ["msgType"] = "remote"
+            },
             vin,
             cancellationToken);
-        var list = data as JsonArray
-                   ?? Property(data, "resultList") as JsonArray
-                   ?? Property(data, "list") as JsonArray;
-        if (list is null)
+
+        if (Property(data, "messageList") is not JsonArray list)
         {
             return Array.Empty<RemoteCtrlResultT5>();
         }
 
-        var results = list.Deserialize<RemoteCtrlResultT5[]>(SerializerOptions)
-                      ?? Array.Empty<RemoteCtrlResultT5>();
-        foreach (var result in results.Where(result =>
-                     result is not null && String.IsNullOrWhiteSpace(result.HwCommandId)))
+        var results = new List<RemoteCtrlResultT5>();
+        foreach (var message in list)
         {
-            result.HwCommandId = sequenceNumber;
+            var messageData = Property(message, "messageData") ?? message;
+            results.Add(new RemoteCtrlResultT5
+            {
+                HwCommandId = sequenceNumber,
+                ResultCode = Value(messageData, "resultCode"),
+                ResultMsg = Value(messageData, "resultMessage")
+            });
         }
 
-        return results;
+        return results.ToArray();
+    }
+
+    // 智能预约充电（beantech）。车端 chargingMode 的语义是**反的**：
+    // 0 = 开启预约充电（只在 chargeSetParam.customTime 时间窗内充），1 = 即插即充。
+    // 与 navinfo 路径一致（SetChargingPlanAsync 里 `chargeingMode = Enable ? "0" : "1"`）。
+    // 别再按"1=开"去改，实测反了。
+    private const string BeanTechChargeSettingPath = "app-api/api/v3.0/vehicle/charge/setting";
+    private const int BeanTechChargeModeScheduled = 0;
+    private const int BeanTechChargeModeImmediate = 1;
+
+    private Task<JsonNode> ReadBeanTechChargeSettingAsync(
+        string vin,
+        CancellationToken cancellationToken) =>
+        SendBeanTechGetAsync(
+            BeanTechBaseUrl + BeanTechChargeSettingPath + "/" + Uri.EscapeDataString(vin),
+            new Dictionary<string, string>(StringComparer.Ordinal) { ["strategy"] = "5" },
+            vin,
+            cancellationToken);
+
+    public async Task<(bool Enabled, string? StartTime, string? EndTime)> GetBeanTechChargeSettingAsync(
+        string vin,
+        CancellationToken cancellationToken)
+    {
+        var data = await ReadBeanTechChargeSettingAsync(vin, cancellationToken);
+        var custom = Property(Property(data, "chargeSetParam"), "customTime");
+        return (
+            Value(data, "chargingMode")
+                == BeanTechChargeModeScheduled.ToString(CultureInfo.InvariantCulture),
+            Value(custom, "startTime"),
+            Value(custom, "endTime"));
+    }
+
+    public async Task<string> SetBeanTechChargingModeAsync(
+        string vin,
+        bool enable,
+        CancellationToken cancellationToken)
+    {
+        // 先读再回写：只改 chargingMode，chargeSetParam（含用户在 App 里设的 customTime
+        // 时间窗和 drivingPlanTimes）与 chargeStrategy 原样回传，否则会把这些设置冲掉。
+        var current = await ReadBeanTechChargeSettingAsync(vin, cancellationToken);
+
+        var seqNo = Guid.NewGuid().ToString("N")
+                    + Random.Shared.Next(1000, 10000).ToString(CultureInfo.InvariantCulture);
+        var body = new JsonObject
+        {
+            ["vin"] = vin,
+            ["chargingMode"] = enable ? BeanTechChargeModeScheduled : BeanTechChargeModeImmediate,
+            ["chargeStrategy"] =
+                Int32.TryParse(Value(current, "chargeStrategy"), out var strategy) ? strategy : 5,
+            ["seqNo"] = seqNo
+        };
+
+        if (Property(current, "chargeSetParam") is JsonNode param)
+        {
+            body["chargeSetParam"] = JsonNode.Parse(param.ToJsonString());
+        }
+
+        await SendBeanTechPostAsync(
+            BeanTechBaseUrl + BeanTechChargeSettingPath,
+            body,
+            vin,
+            cancellationToken);
+
+        return seqNo;
+    }
+
+    // 充电设置的结果轮询用 msgType=charge（远控命令用的是 remote，别搞混）。
+    // 实测响应：messageList[0].messageData = {resultCode:"0", resultMessage:"充电设置成功", ...}
+    // resultCode "2" = 远控指令待执行（还没完成）。
+    public async Task<(string? ResultCode, string? ResultMessage)> GetBeanTechChargeResultAsync(
+        string seqNo,
+        string vin,
+        CancellationToken cancellationToken)
+    {
+        var data = await SendBeanTechGetAsync(
+            BeanTechBaseUrl + "app-api/api/v3.0/vehicle/remote-ctrl/result",
+            new Dictionary<string, string>(StringComparer.Ordinal)
+            {
+                ["seqNo"] = seqNo,
+                ["vin"] = vin,
+                ["msgType"] = "charge"
+            },
+            vin,
+            cancellationToken);
+
+        if (Property(data, "messageList") is not JsonArray list)
+        {
+            return (null, null);
+        }
+
+        foreach (var message in list)
+        {
+            var messageData = Property(message, "messageData") ?? message;
+            var resultCode = Value(messageData, "resultCode");
+            if (!String.IsNullOrWhiteSpace(resultCode))
+            {
+                return (resultCode, Value(messageData, "resultMessage"));
+            }
+        }
+
+        return (null, null);
     }
 
     public async Task<ChargingInfos> GetChargingInfosAsync(
@@ -907,7 +1168,8 @@ public sealed class ChinaProtocolClient
         string url,
         JsonObject body,
         string? vin,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        string? securityToken = null)
     {
         var rawBody = body.ToJsonString();
         using var request = new HttpRequestMessage(HttpMethod.Post, url)
@@ -915,6 +1177,7 @@ public sealed class ChinaProtocolClient
             Content = CreateOfficialJsonContent(rawBody)
         };
         AddBeanTechHeaders(request, "json=" + rawBody, vin);
+        AddHeader(request, "securityToken", securityToken);
         ApplyChinaTransportDefaults(request);
         using var response = await _beanTechClient.SendAsync(request, cancellationToken);
         var root = await ReadJsonAsync(response, "China BeanTech", cancellationToken);

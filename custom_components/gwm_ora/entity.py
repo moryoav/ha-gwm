@@ -74,6 +74,11 @@ class GwmOraEntity(CoordinatorEntity[GwmOraDataUpdateCoordinator]):
             self.coordinator.data,
         )
 
+    @property
+    def security_pin_configured(self) -> bool:
+        """Return whether the encrypted security PIN is configured (BeanTech)."""
+        return bool((self.coordinator.data or {}).get("security_pin_configured"))
+
 
 def _vehicle_charging_control_available(
     vehicle: dict[str, Any] | None,

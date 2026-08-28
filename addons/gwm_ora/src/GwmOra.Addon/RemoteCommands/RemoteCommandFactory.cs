@@ -46,8 +46,46 @@ public static class RemoteCommandFactory
         };
     }
 
+    // Overloads without a security password, for callers and regions that do not
+    // need one. China BeanTech requires it, so the add-on always passes it through
+    // the primary overloads below.
     public static SendCmd CreateChinaClimateCommand(
         string vin,
+        string mode,
+        int temperature,
+        int operationTimeMinutes,
+        bool airAlreadyOn) =>
+        CreateChinaClimateCommand(
+            vin,
+            String.Empty,
+            mode,
+            temperature,
+            operationTimeMinutes,
+            airAlreadyOn);
+
+    public static SendCmd CreateChinaCommand(
+        string vin,
+        ChinaRemoteCommandKind kind,
+        int commandCode,
+        int? runTimeMinutes = null,
+        int? temperature = null,
+        int? openAngle = null,
+        string? climateMode = null,
+        bool airAlreadyOn = false) =>
+        CreateChinaCommand(
+            vin,
+            String.Empty,
+            kind,
+            commandCode,
+            runTimeMinutes,
+            temperature,
+            openAngle,
+            climateMode,
+            airAlreadyOn);
+
+    public static SendCmd CreateChinaClimateCommand(
+        string vin,
+        string securityPassword,
         string mode,
         int temperature,
         int operationTimeMinutes,
@@ -55,6 +93,7 @@ public static class RemoteCommandFactory
     {
         return CreateChinaCommand(
             vin,
+            securityPassword,
             ChinaRemoteCommandKind.Climate,
             mode == "off" ? 7 : 6,
             operationTimeMinutes,
@@ -65,6 +104,7 @@ public static class RemoteCommandFactory
 
     public static SendCmd CreateChinaCommand(
         string vin,
+        string securityPassword,
         ChinaRemoteCommandKind kind,
         int commandCode,
         int? runTimeMinutes = null,
@@ -86,7 +126,7 @@ public static class RemoteCommandFactory
                 AirAlreadyOn = airAlreadyOn
             },
             RemoteType = "0",
-            SecurityPassword = String.Empty,
+            SecurityPassword = securityPassword,
             Type = 2,
             Vin = vin
         };

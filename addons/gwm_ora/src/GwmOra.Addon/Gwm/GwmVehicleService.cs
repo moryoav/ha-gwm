@@ -127,8 +127,11 @@ public sealed class GwmVehicleService
         && (String.Equals(_options.Region, "cn", StringComparison.OrdinalIgnoreCase)
             || !String.IsNullOrWhiteSpace(_options.SecurityPin));
 
+    // 中国区两个平台的充电控制模型不同，但都支持：navinfo 走 charging plan 时间窗，
+    // beantech 走 charge/setting 的 chargingMode 开关（frida 实测 2026-08-29 实现）。
     private bool ChargingControlAvailable(Vehicle vehicle) =>
         _options.EnableChargingControl
         && (!String.Equals(_options.Region, "cn", StringComparison.OrdinalIgnoreCase)
-            || String.Equals(vehicle.BelongPlatform?.Trim(), "navinfo", StringComparison.OrdinalIgnoreCase));
+            || String.Equals(vehicle.BelongPlatform?.Trim(), "navinfo", StringComparison.OrdinalIgnoreCase)
+            || String.Equals(vehicle.BelongPlatform?.Trim(), "beantech", StringComparison.OrdinalIgnoreCase));
 }

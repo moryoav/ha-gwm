@@ -137,6 +137,52 @@ public partial class GwmApiClient
             cancellationToken);
     }
 
+    // 智能预约充电（beantech 专属）。navinfo/海外用的是 charging plan 那套时间窗模型，
+    // 这里是车端单一的 chargingMode 开关，两者不通用。
+    public Task<(bool Enabled, string? StartTime, string? EndTime)> GetBeanTechChargeSettingAsync(
+        string vin,
+        CancellationToken cancellationToken)
+    {
+        if (_chinaClient is null)
+        {
+            throw new GwmApiException(
+                "CN_UNSUPPORTED_PLATFORM",
+                "Smart scheduled charging is only available on the China BeanTech platform.");
+        }
+
+        return _chinaClient.GetBeanTechChargeSettingAsync(vin, cancellationToken);
+    }
+
+    public Task<string> SetBeanTechChargingModeAsync(
+        string vin,
+        bool enable,
+        CancellationToken cancellationToken)
+    {
+        if (_chinaClient is null)
+        {
+            throw new GwmApiException(
+                "CN_UNSUPPORTED_PLATFORM",
+                "Smart scheduled charging is only available on the China BeanTech platform.");
+        }
+
+        return _chinaClient.SetBeanTechChargingModeAsync(vin, enable, cancellationToken);
+    }
+
+    public Task<(string? ResultCode, string? ResultMessage)> GetBeanTechChargeResultAsync(
+        string seqNo,
+        string vin,
+        CancellationToken cancellationToken)
+    {
+        if (_chinaClient is null)
+        {
+            throw new GwmApiException(
+                "CN_UNSUPPORTED_PLATFORM",
+                "Smart scheduled charging is only available on the China BeanTech platform.");
+        }
+
+        return _chinaClient.GetBeanTechChargeResultAsync(seqNo, vin, cancellationToken);
+    }
+
     public Task<ChargingInfos> GetChargingInfosAsync(string vin, CancellationToken cancellationToken)
     {
         if (_chinaClient is not null)

@@ -23,14 +23,23 @@ CHINA_REMOTE_BUTTONS: tuple[tuple[str, str], ...] = (
     ("sunroof_tilt", "tilt_sunroof"),
     ("sunroof_half", "half_open_sunroof"),
     ("sunroof_full", "fully_open_sunroof"),
+    ("cabin_cleaning", "cabin_cleaning"),
+    ("comfort_warm", "comfort_warm"),
+    ("comfort_cool", "comfort_cool"),
+    ("comfort_last", "comfort_last"),
+    ("comfort_off", "comfort_off"),
 )
 
 BEANTECH_REMOTE_ACTIONS = {
-    "remote_start",
-    "remote_stop",
     "horn",
     "flash_lights",
+    "horn_and_lights",
     "sunroof_close",
+    "cabin_cleaning",
+    "comfort_warm",
+    "comfort_cool",
+    "comfort_last",
+    "comfort_off",
 }
 
 
@@ -94,7 +103,11 @@ class GwmOraCloseWindowsButton(GwmOraEntity, ButtonEntity):
     @property
     def available(self) -> bool:
         """Return whether close-window commands are available."""
-        return super().available and self.remote_commands_available
+        return (
+            super().available
+            and self.remote_commands_available
+            and (not self.is_china_beantech or self.security_pin_configured)
+        )
 
     async def async_press(self) -> None:
         """Close windows."""
@@ -115,15 +128,26 @@ class GwmOraChinaRemoteButton(GwmOraEntity, ButtonEntity):
     @property
     def available(self) -> bool:
         """Return whether this China command is available."""
+        needs_pin = self._action in ("sunroof_close",)
         return (
             super().available
             and self.remote_commands_available
             and self.coordinator.region == "cn"
+            and (not needs_pin or self.security_pin_configured)
         )
 
     async def async_press(self) -> None:
         """Queue the configured China remote command."""
-        command = await async_call_addon_api(
-            self._api.async_vehicle_control(self.vin, self._action)
-        )
+        if self._action == "remote_start":
+            command = await async_call_addon_api(
+                self._api.async_vehicle_control(
+                    self.vin,
+                    self._action,
+                    run_time_minutes=self.coordinator.remote_start_run_time(self.vin),
+                )
+            )
+        else:
+            command = await async_call_addon_api(
+                self._api.async_vehicle_control(self.vin, self._action)
+            )
         self.coordinator.async_track_command(command)

@@ -43,8 +43,12 @@ class GwmOraClimate(GwmOraEntity, ClimateEntity):
         super().__init__(coordinator, vin)
         self._api = api
         self._attr_unique_id = f"{vin}_ac_climate"
-        self._attr_hvac_modes = [HVACMode.OFF, HVACMode.COOL]
-        if coordinator.region == "cn":
+        self._attr_hvac_modes = (
+            [HVACMode.OFF, HVACMode.AUTO]
+            if self.is_china_beantech
+            else [HVACMode.OFF, HVACMode.COOL]
+        )
+        if coordinator.region == "cn" and not self.is_china_beantech:
             self._attr_hvac_modes.append(HVACMode.HEAT)
         self._requested_hvac_mode: HVACMode | None = None
         self._requested_target_temperature: float | None = None
@@ -55,7 +59,6 @@ class GwmOraClimate(GwmOraEntity, ClimateEntity):
         return (
             super().available
             and self.remote_commands_available
-            and not self.is_china_beantech
         )
 
     @property
@@ -69,6 +72,8 @@ class GwmOraClimate(GwmOraEntity, ClimateEntity):
         """Return current HVAC mode."""
         if self.climate.get("mode") == "off":
             return HVACMode.OFF
+        if self.is_china_beantech:
+            return self._requested_hvac_mode or HVACMode.AUTO
         return self._requested_hvac_mode or HVACMode.COOL
 
     @property
@@ -103,6 +108,7 @@ class GwmOraClimate(GwmOraEntity, ClimateEntity):
         mode = {
             HVACMode.COOL: "cool",
             HVACMode.HEAT: "heat",
+            HVACMode.AUTO: "auto",
         }.get(hvac_mode, "off")
         command = await async_call_addon_api(self._api.async_set_climate(self.vin, mode=mode))
         self._requested_hvac_mode = None if hvac_mode == HVACMode.OFF else hvac_mode

@@ -183,6 +183,48 @@ api.MapPost("/vehicles/{vin}/charging/plan", async (string vin, ChargingPlanRequ
     }
 });
 
+api.MapGet("/vehicles/{vin}/charging/mode", async (string vin, RemoteCommandService commands, CancellationToken cancellationToken) =>
+{
+    try
+    {
+        return Results.Ok(await commands.GetChargingModeAsync(vin, cancellationToken));
+    }
+    catch (ArgumentException ex)
+    {
+        return Results.Problem(ex.Message, statusCode: StatusCodes.Status400BadRequest);
+    }
+    catch (Exception ex)
+    {
+        return Results.Problem(ex.Message, statusCode: StatusCodes.Status502BadGateway);
+    }
+});
+
+api.MapPost("/vehicles/{vin}/charging/mode", (string vin, ChargingModeRequest request, RemoteCommandService commands) =>
+{
+    if (request.Enable is null)
+    {
+        return Results.Problem("enable is required.", statusCode: StatusCodes.Status400BadRequest);
+    }
+
+    try
+    {
+        // 返回命令记录（含 id），集成侧据此追踪状态，跟其他远控命令一致。
+        return Results.Accepted(value: commands.SetChargingMode(vin, request.Enable.Value));
+    }
+    catch (RemoteCommandUnavailableException ex)
+    {
+        return Results.Problem(ex.Message, statusCode: StatusCodes.Status403Forbidden);
+    }
+    catch (ArgumentException ex)
+    {
+        return Results.Problem(ex.Message, statusCode: StatusCodes.Status400BadRequest);
+    }
+    catch (Exception ex)
+    {
+        return Results.Problem(ex.Message, statusCode: StatusCodes.Status502BadGateway);
+    }
+});
+
 app.MapGet("/", (GwmVehicleService vehicles) => IngressPage.Render(vehicles));
 
 await app.RunAsync();

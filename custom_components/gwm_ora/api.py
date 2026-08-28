@@ -112,6 +112,18 @@ class GwmOraApiClient:
         """Return the vehicle's charging schedule."""
         return await self._request("GET", f"/vehicles/{vin}/charging/plan")
 
+    async def async_get_charging_mode(self, vin: str) -> dict[str, Any]:
+        """Return BeanTech smart scheduled charging state and its time window."""
+        return await self._request("GET", f"/vehicles/{vin}/charging/mode")
+
+    async def async_set_charging_mode(self, vin: str, *, enable: bool) -> dict[str, Any]:
+        """Turn BeanTech smart scheduled charging on or off."""
+        return await self._request(
+            "POST",
+            f"/vehicles/{vin}/charging/mode",
+            json={"enable": enable},
+        )
+
     async def async_set_charging_plan(
         self,
         vin: str,
