@@ -24,7 +24,9 @@ from .const import (
     ATTR_END_TIME,
     ATTR_START_TIME,
     ATTR_VIN,
+    CONF_CONNECTION_TYPE,
     CONF_TOKEN,
+    CONNECTION_TYPE_CLOUD,
     DEFAULT_NAME,
     DOMAIN,
     LEGACY_DEFAULT_NAME,
@@ -132,6 +134,12 @@ def _async_register_services(hass: HomeAssistant) -> None:
 
 async def async_setup_entry(hass: HomeAssistant, entry: GwmOraConfigEntry) -> bool:
     """Set up GWM from a config entry."""
+    # Task 12 owns native account flows only. Task 13 will attach the direct
+    # coordinator and entity platforms; until then a validated direct entry is
+    # intentionally inert while the released add-on path remains unchanged.
+    if entry.data.get(CONF_CONNECTION_TYPE) == CONNECTION_TYPE_CLOUD:
+        return True
+
     if entry.title == LEGACY_DEFAULT_NAME:
         hass.config_entries.async_update_entry(entry, title=DEFAULT_NAME)
 
@@ -168,5 +176,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: GwmOraConfigEntry) -> bo
 
 async def async_unload_entry(hass: HomeAssistant, entry: GwmOraConfigEntry) -> bool:
     """Unload a config entry."""
+    if entry.data.get(CONF_CONNECTION_TYPE) == CONNECTION_TYPE_CLOUD:
+        return True
     entry.runtime_data.coordinator.async_cancel_command_tasks()
     return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)

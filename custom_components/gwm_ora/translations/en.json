@@ -2,6 +2,14 @@
   "config": {
     "step": {
       "user": {
+        "title": "Set up GWM",
+        "description": "Connect Home Assistant directly to your GWM cloud account, or keep using the companion add-on during the migration.",
+        "menu_options": {
+          "cloud": "GWM cloud account",
+          "addon": "Companion add-on"
+        }
+      },
+      "addon": {
         "title": "GWM add-on",
         "description": "Connect to a running GWM add-on. This is mostly useful for development or non-Supervisor installs.",
         "data": {
@@ -15,10 +23,53 @@
           "token": "Generated add-on API token. GWM account credentials never go here."
         }
       },
-      "reconfigure": {
-        "title": "Reconfigure GWM add-on",
-        "description": "Update the add-on API connection used by this integration. For normal Home Assistant add-on installs, restarting the add-on should rediscover and update these values automatically.",
+      "cloud": {
+        "title": "Choose GWM cloud region",
+        "description": "Choose the region used by the official GWM app for this account. Mainland China remains unavailable here until its separate live-read safety gate passes.",
         "data": {
+          "region": "Cloud region"
+        },
+        "data_description": {
+          "region": "This must match the account registration region, not the vehicle's current location."
+        }
+      },
+      "account": {
+        "title": "Sign in to GWM",
+        "description": "Enter the account details used by the official app. Authentication is performed directly against the selected GWM cloud. The generated device identity and authentication result are not persisted at this checkpoint.",
+        "data": {
+          "country": "Registration country",
+          "account": "Email, username, or registered phone",
+          "password": "Password"
+        },
+        "data_description": {
+          "country": "Two-letter country where the account is registered.",
+          "account": "Use the same account identifier as the official GWM app.",
+          "password": "Stored in the Home Assistant config entry so the next read-only checkpoint can authenticate; it is redacted from diagnostics."
+        }
+      },
+      "verification": {
+        "title": "Enter verification code",
+        "description": "Enter the one-time code sent by GWM. Codes are used once and are never stored.",
+        "data": {
+          "verification_code": "Verification code"
+        }
+      },
+      "session_reclaim": {
+        "title": "Allow ANZ session login",
+        "description": "Australia and New Zealand accounts permit only one active session. Continuing may sign out the official app or replace the add-on session. A dedicated shared-vehicle account is recommended.",
+        "data": {
+          "allow_session_reclaim": "I understand and want to continue"
+        }
+      },
+      "initialization": {
+        "title": "Retry China service initialization",
+        "description": "GWM login succeeded, but {failure_count} downstream service stage(s) did not initialize. Retry without requesting another SMS code. No partial session has been saved."
+      },
+      "reconfigure": {
+        "title": "Reconfigure GWM",
+        "description": "For direct-cloud entries, choose the replacement account region. For add-on entries, update the local API connection.",
+        "data": {
+          "region": "Cloud region",
           "host": "Host",
           "port": "Port",
           "token": "API token"
@@ -29,13 +80,23 @@
           "token": "Generated add-on API token. GWM account credentials never go here."
         }
       },
+      "reconfigure_account": {
+        "title": "Authenticate replacement account",
+        "description": "The replacement settings are applied only after GWM accepts them. Changing account context will allow the later persistence checkpoint to discard all old account-bound state safely.",
+        "data": {
+          "country": "Registration country",
+          "account": "Email, username, or registered phone",
+          "password": "Password"
+        }
+      },
       "reauth_confirm": {
-        "title": "Reconnect GWM add-on",
-        "description": "The add-on rejected the stored API token. Restart the add-on first; if this is a development install, enter the updated host, port, and token.",
+        "title": "Reconnect GWM",
+        "description": "For direct-cloud entries, enter the current password and complete any requested verification. For add-on entries, restart the add-on or update its local API details.",
         "data": {
           "host": "Host",
           "port": "Port",
-          "token": "API token"
+          "token": "API token",
+          "password": "Password"
         },
         "data_description": {
           "host": "Internal add-on hostname or development host.",
@@ -49,11 +110,50 @@
       }
     },
     "error": {
-      "cannot_connect": "Cannot connect to the add-on.",
-      "invalid_auth": "The add-on API token was rejected."
+      "cannot_connect": "Cannot connect to GWM.",
+      "invalid_auth": "GWM rejected the account credentials.",
+      "invalid_account": "Check the account, password, country, and selected region.",
+      "invalid_verification_code": "The verification code was rejected or expired.",
+      "rate_limited": "GWM rate-limited the request. Wait before trying again.",
+      "service_error": "GWM rejected the request with an unsupported or unexpected response.",
+      "local_configuration_error": "The bundled regional security material could not be validated.",
+      "unsupported_region": "This cloud region is not available for direct setup yet.",
+      "initialization_failed": "The downstream GWM services still could not initialize.",
+      "session_reclaim_not_confirmed": "Confirm that you understand the ANZ single-session effect before continuing."
     },
     "abort": {
-      "already_configured": "GWM is already configured."
+      "already_configured": "This GWM account is already configured.",
+      "china_live_validation_required": "Direct mainland-China setup remains disabled until the separate live-read safety gate passes.",
+      "invalid_flow_state": "This setup continuation is no longer valid. Start the flow again.",
+      "risk_control_required": "GWM requires a risk-control challenge. Complete it in the official app before trying again."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "GWM options",
+        "description": "Choose the direct-cloud polling interval and explicit feature opt-ins. Commands and charging remain unavailable until their later implementation checkpoints.",
+        "data": {
+          "poll_interval_seconds": "Polling interval",
+          "enable_remote_commands": "Enable remote commands",
+          "enable_charging_control": "Enable charging control",
+          "security_pin": "Vehicle security PIN",
+          "log_level": "Log level"
+        },
+        "data_description": {
+          "poll_interval_seconds": "Seconds between account-level cloud polls (30-3600).",
+          "enable_remote_commands": "Explicit opt-in only; this does not enable commands before their implementation checkpoints.",
+          "enable_charging_control": "Independent explicit opt-in for charging schedules.",
+          "security_pin": "Required for remote commands outside mainland China and redacted from diagnostics.",
+          "log_level": "Integration-specific diagnostic verbosity for later direct runtime work."
+        }
+      }
+    },
+    "error": {
+      "security_pin_required": "A vehicle security PIN is required when remote commands are enabled for this region."
+    },
+    "abort": {
+      "addon_options_managed": "Companion add-on options are still managed from the add-on configuration."
     }
   },
   "exceptions": {

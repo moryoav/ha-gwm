@@ -6,10 +6,10 @@ This document is the durable plan, behavior contract, decision log, and test led
 
 - Working branch: `feature/integration-only`
 - Branch point: `1184737` (`Update README GWM logo to SVG`)
-- Current checkpoint: Task 11 complete; the complete four-region normalized snapshot/model contract is ported and fixture-proven offline
-- Next checkpoint: Task 12 — direct-cloud config, verification, reauth, reconfigure, and options flows (not yet approved)
+- Current checkpoint: Task 12 complete; native direct-cloud setup/authentication flows and account options are offline-tested while the direct runtime remains intentionally inert
+- Next checkpoint: Task 13 — direct read-only coordinator and existing entity platforms (not yet approved)
 - Synchronized local `main`: `9daff32` (`v0.12.0`) through a two-parent merge without rebasing or selective cherry-picks
-- Task 11 completed immutable normalized snapshot models, exact known-signal mapping, and the existing snake-case entity contract without changing Home Assistant, the add-on/proxy runtime, persistence, commands, or charging
+- Task 12 added regional cloud setup, verification continuations, ANZ session-reclaim consent, reauthentication, authenticated reconfiguration, options, and comprehensive redaction without changing the add-on/proxy coordinator, entities, persistence, commands, or charging
 
 Work proceeds one explicitly approved task at a time. At the end of every task, update this document, run the checks appropriate to that checkpoint, create one focused commit, push it to `feature/integration-only`, report the result, and stop. Do not begin the next task without a new user green light.
 
@@ -264,7 +264,7 @@ After Task 22, packaging, installation migration, documentation, complete tests,
 - [x] Task 9 — Implement China production SMS authentication, multi-service sessions, and read parity.
 - [x] Task 10 — Implement Russia production authentication and read parity.
 - [x] Task 11 — Port and fixture-test four-region normalized snapshot/model mapping.
-- [ ] Task 12 — Add direct-cloud config, verification, reauth, reconfigure, and options flows.
+- [x] Task 12 — Add direct-cloud config, verification, reauth, reconfigure, and options flows.
 - [ ] Task 13 — Add the direct read-only coordinator and existing entity platforms.
 - [ ] Task 14 — Add persistent account-bound client state and a restart-safe command journal.
 - [ ] Task 15 — Add climate command parity, including China heating and in-place parameter updates.
@@ -328,6 +328,9 @@ The changed checkpoints stay intentionally narrow:
 | D-038 | 2026-08-28 | Classify Russia authentication side effects only from endpoint-scoped evidence. | Exact raw `110641` requests verification only after password login; submitted-code application errors remain unknown, only HTTP 401/403 proves code or token rejection, `429` remains rate limiting, and every other failure stops without refresh, login, SMS, retry, or state retirement. |
 | D-039 | 2026-08-28 | Preflight and exact-bind the static Russia bootstrap identity before every authentication network side effect. | Russia app reads use the bundled general RU identity rather than per-user enrollment. Exact RU subject/issuer, key, chain, validity, and scoped legacy TLS validation prevents swapped EU material or local certificate failure from causing a login or SMS request. |
 | D-040 | 2026-08-28 | Keep normalized snapshots immutable, redaction-safe, Home Assistant-independent, and shared by all four regional clients. | Every region now converges on the same privacy-minimized cloud DTOs. One mapper with an explicitly supplied refresh time and an explicit snake-case serialization boundary preserves the released entity contract without hidden clock access, regional duplication, or premature HA coupling. |
+| D-041 | 2026-08-28 | Give every config-flow authentication attempt one short-lived, cookie-free client that it owns and always closes; retain continuations only in flow memory. | This gives verification, ANZ reclaim, China initialization, cancellation, and local-resource failures finite lifecycle boundaries without prematurely serializing access tokens, certificates, private keys, verification codes, or generated device identities before Task 14. Only normalized user configuration, including the account password and later write-only PIN option, enters the HA config entry and diagnostics redact it. |
+| D-042 | 2026-08-28 | Implement and test the China flow-result strategy but keep `cn` absent from user and reconfigure region selectors until Gate A-CN's live prerequisite passes. | Sharing the finite Home Assistant routing logic now avoids later architectural drift, while aborting an attempted China selection prevents offline fixture parity from being presented as live cutover readiness. |
+| D-043 | 2026-08-28 | Keep authenticated direct entries intentionally inert during Task 12 and preserve the add-on setup/coordinator/entity path unchanged. | Task 12 can establish native configuration and authentication contracts in isolation; Task 13 remains the explicit checkpoint that owns direct polling and entity wiring, and Task 14 remains the restart-safe state checkpoint. |
 
 ## Post-Branch Main Drift Review
 
@@ -884,6 +887,55 @@ All checks passed!
 
 The Python warning and .NET nullable-annotation warnings remain the unchanged baseline warnings. Task 11 proves deterministic normalized read-model parity offline for all four regional paths; it does not change the separate live-evidence limitations already recorded for ANZ, Russia, or China.
 
+## Task 12 Native Direct-Cloud Flow Evidence
+
+Evidence captured on 2026-08-28 from `feature/integration-only`. Task 12 exercised Home Assistant flow objects and synthetic regional authentication outcomes entirely offline. It made no live cloud, login, SMS, verification delivery/submission, ANZ session claim, account, phone-app, vehicle, command, charging, publish, merge, or release request and used no live credential or session state.
+
+Delivered:
+
+- Added a native user menu that keeps the manual/Supervisor add-on route intact and offers a separate direct-cloud route for EU, Australia/New Zealand, and Russia. Mainland China has complete internal result routing but remains absent from selectors and aborts with the Gate A-CN prerequisite if requested.
+- Added normalized regional account forms, password/SMS verification continuations, a default-unchecked one-shot ANZ session-reclaim acknowledgement, retryable China downstream initialization, and an official-app risk-control stop. Client exceptions map to distinct authentication, verification, connectivity, throttling, local-material, and service errors without exposing raw cloud detail.
+- Added direct-cloud reauthentication for the same account and authenticated reconfiguration for a replacement region/account. Duplicate entries use a region-scoped pseudonymous account identifier; titles do not include an account, phone number, or e-mail address.
+- Added native options for a bounded 30–3600-second poll interval, independent remote-command and charging opt-ins, log level, and a non-China security PIN. The PIN is write-only in the UI, required only when remote commands are enabled, preserved on a blank enabled submission, and removed when remote commands are disabled.
+- Added an HA-facing authentication adapter that constructs and always closes one owned regional client per finite attempt, offloads bundled bootstrap-material reads, and keeps verification continuations, generated device identity, tokens, identifiers, issued certificates/keys, and authenticated results in memory only. Normalized user account configuration is stored for the later coordinator and redacted from diagnostics.
+- Expanded diagnostics redaction for current config secrets and every known future overseas/China token, account binding, device/user/platform identifier, certificate/key, VIN, and location field. Direct entries load and unload inertly without accessing coordinator runtime data until Task 13.
+- Added offline tests for regional credential/resource dispatch and closure-on-failure, EU verification, ANZ consent, Russia immediate authentication, the China activation/risk boundary, the error taxonomy, reauth, reconfigure, options, direct lifecycle, and current/future diagnostics redaction. The released add-on setup, coordinator, entities, services, and runtime behavior remain unchanged.
+
+Validation:
+
+```text
+# Task 12 focused HA flow/auth/lifecycle/redaction matrix (Windows, CPython 3.13.13; Home Assistant 2026.2.3)
+python -m pytest -q tests/python/test_cloud_auth.py tests/python/test_config_flow.py tests/python/test_direct_entry.py tests/python/test_quality_files.py
+41 passed, 1 warning
+
+python -m pytest -q tests/python
+985 passed, 1 warning
+
+python -m mypy gwm_ora_client
+Success: no issues found in 23 source files
+
+ruff check custom_components/gwm_ora gwm_ora_client tests/python
+All checks passed!
+
+python -m compileall -q custom_components/gwm_ora gwm_ora_client tests/python
+# no output; exit 0
+
+dotnet test GwmOra.sln --no-restore --nologo
+149 passed, 0 failed, 0 skipped
+
+# Dependency-minimal WSL/Linux, CPython 3.13.13 (HA intentionally excluded)
+python -m pytest -q tests/python/client
+920 passed
+
+python -m mypy gwm_ora_client
+Success: no issues found in 23 source files
+
+ruff check gwm_ora_client tests/python/client
+All checks passed!
+```
+
+The Python warning and .NET nullable-annotation warnings remain the unchanged baseline warnings. Task 12 proves the native Home Assistant configuration contract offline; it deliberately does not claim a usable direct polling runtime, restart-safe authentication state, China live activation, or any live regional login behavior.
+
 ## Checkpoint Log
 
 ### Task 1 — Branch, baseline, and migration ledger
@@ -1033,9 +1085,21 @@ Delivered:
 - Proved all four regional fixture paths, the complete known-signal matrix, malformed/unknown behavior, compatibility aliases, charging states, deterministic refresh time, serialization, and representation redaction.
 - Kept Home Assistant config and reauthentication flows, coordinator/entities, durable state, commands, charging, packaging, migration, add-on/proxy behavior, and live access unchanged.
 
+### Task 12 — Native direct-cloud flows and options
+
+Status: complete on 2026-08-28; Home Assistant flow contracts passed offline, with direct polling and durable state deliberately deferred.
+
+Delivered:
+
+- Added EU, ANZ, and Russia direct setup with regional account validation and finite verification handling; kept China user selection behind Gate A-CN while retaining tested internal continuation/risk routing.
+- Added explicit default-unchecked ANZ session-reclaim consent, direct reauthentication, authenticated account/region reconfiguration, duplicate protection, and non-personal entry titles.
+- Added bounded polling/log options plus independent command/charging opt-ins and write-only PIN behavior.
+- Added one owned/closed client per auth attempt, in-memory-only transient authentication state, broad diagnostics redaction, and an intentionally inert direct-entry lifecycle until Task 13.
+- Preserved the released add-on discovery/manual setup, proxy coordinator, entity, action, and unload behavior and made no live request.
+
 ### Next checkpoint (requires explicit approval)
 
-Task 12 will add native direct-cloud config, verification, reauthentication, reconfigure, and options flows without switching the existing coordinator/entities away from the add-on yet. Task 12 must not begin without a new user green light; any live cloud access still requires separate explicit approval.
+Task 13 will add the direct read-only coordinator and route the existing entity platforms to normalized snapshots while preserving the add-on compatibility path. It must deliberately retain ANZ basics `607099` as an empty-basics fallback, prevent overlapping account refreshes, own/cancel all per-entry client resources, and keep direct entries unavailable rather than successful on stale/error data. Task 13 must not begin without a new user green light; any live cloud access still requires separate explicit approval.
 
 ## Open Risks and Questions
 
@@ -1051,9 +1115,8 @@ Task 12 will add native direct-cloud config, verification, reauthentication, rec
 - China live evidence is currently limited to a contributed NavInfo WEY VV6 and selected reads/controls. Gate A-CN needs suitable sanitized access before direct China setup can be exposed, while heating, extended controls, charging, other platforms/models, and broader response encodings need their own later evidence.
 - The cloud DTOs intentionally retain only the fields required by authentication, reads, and normalized snapshots. All four regional paths and the complete known signal table are fixture-proven, but undocumented live/model-specific signal variations can still require future additive mappings without making other entities unavailable.
 - ANZ's exact basics `607099` response is now a typed raw-client optional-endpoint failure. The Task 13 coordinator must deliberately map it to empty basics to preserve the add-on polling service's nonfatal behavior.
-- Whether Task 12 should use one dedicated cookie-free client session per config entry or a policy-validated HA-owned session while preserving scoped TLS and unload ownership.
 - Availability of safe test accounts/vehicles for every regional read and write matrix.
-- ANZ side-by-side session effects remain untested. Task 6 prevents every password login without explicit one-shot consent and prevents automatic `607501` reclaim loops, but Task 12 must explain that consent clearly and the project still recommends a dedicated shared vehicle account.
+- ANZ side-by-side session effects remain untested. Task 6 prevents every password login without explicit one-shot consent and prevents automatic `607501` reclaim loops; Task 12 now presents that consent as a default-unchecked warning and the project still recommends a dedicated shared vehicle account.
 - ANZ `110641`, current token-expiry/rotation behavior, verification delivery/expiry, AU-versus-NZ differences, and unknown `checkSMSCode` failures lack sanitized current-service evidence; unknown errors stop without attempting the final login.
 - Russia application-level token-expiry and wrong/expired verification-code values lack sanitized evidence. Exact `110641` is therefore limited to the password-login challenge, submitted-code application failures remain unknown, and only HTTP 401/403 can retire or reject authentication state.
 - Safe handling and future renewal of bundled bootstrap certificates and OEM-derived key material.

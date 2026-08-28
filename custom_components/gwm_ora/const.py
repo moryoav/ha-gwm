@@ -11,6 +11,35 @@ DEFAULT_PORT = 8099
 CONF_TOKEN = "token"
 CONF_API_VERSION = "api_version"
 CONF_SLUG = "slug"
+CONF_CONNECTION_TYPE = "connection_type"
+CONNECTION_TYPE_ADDON = "addon"
+CONNECTION_TYPE_CLOUD = "cloud"
+CONF_REGION = "region"
+CONF_COUNTRY = "country"
+CONF_ACCOUNT = "account"
+CONF_PASSWORD = "password"
+CONF_VERIFICATION_CODE = "verification_code"
+CONF_ALLOW_SESSION_RECLAIM = "allow_session_reclaim"
+CONF_ENABLE_REMOTE_COMMANDS = "enable_remote_commands"
+CONF_ENABLE_CHARGING_CONTROL = "enable_charging_control"
+CONF_SECURITY_PIN = "security_pin"
+CONF_POLL_INTERVAL_SECONDS = "poll_interval_seconds"
+CONF_LOG_LEVEL = "log_level"
+
+REGION_EU = "eu"
+REGION_ANZ = "aus"
+REGION_RUSSIA = "rus"
+REGION_CHINA = "cn"
+SUPPORTED_CLOUD_REGIONS = (REGION_EU, REGION_ANZ, REGION_RUSSIA, REGION_CHINA)
+# Gate A-CN requires a separately approved live read before China can be
+# exposed in a direct Home Assistant flow.
+CONFIGURABLE_CLOUD_REGIONS = (REGION_EU, REGION_ANZ, REGION_RUSSIA)
+
+DEFAULT_POLL_INTERVAL_SECONDS = 60
+MIN_POLL_INTERVAL_SECONDS = 30
+MAX_POLL_INTERVAL_SECONDS = 3600
+DEFAULT_LOG_LEVEL = "info"
+LOG_LEVELS = ("trace", "debug", "info", "warning", "error")
 
 PLATFORMS: list[Platform] = [
     Platform.SENSOR,
