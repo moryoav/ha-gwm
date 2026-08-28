@@ -29,6 +29,20 @@ CHARGING_STATUS_OPTIONS = [
     "error",
 ]
 
+BEANTECH_SENSOR_KEYS = {
+    "charge_soc",
+    "charging_gun_model",
+    "hcu_powertrain_state",
+    "power",
+    "battery_pack_state",
+    "acc_clean_off",
+    "tbox_state",
+    "wireless_level",
+    "oil_segments",
+    "aux_battery_level",
+    "remaining_usable_charge_percent",
+}
+
 
 @dataclass(frozen=True, kw_only=True)
 class GwmOraSensorEntityDescription(SensorEntityDescription):
@@ -41,10 +55,13 @@ def _value(key: str) -> Callable[[dict[str, Any] | None], Any]:
     return lambda vehicle: vehicle_value(vehicle, key)
 
 
-def _enum_value(key: str) -> Callable[[dict[str, Any] | None], str | None]:
+def _enum_value(
+    key: str, options: set[str]
+) -> Callable[[dict[str, Any] | None], str | None]:
     def read(vehicle: dict[str, Any] | None) -> str | None:
         value = vehicle_value(vehicle, key)
-        return str(value) if value is not None else None
+        normalized = str(value) if value is not None else None
+        return normalized if normalized in options else None
 
     return read
 
@@ -60,7 +77,8 @@ def _charging_gun_model_value(vehicle: dict[str, Any] | None) -> str | None:
     if plugged is not True:
         return None
     model = values.get("charging_gun_model")
-    return str(model) if model is not None else None
+    normalized = str(model) if model is not None else None
+    return normalized if normalized in {"0", "1"} else None
 
 
 def _timestamp(key: str) -> Callable[[dict[str, Any] | None], datetime | None]:
@@ -134,7 +152,6 @@ SENSORS: tuple[GwmOraSensorEntityDescription, ...] = (
     GwmOraSensorEntityDescription(
         key="soce",
         translation_key="soce",
-        device_class=SensorDeviceClass.BATTERY,
         native_unit_of_measurement=PERCENTAGE,
         state_class=SensorStateClass.MEASUREMENT,
         value_fn=_value("soce"),
@@ -370,6 +387,8 @@ SENSORS: tuple[GwmOraSensorEntityDescription, ...] = (
     GwmOraSensorEntityDescription(
         key="charge_soc",
         translation_key="charge_soc",
+        native_unit_of_measurement=PERCENTAGE,
+        state_class=SensorStateClass.MEASUREMENT,
         entity_category=EntityCategory.DIAGNOSTIC,
         entity_registry_enabled_default=False,
         value_fn=_value("charge_soc"),
@@ -390,7 +409,7 @@ SENSORS: tuple[GwmOraSensorEntityDescription, ...] = (
         options=["1", "3", "6"],
         entity_category=EntityCategory.DIAGNOSTIC,
         entity_registry_enabled_default=False,
-        value_fn=_enum_value("hcu_powertrain_state"),
+        value_fn=_enum_value("hcu_powertrain_state", {"1", "3", "6"}),
     ),
     GwmOraSensorEntityDescription(
         key="power",
@@ -420,7 +439,7 @@ SENSORS: tuple[GwmOraSensorEntityDescription, ...] = (
         options=["0", "1"],
         entity_category=EntityCategory.DIAGNOSTIC,
         entity_registry_enabled_default=False,
-        value_fn=_enum_value("tbox_state"),
+        value_fn=_enum_value("tbox_state", {"0", "1"}),
     ),
     GwmOraSensorEntityDescription(
         key="wireless_level",
@@ -442,9 +461,29 @@ SENSORS: tuple[GwmOraSensorEntityDescription, ...] = (
         device_class=SensorDeviceClass.BATTERY,
         native_unit_of_measurement=PERCENTAGE,
         state_class=SensorStateClass.MEASUREMENT,
+        entity_registry_enabled_default=False,
         value_fn=_value("aux_battery_level"),
     ),
+    GwmOraSensorEntityDescription(
+        key="remaining_usable_charge_percent",
+        translation_key="remaining_usable_charge",
+        device_class=SensorDeviceClass.BATTERY,
+        native_unit_of_measurement=PERCENTAGE,
+        state_class=SensorStateClass.MEASUREMENT,
+        entity_registry_enabled_default=False,
+        value_fn=_value("remaining_usable_charge_percent"),
+    ),
 )
+
+
+def _sensor_descriptions_for_vehicle(
+    vehicle: dict[str, Any],
+    region: str,
+) -> tuple[GwmOraSensorEntityDescription, ...]:
+    """Return descriptions supported by the vehicle backend."""
+    if str(region or "").lower() == "cn" and str(vehicle.get("platform") or "").lower() == "beantech":
+        return SENSORS
+    return tuple(description for description in SENSORS if description.key not in BEANTECH_SENSOR_KEYS)
 
 
 async def async_setup_entry(
@@ -457,7 +496,10 @@ async def async_setup_entry(
         entry,
         async_add_entities,
         lambda vehicle: (
-            GwmOraSensor(entry.runtime_data.coordinator, vehicle["vin"], description) for description in SENSORS
+            GwmOraSensor(entry.runtime_data.coordinator, vehicle["vin"], description)
+            for description in _sensor_descriptions_for_vehicle(
+                vehicle, entry.runtime_data.coordinator.region
+            )
         ),
     )
 

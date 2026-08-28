@@ -30,6 +30,17 @@ NEW_SENSOR_KEYS = {
     "front_driver_seat_vent_level",
     "front_passenger_seat_vent_level",
     "sunroof_position_code",
+    "charge_soc",
+    "charging_gun_model",
+    "hcu_powertrain_state",
+    "power",
+    "battery_pack_state",
+    "acc_clean_off",
+    "tbox_state",
+    "wireless_level",
+    "oil_segments",
+    "aux_battery_level",
+    "remaining_usable_charge_percent",
 }
 
 NEW_BINARY_SENSOR_KEYS = {
@@ -42,6 +53,20 @@ NEW_BINARY_SENSOR_KEYS = {
     "steering_wheel_heater_active",
     "front_windscreen_heater_active",
     "gps_authorized",
+    "near_beam_active",
+    "far_beam_active",
+    "left_turn_lamp_active",
+    "right_turn_lamp_active",
+    "oil_alarm_active",
+    "engine_door_open",
+    "back_door_open",
+    "ac_auto_mode_active",
+    "air_clean_active",
+    "cabin_clean_active",
+    "tire_pressure_indicator_front_left",
+    "tire_pressure_indicator_front_right",
+    "tire_pressure_indicator_rear_left",
+    "tire_pressure_indicator_rear_right",
 }
 
 
@@ -85,6 +110,7 @@ def test_sensor_description_keys_cover_v1_contract() -> None:
         "disconnected",
         "connected",
         "charging",
+        "charging_complete",
         "awaiting_charging",
         "waiting_for_power",
         "error",
@@ -183,6 +209,99 @@ def test_optional_value_functions_tolerate_missing_vehicle_data() -> None:
         assert binary_descriptions[key].value_fn({"values": {}}) is None
 
 
+def test_beantech_entities_are_isolated_from_other_platforms() -> None:
+    pytest.importorskip("homeassistant")
+    from custom_components.gwm_ora.binary_sensor import (
+        BEANTECH_BINARY_SENSOR_KEYS,
+        _binary_sensor_descriptions_for_vehicle,
+    )
+    from custom_components.gwm_ora.sensor import (
+        BEANTECH_SENSOR_KEYS,
+        _sensor_descriptions_for_vehicle,
+    )
+
+    navinfo_sensors = {
+        description.key
+        for description in _sensor_descriptions_for_vehicle({"platform": "navinfo"}, "cn")
+    }
+    beantech_sensors = {
+        description.key
+        for description in _sensor_descriptions_for_vehicle({"platform": "beantech"}, "cn")
+    }
+    navinfo_binary = {
+        description.key
+        for description in _binary_sensor_descriptions_for_vehicle({"platform": "navinfo"}, "cn")
+    }
+    beantech_binary = {
+        description.key
+        for description in _binary_sensor_descriptions_for_vehicle({"platform": "beantech"}, "cn")
+    }
+    eu_beantech_sensors = {
+        description.key
+        for description in _sensor_descriptions_for_vehicle({"platform": "beantech"}, "eu")
+    }
+
+    assert BEANTECH_SENSOR_KEYS.isdisjoint(navinfo_sensors)
+    assert beantech_sensors >= BEANTECH_SENSOR_KEYS
+    assert BEANTECH_BINARY_SENSOR_KEYS.isdisjoint(navinfo_binary)
+    assert beantech_binary >= BEANTECH_BINARY_SENSOR_KEYS
+    assert BEANTECH_SENSOR_KEYS.isdisjoint(eu_beantech_sensors)
+
+
+def test_beantech_enum_values_reject_unknown_codes() -> None:
+    pytest.importorskip("homeassistant")
+    from custom_components.gwm_ora.sensor import SENSORS
+
+    descriptions = {description.key: description for description in SENSORS}
+    hcu = descriptions["hcu_powertrain_state"]
+    gun = descriptions["charging_gun_model"]
+
+    assert hcu.value_fn({"values": {"hcu_powertrain_state": 6}}) == "6"
+    assert hcu.value_fn({"values": {"hcu_powertrain_state": 99}}) is None
+    assert (
+        gun.value_fn(
+            {"values": {"charge_plug_connected": True, "charging_gun_model": 1}}
+        )
+        == "1"
+    )
+    assert (
+        gun.value_fn(
+            {"values": {"charge_plug_connected": True, "charging_gun_model": 99}}
+        )
+        is None
+    )
+
+
+def test_beantech_controls_only_expose_mapped_capabilities() -> None:
+    pytest.importorskip("homeassistant")
+    from custom_components.gwm_ora.button import (
+        BEANTECH_REMOTE_ACTIONS,
+        CHINA_REMOTE_BUTTONS,
+        _china_remote_buttons_for_vehicle,
+    )
+    from custom_components.gwm_ora.entity import (
+        _vehicle_charging_control_available,
+    )
+
+    beantech_actions = {
+        action
+        for action, _ in _china_remote_buttons_for_vehicle({"platform": "beantech"})
+    }
+    navinfo_actions = {
+        action
+        for action, _ in _china_remote_buttons_for_vehicle({"platform": "navinfo"})
+    }
+
+    assert beantech_actions == BEANTECH_REMOTE_ACTIONS
+    assert navinfo_actions == {action for action, _ in CHINA_REMOTE_BUTTONS}
+    assert not _vehicle_charging_control_available(
+        {"capabilities": {"charging_control": False}},
+        {"charging_control_enabled": True},
+    )
+    assert _vehicle_charging_control_available(
+        {"capabilities": {"charging_control": True}},
+        {"charging_control_enabled": True},
+    )
 def test_window_entities_keep_unique_ids_but_use_market_safe_values() -> None:
     pytest.importorskip("homeassistant")
     from custom_components.gwm_ora.binary_sensor import BINARY_SENSORS

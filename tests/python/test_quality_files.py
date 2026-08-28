@@ -83,8 +83,8 @@ def test_addon_metadata_declares_internal_api_and_discovery() -> None:
     assert "ingress_port: 8099" in config
     assert "8099/tcp: null" in config
     assert 'ASPNETCORE_HTTP_PORTS: "8099"' in config
-    assert 'version: "0.12.0"' in config
-    assert 'GWM_ORA_ADDON_VERSION: "0.12.0"' in config
+    assert 'version: "0.13.0"' in config
+    assert 'GWM_ORA_ADDON_VERSION: "0.13.0"' in config
     assert "ASPNETCORE_URLS" not in config
     assert "ENV ASPNETCORE_HTTP_PORTS=8099" in dockerfile
     assert "ENV GWM_ORA_ADDON_VERSION=${BUILD_VERSION}" in dockerfile
@@ -151,7 +151,7 @@ def test_hacs_default_repository_readiness_files_exist() -> None:
     assert manifest["codeowners"] == ["@moryoav"]
     assert manifest["domain"] == "gwm_ora"
     assert manifest["name"] == "GWM"
-    assert manifest["version"] == "0.12.0"
+    assert manifest["version"] == "0.13.0"
 
     custom_components = [path.name for path in (ROOT / "custom_components").iterdir() if path.is_dir()]
     assert custom_components == ["gwm_ora"]
@@ -164,3 +164,22 @@ def test_hacs_default_repository_readiness_files_exist() -> None:
     assert "category: integration" in hacs_workflow
     assert "ignore:" not in hacs_workflow
     assert "uses: home-assistant/actions/hassfest@master" in hassfest_workflow
+
+
+def test_translations_match_english_structure() -> None:
+    translations = ROOT / "custom_components/gwm_ora/translations"
+    english = json.loads((translations / "en.json").read_text(encoding="utf-8"))
+    simplified_chinese = json.loads(
+        (translations / "zh-Hans.json").read_text(encoding="utf-8")
+    )
+
+    def leaf_paths(value, prefix="") -> set[str]:
+        if not isinstance(value, dict):
+            return {prefix}
+        return {
+            path
+            for key, child in value.items()
+            for path in leaf_paths(child, f"{prefix}.{key}" if prefix else key)
+        }
+
+    assert leaf_paths(simplified_chinese) == leaf_paths(english)

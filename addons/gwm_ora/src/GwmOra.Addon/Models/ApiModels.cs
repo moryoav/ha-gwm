@@ -29,6 +29,7 @@ public sealed class VehiclesResponse
 public sealed class VehicleSnapshot
 {
     public string Vin { get; init; } = String.Empty;
+    public string? Platform { get; init; }
     public string Name { get; init; } = String.Empty;
     public string? Manufacturer { get; init; }
     public string? Model { get; init; }
@@ -58,6 +59,7 @@ public sealed class TimestampSnapshot
 public sealed class VehicleCapabilities
 {
     public bool RemoteCommands { get; init; }
+    public bool ChargingControl { get; init; }
 }
 
 public sealed class VehicleValues
@@ -132,10 +134,10 @@ public sealed class VehicleValues
     public bool? AirCleanActive { get; init; }
     public bool? CabinCleanActive { get; init; }
     public bool? BackDoorOpen { get; init; }
-    public int? ChargeSoc { get; init; }
+    public double? ChargeSoc { get; init; }
     public int? ChargingGunModel { get; init; }
     public int? HcuPowertrainState { get; init; }
-    public int? Power { get; init; }
+    public double? Power { get; init; }
     public int? BatteryPackState { get; init; }
     public int? AccCleanOff { get; init; }
     public int? TboxState { get; init; }
@@ -146,6 +148,7 @@ public sealed class VehicleValues
     public bool? TirePressureIndicatorRearLeft { get; init; }
     public bool? TirePressureIndicatorRearRight { get; init; }
     public double? AuxBatteryLevel { get; init; }
+    public double? RemainingUsableChargePercent { get; init; }
 }
 
 public sealed class ClimateSnapshot

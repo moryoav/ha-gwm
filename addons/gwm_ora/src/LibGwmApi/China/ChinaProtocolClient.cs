@@ -227,9 +227,14 @@ public sealed class ChinaProtocolClient
         CancellationToken cancellationToken)
     {
         var vehicle = await RequireChinaVehicleAsync(vin, cancellationToken);
-        if (String.Equals(vehicle.BelongPlatform, "beantech", StringComparison.OrdinalIgnoreCase))
+        if (IsPlatform(vehicle, "beantech"))
         {
             return await GetBeanTechLastStatusAsync(vehicle, cancellationToken);
+        }
+
+        if (!IsPlatform(vehicle, "navinfo"))
+        {
+            throw UnsupportedPlatform(vehicle);
         }
 
         var body = await SendAutoAiAsync(
@@ -290,6 +295,10 @@ public sealed class ChinaProtocolClient
     public async Task SendCommandAsync(SendCmd request, CancellationToken cancellationToken)
     {
         var vehicle = await RequireChinaVehicleAsync(request.Vin, cancellationToken);
+        if (!IsPlatform(vehicle, "navinfo") && !IsPlatform(vehicle, "beantech"))
+        {
+            throw UnsupportedPlatform(vehicle);
+        }
 
         string function;
         JsonObject command;
@@ -332,7 +341,7 @@ public sealed class ChinaProtocolClient
                 "The experimental China region does not support this remote-command payload.");
         }
 
-        if (String.Equals(vehicle.BelongPlatform, "beantech", StringComparison.OrdinalIgnoreCase))
+        if (IsPlatform(vehicle, "beantech"))
         {
             await SendBeanTechCommandAsync(request, command, cancellationToken);
             return;
@@ -387,11 +396,15 @@ public sealed class ChinaProtocolClient
             ["isSaveConfig"] = null
         };
 
+        _logger.LogWarning(
+            "Sending unverified BeanTech remote command {ControlType}; live protocol validation is still required",
+            controlType);
         await SendBeanTechPostAsync(
             BeanTechBaseUrl + "app-api/api/v1.0/vehicle/T5/sendCmd",
             body,
             request.Vin,
             cancellationToken);
+        _commandTransactions[request.SeqNo] = seqNo;
     }
 
     private static (string? ControlType, JsonObject? CmdBody) MapBeanTechControl(JsonObject command)
@@ -413,7 +426,7 @@ public sealed class ChinaProtocolClient
                 });
             case 15:
                 var engineParams = command["engineParams"] as JsonObject;
-                var operationTime = engineParams?["runTime"]?.GetValue<int>() ?? 300;
+                var operationTime = (engineParams?["runTime"]?.GetValue<int>() ?? 5) * 60;
                 return ("ENGINE_START", new JsonObject { ["operationTime"] = operationTime });
             case 16:
                 return ("ENGINE_STOP", null);
@@ -515,9 +528,24 @@ public sealed class ChinaProtocolClient
         string vin,
         CancellationToken cancellationToken)
     {
+        var vehicle = await RequireChinaVehicleAsync(vin, cancellationToken);
         var transactionId = _commandTransactions.TryGetValue(sequenceNumber, out var mapped)
             ? mapped
             : sequenceNumber;
+        if (IsPlatform(vehicle, "beantech"))
+        {
+            return await GetBeanTechRemoteCommandResultAsync(
+                sequenceNumber,
+                transactionId,
+                vin,
+                cancellationToken);
+        }
+
+        if (!IsPlatform(vehicle, "navinfo"))
+        {
+            throw UnsupportedPlatform(vehicle);
+        }
+
         var query = new Dictionary<string, string>(StringComparer.Ordinal)
         {
             ["seqNo"] = transactionId,
@@ -583,10 +611,41 @@ public sealed class ChinaProtocolClient
         return results.ToArray();
     }
 
+    private async Task<RemoteCtrlResultT5[]> GetBeanTechRemoteCommandResultAsync(
+        string sequenceNumber,
+        string transactionId,
+        string vin,
+        CancellationToken cancellationToken)
+    {
+        var data = await SendBeanTechGetAsync(
+            BeanTechBaseUrl + "app-api/api/v1.0/vehicle/getRemoteCtrlResultT5",
+            new Dictionary<string, string>(StringComparer.Ordinal) { ["seqNo"] = transactionId },
+            vin,
+            cancellationToken);
+        var list = data as JsonArray
+                   ?? Property(data, "resultList") as JsonArray
+                   ?? Property(data, "list") as JsonArray;
+        if (list is null)
+        {
+            return Array.Empty<RemoteCtrlResultT5>();
+        }
+
+        var results = list.Deserialize<RemoteCtrlResultT5[]>(SerializerOptions)
+                      ?? Array.Empty<RemoteCtrlResultT5>();
+        foreach (var result in results.Where(result =>
+                     result is not null && String.IsNullOrWhiteSpace(result.HwCommandId)))
+        {
+            result.HwCommandId = sequenceNumber;
+        }
+
+        return results;
+    }
+
     public async Task<ChargingInfos> GetChargingInfosAsync(
         string vin,
         CancellationToken cancellationToken)
     {
+        await RequireNavInfoVehicleAsync(vin, cancellationToken);
         if (_writtenChargingPlans.TryGetValue(vin, out var written))
         {
             return written;
@@ -760,16 +819,24 @@ public sealed class ChinaProtocolClient
     {
         var vehicle = await RequireChinaVehicleAsync(vin, cancellationToken);
 
-        if (!String.Equals(vehicle.BelongPlatform, "navinfo", StringComparison.OrdinalIgnoreCase))
+        if (!IsPlatform(vehicle, "navinfo"))
         {
             throw new GwmApiException(
                 "CN_UNSUPPORTED_PLATFORM",
-                $"Experimental China support currently implements NavInfo/AutoAI vehicles; " +
+                $"Experimental China charging control currently supports NavInfo/AutoAI vehicles; " +
                 $"this vehicle reports '{vehicle.BelongPlatform ?? "unknown"}'.");
         }
 
         return vehicle;
     }
+
+    private static bool IsPlatform(Vehicle vehicle, string platform) =>
+        String.Equals(vehicle.BelongPlatform?.Trim(), platform, StringComparison.OrdinalIgnoreCase);
+
+    private static GwmApiException UnsupportedPlatform(Vehicle vehicle) => new(
+        "CN_UNSUPPORTED_PLATFORM",
+        "Experimental China support currently implements NavInfo/AutoAI and BeanTech vehicles; " +
+        $"this vehicle reports '{vehicle.BelongPlatform ?? "unknown"}'.");
 
     private JsonObject BaseControlRequest(string vin) => new()
     {

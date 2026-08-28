@@ -17,7 +17,8 @@ public static class VehicleSnapshotMapper
         VehicleStatus status,
         VehicleBasicsInfo basics,
         bool remoteCommandsAvailable,
-        string commandStatus)
+        string commandStatus,
+        bool chargingControlAvailable = false)
     {
         var rawItems = RawItems(status);
         var values = new VehicleValues
@@ -95,10 +96,10 @@ public static class VehicleSnapshotMapper
             AirCleanActive = Bool(rawItems, "9000008"),
             CabinCleanActive = Bool(rawItems, "9000009"),
             BackDoorOpen = Bool(rawItems, "9000010"),
-            ChargeSoc = Integer(rawItems, "9000011"),
+            ChargeSoc = Number(rawItems, "9000011"),
             ChargingGunModel = Integer(rawItems, "9000012"),
             HcuPowertrainState = Integer(rawItems, "9000013"),
-            Power = Integer(rawItems, "9000014"),
+            Power = Number(rawItems, "9000014"),
             BatteryPackState = Integer(rawItems, "9000015"),
             AccCleanOff = Integer(rawItems, "9000016"),
             TboxState = Integer(rawItems, "9000017"),
@@ -108,7 +109,8 @@ public static class VehicleSnapshotMapper
             TirePressureIndicatorFrontRight = Bool(rawItems, "9000021"),
             TirePressureIndicatorRearLeft = Bool(rawItems, "9000022"),
             TirePressureIndicatorRearRight = Bool(rawItems, "9000023"),
-            AuxBatteryLevel = Number(rawItems, "9000024")
+            AuxBatteryLevel = Number(rawItems, "9000024"),
+            RemainingUsableChargePercent = Number(rawItems, "9000025")
         };
 
         var acOn = values.AcActive == true;
@@ -120,6 +122,9 @@ public static class VehicleSnapshotMapper
         return new VehicleSnapshot
         {
             Vin = vehicle.Vin,
+            Platform = String.IsNullOrWhiteSpace(vehicle.BelongPlatform)
+                ? null
+                : vehicle.BelongPlatform.Trim().ToLowerInvariant(),
             Name = FirstNonEmpty(vehicle.AppShowSeriesName, vehicle.VehicleNick?.ToString(), vehicle.ModelName, "GWM vehicle"),
             Manufacturer = FirstNonEmpty(vehicle.BrandName, vehicle.OtBrandName, "GWM"),
             Model = FirstNonEmpty(vehicle.Vtype, vehicle.VTypeName, vehicle.ModelName),
@@ -133,7 +138,8 @@ public static class VehicleSnapshotMapper
             },
             Capabilities = new VehicleCapabilities
             {
-                RemoteCommands = remoteCommandsAvailable
+                RemoteCommands = remoteCommandsAvailable,
+                ChargingControl = chargingControlAvailable
             },
             Values = values,
             Climate = new ClimateSnapshot

@@ -22,6 +22,11 @@
           "host": "主机",
           "port": "端口",
           "token": "API 令牌"
+        },
+        "data_description": {
+          "host": "加载项主机名或开发主机。",
+          "port": "加载项 API 端口，打包版默认 8099。",
+          "token": "加载项生成的 API 令牌。GWM 账号凭据不会填在这里。"
         }
       },
       "reauth_confirm": {
@@ -31,6 +36,11 @@
           "host": "主机",
           "port": "端口",
           "token": "API 令牌"
+        },
+        "data_description": {
+          "host": "加载项主机名或开发主机。",
+          "port": "加载项 API 端口，打包版默认 8099。",
+          "token": "加载项生成的 API 令牌。GWM 账号凭据不会填在这里。"
         }
       },
       "hassio_confirm": {
@@ -75,7 +85,7 @@
   "entity": {
     "sensor": {
       "soc": { "name": "电量" },
-      "range": { "name": "纯电续航" },
+      "range": { "name": "续航里程" },
       "fuel_level": { "name": "油量" },
       "fuel_range": { "name": "燃油续航" },
       "odometer": { "name": "总里程" },
@@ -92,7 +102,7 @@
           "error": "错误"
         }
       },
-      "soce": { "name": "剩余可用电量" },
+      "soce": { "name": "SOCE" },
       "interior_temperature": { "name": "车内温度" },
       "tire_pressure_front_left": { "name": "左前轮胎压" },
       "tire_pressure_front_right": { "name": "右前轮胎压" },
@@ -134,7 +144,8 @@
       "tbox_state": { "name": "T-Box状态", "state": { "0": "正常", "1": "休眠" } },
       "wireless_level": { "name": "无线信号格数" },
       "oil_segments": { "name": "油量分段" },
-      "aux_battery": { "name": "蓄电池电量" }
+      "aux_battery": { "name": "蓄电池电量" },
+      "remaining_usable_charge": { "name": "剩余可用电量" }
     },
     "binary_sensor": {
       "charging_active": { "name": "充电中" },
@@ -184,7 +195,18 @@
       "door_lock": { "name": "门锁" }
     },
     "button": {
-      "close_windows": { "name": "关闭车窗" }
+      "close_windows": { "name": "关闭车窗" },
+      "remote_start": { "name": "远程启动" },
+      "remote_stop": { "name": "远程停止" },
+      "sound_horn": { "name": "鸣笛" },
+      "flash_lights": { "name": "闪灯" },
+      "horn_and_lights": { "name": "鸣笛并闪灯" },
+      "open_tailgate": { "name": "打开尾门" },
+      "close_tailgate": { "name": "关闭尾门" },
+      "close_sunroof": { "name": "关闭天窗" },
+      "tilt_sunroof": { "name": "天窗翘起" },
+      "half_open_sunroof": { "name": "天窗半开" },
+      "fully_open_sunroof": { "name": "天窗全开" }
     },
     "switch": {
       "charging_schedule": { "name": "定时充电" }

@@ -105,26 +105,27 @@ internal static class ChinaStatusMapper
         var items = new List<VehicleStatusItems>();
 
         var (mileage, mileageUnit) = SplitNumberUnit(status, "mileage");
-        Add(items, "2103010", mileage, mileageUnit);
+        AddNonNegativeNumber(items, "2103010", mileage, mileageUnit);
 
         var (range, rangeUnit) = SplitNumberUnit(status, "batteryPreMileage");
-        Add(items, "2011501", range, rangeUnit);
+        AddNonNegativeNumber(items, "2011501", range, rangeUnit);
 
         var (fuelRange, fuelRangeUnit) = SplitNumberUnit(status, "preMileage");
-        Add(items, "2011007", fuelRange, fuelRangeUnit);
+        AddNonNegativeNumber(items, "2011007", fuelRange, fuelRangeUnit);
 
         var (oil, oilUnit) = SplitNumberUnit(status, "remainOil");
-        Add(items, "2017002", oil, oilUnit);
+        AddNonNegativeNumber(items, "2017002", oil, oilUnit);
 
         var (soc, socUnit) = SplitNumberUnit(status, "powerBatteryDisplayVal");
-        Add(items, "2013021", soc, socUnit);
+        AddPercentage(items, "2013021", soc, socUnit);
 
-        // powerBatteryPercent 是动力电池剩余可用电量（BMS 真实值，比显示值低 3%）。
+        // BeanTech reports the displayed SOC and the BMS usable charge separately.
+        // Keep this value out of 2041301, which is SOCE/SOH on existing platforms.
         var (remainingUsable, remainingUsableUnit) = SplitNumberUnit(status, "powerBatteryPercent");
-        Add(items, "2041301", remainingUsable, remainingUsableUnit);
+        AddPercentage(items, "9000025", remainingUsable, remainingUsableUnit);
 
         var (auxBattery, auxBatteryUnit) = SplitNumberUnit(status, "remainElectricPercent");
-        Add(items, "9000024", auxBattery, auxBatteryUnit);
+        AddPercentage(items, "9000024", auxBattery, auxBatteryUnit);
 
         var (tpLf, tpLfUnit) = SplitNumberUnit(tirePress, "lfTirePressVal");
         Add(items, "2101001", tpLf, tpLfUnit);
@@ -163,8 +164,10 @@ internal static class ChinaStatusMapper
 
         Add(items, "2210001", WindowClosedCode(windows, "lfWinPosnSts"));
         Add(items, "2210002", WindowClosedCode(windows, "rfWinPosnSts"));
-        Add(items, "2210003", WindowClosedCode(windows, "lbWinPosnSts"));
-        Add(items, "2210004", WindowClosedCode(windows, "rbWinPosnSts"));
+        // The snapshot contract uses 2210004 for the rear driver side and
+        // 2210003 for the rear passenger side. China vehicles are left-hand drive.
+        Add(items, "2210004", WindowClosedCode(windows, "lbWinPosnSts"));
+        Add(items, "2210003", WindowClosedCode(windows, "rbWinPosnSts"));
         Add(items, "2210005", Value(windows, "skyLightSts"));
 
         Add(items, "2220001", Value(seat, "mainDriverSeatHeatSts"));
@@ -176,7 +179,8 @@ internal static class ChinaStatusMapper
         Add(items, "2202001", Value(status, "airConditionSts"));
         Add(items, "2041142", Value(charge, "chargeStatus"));
         Add(items, "2042082", Value(charge, "chargingGunStatus"));
-        Add(items, "2013022", Value(charge, "chargingTime") ?? "0", "min");
+        var (chargingTime, chargingTimeUnit) = SplitNumberUnit(charge, "chargingTime");
+        AddNonNegativeNumber(items, "2013022", chargingTime, chargingTimeUnit ?? "min");
 
         Add(items, "2210011", Value(windows, "lfWinLearnSts"));
         Add(items, "2210010", Value(windows, "rfWinLearnSts"));
@@ -193,13 +197,13 @@ internal static class ChinaStatusMapper
             Add(items, "2201001", (tempC * 10).ToString("0", CultureInfo.InvariantCulture));
         }
 
-        // 灯光（binary）
+        // BeanTech-only lighting signals.
         Add(items, "9000001", Value(lighting, "nearBeamSts"));
         Add(items, "9000002", Value(lighting, "farBeamSts"));
         Add(items, "9000003", Value(lighting, "leftTurnLampSts"));
         Add(items, "9000004", Value(lighting, "rightTurnLampSts"));
 
-        // 车身/状态（binary）
+        // BeanTech-only body and state signals.
         Add(items, "9000005", Value(status, "oilAlarmSts"));
         Add(items, "9000006", Value(status, "engineDoorSts"));
         Add(items, "9000007", Value(status, "acAutoModeSts"));
@@ -207,8 +211,9 @@ internal static class ChinaStatusMapper
         Add(items, "9000009", Value(status, "cabinClean"));
         Add(items, "9000010", Value(door, "backDoorSts"));
 
-        // 充电/诊断（sensor）
-        Add(items, "9000011", Value(charge, "chargeSoc"));
+        // BeanTech-only charging and diagnostic signals.
+        var (chargeSoc, chargeSocUnit) = SplitNumberUnit(charge, "chargeSoc");
+        AddPercentage(items, "9000011", chargeSoc, chargeSocUnit ?? "%");
         Add(items, "9000012", Value(charge, "chargingGunModel"));
         Add(items, "9000013", Value(status, "hcuPowertrainSts"));
         Add(items, "9000014", Value(status, "power"));
@@ -218,7 +223,7 @@ internal static class ChinaStatusMapper
         Add(items, "9000018", Value(status, "wirelessLevel"));
         Add(items, "9000019", Value(status, "oilQty"));
 
-        // 胎压指示（binary）
+        // BeanTech-only tire warning signals.
         Add(items, "9000020", Value(tirePress, "lfTirePressIndcrSts"));
         Add(items, "9000021", Value(tirePress, "rfTirePressIndcrSts"));
         Add(items, "9000022", Value(tirePress, "lbTirePressIndcrSts"));
@@ -238,7 +243,7 @@ internal static class ChinaStatusMapper
             AcquisitionTime = Long(Property(data, "acquisitionTime")) ?? 0,
             UpdateTime = updateTime,
             UploadTime = updateTime,
-            DeviceId = FirstNonEmpty(vehicle.VehicleId, vehicle.Vin),
+            DeviceId = FirstNonEmpty(Value(data, "deviceId"), vehicle.VehicleId, vehicle.Vin),
             Latitude = latitude,
             Longitude = longitude,
             Items = items.ToArray(),
@@ -255,13 +260,19 @@ internal static class ChinaStatusMapper
         }
 
         var comma = raw.IndexOf(',');
-        return comma < 0 ? (raw, null) : (raw[..comma], raw[(comma + 1)..]);
+        return comma < 0
+            ? (raw.Trim(), null)
+            : (raw[..comma].Trim(), raw[(comma + 1)..].Trim());
     }
 
     private static string? WindowClosedCode(JsonNode? node, string property)
     {
-        var value = Value(node, property);
-        return String.IsNullOrWhiteSpace(value) ? null : value == "5" ? "1" : "0";
+        return Integer(Property(node, property)) switch
+        {
+            5 => "1",
+            >= 0 and <= 4 => "0",
+            _ => null
+        };
     }
 
     internal static ChargingInfos ChargingInfo(JsonNode responseBody, string vin)
@@ -500,6 +511,34 @@ internal static class ChinaStatusMapper
         }
 
         items.Add(new VehicleStatusItems { Code = code, Value = value, Unit = unit });
+    }
+
+    private static void AddNonNegativeNumber(
+        List<VehicleStatusItems> items,
+        string code,
+        string? value,
+        string? unit = null)
+    {
+        if (System.Double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var number)
+            && System.Double.IsFinite(number)
+            && number >= 0)
+        {
+            Add(items, code, number.ToString(CultureInfo.InvariantCulture), unit);
+        }
+    }
+
+    private static void AddPercentage(
+        List<VehicleStatusItems> items,
+        string code,
+        string? value,
+        string? unit = null)
+    {
+        if (System.Double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var number)
+            && System.Double.IsFinite(number)
+            && number is >= 0 and <= 100)
+        {
+            Add(items, code, number.ToString(CultureInfo.InvariantCulture), unit);
+        }
     }
 
     private static JsonNode? Property(JsonNode? node, string name)

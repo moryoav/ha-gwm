@@ -355,6 +355,195 @@ public sealed class ChinaProtocolClientTests
     }
 
     [Fact]
+    public async Task BeanTechStatusAndExperimentalCommandsUseDedicatedRoutesOffline()
+    {
+        var commandBodies = new List<JsonObject>();
+        string? sentSequence = null;
+        using var car = new HttpClient(new DelegateHandler(request =>
+        {
+            AssertOfficialTransport(request);
+            return Json("""
+                {"code":"000000","data":{"acquireVehiclesList":[{"vin":"$VIN$","vehicleId":"vehicle-1","belongPlatform":"beantech","appShowSeriesName":"Tank 300 Hi4-T","brandName":"GWM","vtype":"Tank 300 Hi4-T"}]}}
+                """.Replace("$VIN$", Vin, StringComparison.Ordinal));
+        }));
+        using var beanTech = new HttpClient(new DelegateHandler(request =>
+        {
+            AssertOfficialTransport(request);
+            Assert.True(request.Headers.Contains("bt-auth-sign"));
+            Assert.Equal("bt-access", Assert.Single(request.Headers.GetValues("accessToken")));
+            Assert.Equal("g-bean", Assert.Single(request.Headers.GetValues("beanId")));
+            Assert.Equal("auto-token", Assert.Single(request.Headers.GetValues("tokenId")));
+            Assert.Equal(Vin, Assert.Single(request.Headers.GetValues("vin")));
+
+            if (request.RequestUri!.AbsolutePath.EndsWith("/getLastStatus", StringComparison.Ordinal))
+            {
+                Assert.Equal(HttpMethod.Get, request.Method);
+                Assert.Equal("?vin=" + Vin, request.RequestUri.Query);
+                return Json(BeanTechStatusBody);
+            }
+
+            if (request.RequestUri.AbsolutePath.EndsWith("/T5/sendCmd", StringComparison.Ordinal))
+            {
+                Assert.Equal(HttpMethod.Post, request.Method);
+                var body = JsonNode.Parse(request.Content!.ReadAsStringAsync().GetAwaiter().GetResult())!.AsObject();
+                commandBodies.Add(body);
+                sentSequence = body["seqNo"]!.GetValue<string>();
+                return Json("{\"code\":\"000000\",\"data\":{}}");
+            }
+
+            Assert.Equal(
+                "/app-api/api/v1.0/vehicle/getRemoteCtrlResultT5",
+                request.RequestUri.AbsolutePath);
+            Assert.Equal(HttpMethod.Get, request.Method);
+            Assert.Equal("?seqNo=" + sentSequence, request.RequestUri.Query);
+            return Json("""
+                {"code":"000000","data":[{"resultCode":"0","resultMsg":"Success"}]}
+                """);
+        }));
+        using var unusedGApp = new HttpClient(new DelegateHandler(_ =>
+            throw new Xunit.Sdk.XunitException("G-App should not be called")));
+        using var unusedAutoAi = new HttpClient(new DelegateHandler(_ =>
+            throw new Xunit.Sdk.XunitException("AutoAI should not be called for BeanTech")));
+        var client = new ChinaProtocolClient(
+            unusedGApp,
+            car,
+            beanTech,
+            unusedAutoAi,
+            NullLoggerFactory.Instance)
+        {
+            DeviceId = "0123456789abcdef0123456789abcdef"
+        };
+        client.SetSession(CompleteSession());
+
+        var mapped = await client.GetLastVehicleStatusAsync(Vin, CancellationToken.None);
+        var snapshot = VehicleSnapshotMapper.Map(
+            new Vehicle { Vin = Vin, BelongPlatform = "beantech" },
+            mapped,
+            new VehicleBasicsInfo(),
+            true,
+            "idle");
+
+        Assert.Equal("beantech", snapshot.Platform);
+        Assert.Equal("bt-device", snapshot.SerialNumber);
+        Assert.Equal(71, snapshot.Values.Soc);
+        Assert.Null(snapshot.Values.Soce);
+        Assert.Equal(68, snapshot.Values.RemainingUsableChargePercent);
+        Assert.Equal(90, snapshot.Values.AuxBatteryLevel);
+        Assert.Equal(75, snapshot.Values.RangeKm);
+        Assert.Equal(306, snapshot.Values.FuelRangeKm);
+        Assert.Equal(29, snapshot.Values.FuelLevelL);
+        Assert.Equal(22883, snapshot.Values.OdometerKm);
+        Assert.Equal(23.5, snapshot.Values.InteriorTemperatureC);
+        Assert.Equal(12, snapshot.Values.RemainingChargingTimeMin);
+        Assert.Equal("charging_complete", snapshot.Values.ChargingStatus);
+        Assert.False(snapshot.Values.ChargingActive);
+        Assert.True(snapshot.Values.ChargePlugConnected);
+        Assert.True(snapshot.Values.Locked);
+        Assert.True(snapshot.Values.WindowRearDriverSideOpen);
+        Assert.False(snapshot.Values.WindowRearPassengerSideOpen);
+        Assert.Equal(248, snapshot.Values.TirePressureFrontLeftKpa);
+        Assert.Equal(82.5, snapshot.Values.ChargeSoc);
+        Assert.Equal(31.2, snapshot.Location!.Latitude);
+        Assert.Equal(121.5, snapshot.Location.Longitude);
+
+        var lockRequest = RemoteCommandFactory.CreateLockCommand(
+            Vin,
+            String.Empty,
+            lockVehicle: true);
+        await client.SendCommandAsync(lockRequest, CancellationToken.None);
+        var lockCommand = Assert.Single(commandBodies);
+        var lockItem = lockCommand["commands"]!.AsArray()[0]!.AsObject();
+        Assert.Equal("VEHICLE_LOCK", lockItem["controlType"]!.GetValue<string>());
+        Assert.NotEqual(lockRequest.SeqNo, sentSequence);
+
+        var results = await client.GetRemoteCommandResultAsync(
+            lockRequest.SeqNo,
+            Vin,
+            CancellationToken.None);
+        var result = Assert.Single(results);
+        Assert.Equal(lockRequest.SeqNo, result.HwCommandId);
+        Assert.Equal("0", result.ResultCode);
+
+        await client.SendCommandAsync(
+            RemoteCommandFactory.CreateChinaCommand(
+                Vin,
+                ChinaRemoteCommandKind.EngineStart,
+                15,
+                runTimeMinutes: 15),
+            CancellationToken.None);
+        var engineItem = commandBodies[1]["commands"]!.AsArray()[0]!.AsObject();
+        Assert.Equal("ENGINE_START", engineItem["controlType"]!.GetValue<string>());
+        Assert.Equal(900, engineItem["cmdBody"]!["operationTime"]!.GetValue<int>());
+    }
+
+    [Fact]
+    public async Task UnknownChinaPlatformIsRejectedBeforeStatusOrCommandTransport()
+    {
+        using var car = new HttpClient(new DelegateHandler(_ => Json("""
+            {"code":"000000","data":{"acquireVehiclesList":[{"vin":"$VIN$","belongPlatform":"future-platform"}]}}
+            """.Replace("$VIN$", Vin, StringComparison.Ordinal))));
+        using var unusedGApp = new HttpClient(new DelegateHandler(_ =>
+            throw new Xunit.Sdk.XunitException("G-App should not be called")));
+        using var unusedBeanTech = new HttpClient(new DelegateHandler(_ =>
+            throw new Xunit.Sdk.XunitException("BeanTech should not be called")));
+        using var unusedAutoAi = new HttpClient(new DelegateHandler(_ =>
+            throw new Xunit.Sdk.XunitException("AutoAI should not be called")));
+        var client = new ChinaProtocolClient(
+            unusedGApp,
+            car,
+            unusedBeanTech,
+            unusedAutoAi,
+            NullLoggerFactory.Instance);
+        client.SetSession(CompleteSession());
+
+        var statusError = await Assert.ThrowsAsync<libgwmapi.GwmApiException>(() =>
+            client.GetLastVehicleStatusAsync(Vin, CancellationToken.None));
+        var commandError = await Assert.ThrowsAsync<libgwmapi.GwmApiException>(() =>
+            client.SendCommandAsync(
+                RemoteCommandFactory.CreateLockCommand(Vin, String.Empty, lockVehicle: true),
+                CancellationToken.None));
+
+        Assert.Equal("CN_UNSUPPORTED_PLATFORM", statusError.Code);
+        Assert.Equal("CN_UNSUPPORTED_PLATFORM", commandError.Code);
+    }
+
+    [Fact]
+    public void BeanTechMappingLeavesMissingAndSentinelValuesUnknown()
+    {
+        var mapped = ChinaStatusMapper.MapBeanTech(
+            JsonNode.Parse("""
+                {
+                  "vehicleStatusInfo": {
+                    "mileage": "-1,km",
+                    "powerBatteryDisplayVal": "101,%",
+                    "windows": {
+                      "lfWinPosnSts": "--",
+                      "rfWinPosnSts": -1,
+                      "lbWinPosnSts": 6,
+                      "rbWinPosnSts": 5
+                    },
+                    "charge": {}
+                  }
+                }
+                """)!,
+            new Vehicle { Vin = Vin, BelongPlatform = "beantech" });
+        var snapshot = VehicleSnapshotMapper.Map(
+            new Vehicle { Vin = Vin, BelongPlatform = "beantech" },
+            mapped,
+            new VehicleBasicsInfo(),
+            false,
+            "idle");
+
+        Assert.Null(snapshot.Values.OdometerKm);
+        Assert.Null(snapshot.Values.Soc);
+        Assert.Null(snapshot.Values.RemainingChargingTimeMin);
+        Assert.Null(snapshot.Values.WindowFrontDriverOpen);
+        Assert.Null(snapshot.Values.WindowFrontPassengerOpen);
+        Assert.Null(snapshot.Values.WindowRearDriverSideOpen);
+        Assert.False(snapshot.Values.WindowRearPassengerSideOpen);
+    }
+
+    [Fact]
     public async Task ProtocolFlowCoversLoginDiscoveryStatusControlsAndChargingOffline()
     {
         JsonObject? smsLoginBody = null;
@@ -733,6 +922,92 @@ public sealed class ChinaProtocolClientTests
           "passTirePress": "241",
           "rlTirePress": "242",
           "rrTirePress": "243"
+        }
+      }
+    }
+    """;
+
+    private const string BeanTechStatusBody = """
+    {
+      "code": "000000",
+      "data": {
+        "deviceId": "bt-device",
+        "acquisitionTime": 1723456789000,
+        "updateTime": 1723456790000,
+        "longitude": "121.5",
+        "latitude": "31.2",
+        "vehicleStatusInfo": {
+          "mileage": "22883, km",
+          "preMileage": "306,km",
+          "batteryPreMileage": "75,km",
+          "remainOil": "29,L",
+          "remainElectricPercent": "90,%",
+          "powerBatteryPercent": "68,%",
+          "powerBatteryDisplayVal": "71,%",
+          "inCarTemperature": "23.5,°C",
+          "engineSts": 1,
+          "airConditionSts": 1,
+          "backFrost": 1,
+          "frontFrost": 0,
+          "steerWheelHeatdSts": 1,
+          "power": 12.5,
+          "hcuPowertrainSts": 6,
+          "batteryPackSts": 1,
+          "accBnClnOff": 0,
+          "tboxState": 0,
+          "wirelessLevel": 4,
+          "oilQty": 6,
+          "door": {
+            "mainDrveDoorLockSts": 0,
+            "mainDrveDoorSts": 1,
+            "viceDoorSts": 0,
+            "lbDoorSts": 1,
+            "rbDoorSts": 0,
+            "tailgateOpenUpSts": 0,
+            "backDoorSts": 0
+          },
+          "tirePress": {
+            "lfTirePressVal": "248,kPa",
+            "rfTirePressVal": "249,kPa",
+            "lbTirePressVal": "250,kPa",
+            "rbTirePressVal": "251,kPa",
+            "lfTirePressSts": 0,
+            "rfTirePressSts": 0,
+            "lbTirePressSts": 0,
+            "rbTirePressSts": 0
+          },
+          "tireTemp": {
+            "lfTireTempVal": "35,°C",
+            "rfTireTempVal": "36,°C",
+            "lbTireTempVal": "37,°C",
+            "rbTireTempVal": "38,°C"
+          },
+          "seat": {
+            "mainDriverSeatHeatSts": 1,
+            "viceSeatHeatSts": 0,
+            "mainDriverSeatVentSts": 2,
+            "viceSeatVentSts": 0
+          },
+          "windows": {
+            "lfWinPosnSts": 5,
+            "rfWinPosnSts": 2,
+            "lbWinPosnSts": 2,
+            "rbWinPosnSts": 5,
+            "skyLightSts": 5
+          },
+          "charge": {
+            "chargeStatus": 3,
+            "chargingGunStatus": 1,
+            "chargingTime": "12,min",
+            "chargeSoc": "82.5,%",
+            "chargingGunModel": 0
+          },
+          "lighting": {
+            "nearBeamSts": 1,
+            "farBeamSts": 0,
+            "leftTurnLampSts": 1,
+            "rightTurnLampSts": 0
+          }
         }
       }
     }

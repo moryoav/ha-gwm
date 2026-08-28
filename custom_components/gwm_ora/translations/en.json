@@ -85,7 +85,7 @@
   "entity": {
     "sensor": {
       "soc": { "name": "SOC" },
-      "range": { "name": "Electric range" },
+      "range": { "name": "Range" },
       "fuel_level": { "name": "Fuel level" },
       "fuel_range": { "name": "Fuel range" },
       "odometer": { "name": "Odometer" },
@@ -102,7 +102,7 @@
           "error": "Error"
         }
       },
-      "soce": { "name": "Remaining usable charge" },
+      "soce": { "name": "SOCE" },
       "interior_temperature": { "name": "Interior temperature" },
       "tire_pressure_front_left": { "name": "Tire pressure front left" },
       "tire_pressure_front_right": { "name": "Tire pressure front right" },
@@ -144,7 +144,8 @@
       "tbox_state": { "name": "T-Box state", "state": { "0": "Normal", "1": "Sleep" } },
       "wireless_level": { "name": "Wireless level" },
       "oil_segments": { "name": "Oil segments" },
-      "aux_battery": { "name": "Auxiliary battery" }
+      "aux_battery": { "name": "Auxiliary battery" },
+      "remaining_usable_charge": { "name": "Remaining usable charge" }
     },
     "binary_sensor": {
       "charging_active": { "name": "Charging active" },

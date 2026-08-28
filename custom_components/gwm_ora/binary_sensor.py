@@ -20,6 +20,23 @@ from .entity import GwmOraEntity, setup_vehicle_entities, vehicle_value
 
 PARALLEL_UPDATES = 0
 
+BEANTECH_BINARY_SENSOR_KEYS = {
+    "near_beam_active",
+    "far_beam_active",
+    "left_turn_lamp_active",
+    "right_turn_lamp_active",
+    "oil_alarm_active",
+    "engine_door_open",
+    "back_door_open",
+    "ac_auto_mode_active",
+    "air_clean_active",
+    "cabin_clean_active",
+    "tire_pressure_indicator_front_left",
+    "tire_pressure_indicator_front_right",
+    "tire_pressure_indicator_rear_left",
+    "tire_pressure_indicator_rear_right",
+}
+
 
 @dataclass(frozen=True, kw_only=True)
 class GwmOraBinarySensorEntityDescription(BinarySensorEntityDescription):
@@ -247,6 +264,20 @@ BINARY_SENSORS: tuple[GwmOraBinarySensorEntityDescription, ...] = (
 )
 
 
+def _binary_sensor_descriptions_for_vehicle(
+    vehicle: dict[str, Any],
+    region: str,
+) -> tuple[GwmOraBinarySensorEntityDescription, ...]:
+    """Return descriptions supported by the vehicle backend."""
+    if str(region or "").lower() == "cn" and str(vehicle.get("platform") or "").lower() == "beantech":
+        return BINARY_SENSORS
+    return tuple(
+        description
+        for description in BINARY_SENSORS
+        if description.key not in BEANTECH_BINARY_SENSOR_KEYS
+    )
+
+
 async def async_setup_entry(
     hass: HomeAssistant,
     entry: GwmOraConfigEntry,
@@ -258,7 +289,9 @@ async def async_setup_entry(
         async_add_entities,
         lambda vehicle: (
             GwmOraBinarySensor(entry.runtime_data.coordinator, vehicle["vin"], description)
-            for description in BINARY_SENSORS
+            for description in _binary_sensor_descriptions_for_vehicle(
+                vehicle, entry.runtime_data.coordinator.region
+            )
         ),
     )
 
