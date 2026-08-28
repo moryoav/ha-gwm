@@ -122,6 +122,30 @@ public sealed class VehicleValues
     public int? FrontPassengerSeatHeaterLevel { get; init; }
     public int? FrontDriverSeatVentLevel { get; init; }
     public int? FrontPassengerSeatVentLevel { get; init; }
+    public bool? NearBeamActive { get; init; }
+    public bool? FarBeamActive { get; init; }
+    public bool? LeftTurnLampActive { get; init; }
+    public bool? RightTurnLampActive { get; init; }
+    public bool? OilAlarmActive { get; init; }
+    public bool? EngineDoorOpen { get; init; }
+    public bool? AcAutoModeActive { get; init; }
+    public bool? AirCleanActive { get; init; }
+    public bool? CabinCleanActive { get; init; }
+    public bool? BackDoorOpen { get; init; }
+    public int? ChargeSoc { get; init; }
+    public int? ChargingGunModel { get; init; }
+    public int? HcuPowertrainState { get; init; }
+    public int? Power { get; init; }
+    public int? BatteryPackState { get; init; }
+    public int? AccCleanOff { get; init; }
+    public int? TboxState { get; init; }
+    public int? WirelessLevel { get; init; }
+    public int? OilSegments { get; init; }
+    public bool? TirePressureIndicatorFrontLeft { get; init; }
+    public bool? TirePressureIndicatorFrontRight { get; init; }
+    public bool? TirePressureIndicatorRearLeft { get; init; }
+    public bool? TirePressureIndicatorRearRight { get; init; }
+    public double? AuxBatteryLevel { get; init; }
 }
 
 public sealed class ClimateSnapshot

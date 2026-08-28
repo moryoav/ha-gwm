@@ -226,7 +226,12 @@ public sealed class ChinaProtocolClient
         string vin,
         CancellationToken cancellationToken)
     {
-        var vehicle = await RequireNavInfoVehicleAsync(vin, cancellationToken);
+        var vehicle = await RequireChinaVehicleAsync(vin, cancellationToken);
+        if (String.Equals(vehicle.BelongPlatform, "beantech", StringComparison.OrdinalIgnoreCase))
+        {
+            return await GetBeanTechLastStatusAsync(vehicle, cancellationToken);
+        }
+
         var body = await SendAutoAiAsync(
             _autoAiClient,
             AutoAiDirectUrl,
@@ -236,6 +241,19 @@ public sealed class ChinaProtocolClient
             cancellationToken);
         _lastStatusBodies[vin] = body.DeepClone();
         return ChinaStatusMapper.Map(body, vehicle);
+    }
+
+    private async Task<VehicleStatus> GetBeanTechLastStatusAsync(
+        Vehicle vehicle,
+        CancellationToken cancellationToken)
+    {
+        var body = await SendBeanTechGetAsync(
+            BeanTechBaseUrl + "app-api/api/v2.0/vehicle/getLastStatus",
+            new Dictionary<string, string> { ["vin"] = vehicle.Vin },
+            vehicle.Vin,
+            cancellationToken);
+        _lastStatusBodies[vehicle.Vin] = body.DeepClone();
+        return ChinaStatusMapper.MapBeanTech(body, vehicle);
     }
 
     public VehicleBasicsInfo GetVehicleBasicsInfoOrDefault(string vin)
@@ -271,7 +289,7 @@ public sealed class ChinaProtocolClient
 
     public async Task SendCommandAsync(SendCmd request, CancellationToken cancellationToken)
     {
-        await RequireNavInfoVehicleAsync(request.Vin, cancellationToken);
+        var vehicle = await RequireChinaVehicleAsync(request.Vin, cancellationToken);
 
         string function;
         JsonObject command;
@@ -314,6 +332,12 @@ public sealed class ChinaProtocolClient
                 "The experimental China region does not support this remote-command payload.");
         }
 
+        if (String.Equals(vehicle.BelongPlatform, "beantech", StringComparison.OrdinalIgnoreCase))
+        {
+            await SendBeanTechCommandAsync(request, command, cancellationToken);
+            return;
+        }
+
         var result = await SendAutoAiAsync(
             _autoAiClient,
             AutoAiDirectUrl,
@@ -330,6 +354,78 @@ public sealed class ChinaProtocolClient
         }
 
         _commandTransactions[request.SeqNo] = transactionId;
+    }
+
+    private async Task SendBeanTechCommandAsync(
+        SendCmd request,
+        JsonObject command,
+        CancellationToken cancellationToken)
+    {
+        var (controlType, cmdBody) = MapBeanTechControl(command);
+        if (controlType is null)
+        {
+            throw new GwmApiException(
+                "CN_UNSUPPORTED_COMMAND",
+                "Beantech platform does not map this command yet.");
+        }
+
+        var commandItem = new JsonObject
+        {
+            ["controlType"] = controlType,
+            ["cmdBody"] = cmdBody
+        };
+
+        var seqNo = Guid.NewGuid().ToString("N")
+                    + Random.Shared.Next(1000, 10000).ToString(CultureInfo.InvariantCulture);
+
+        var body = new JsonObject
+        {
+            ["vin"] = request.Vin,
+            ["seqNo"] = seqNo,
+            ["sendType"] = 0,
+            ["commands"] = new JsonArray { commandItem },
+            ["isSaveConfig"] = null
+        };
+
+        await SendBeanTechPostAsync(
+            BeanTechBaseUrl + "app-api/api/v1.0/vehicle/T5/sendCmd",
+            body,
+            request.Vin,
+            cancellationToken);
+    }
+
+    private static (string? ControlType, JsonObject? CmdBody) MapBeanTechControl(JsonObject command)
+    {
+        var cmdCode = command["cmdCode"]?.GetValue<int>() ?? 0;
+        switch (cmdCode)
+        {
+            case 1:
+                return ("VEHICLE_UNLOCK", null);
+            case 2:
+                return ("VEHICLE_LOCK", null);
+            case 3:
+                return ("WINDOW_CLOSE", new JsonObject
+                {
+                    ["leftFront"] = 0,
+                    ["leftBack"] = 0,
+                    ["rightFront"] = 0,
+                    ["rightBack"] = 0
+                });
+            case 15:
+                var engineParams = command["engineParams"] as JsonObject;
+                var operationTime = engineParams?["runTime"]?.GetValue<int>() ?? 300;
+                return ("ENGINE_START", new JsonObject { ["operationTime"] = operationTime });
+            case 16:
+                return ("ENGINE_STOP", null);
+            case 19:
+                return ("WHISTLE", null);
+            case 20:
+                return ("FLASH", null);
+            case 28:
+                return ("SKYLIGNT_CLOSE", new JsonObject { ["skyLight"] = 0 });
+            default:
+                return (null, null);
+        }
     }
 
     private (string Function, JsonObject Command) BuildChinaRemoteCommand(
@@ -640,7 +736,7 @@ public sealed class ChinaProtocolClient
             $"Experimental China {service} vehicle-service login failed: {lastException?.Message}");
     }
 
-    private async Task<Vehicle> RequireNavInfoVehicleAsync(
+    private async Task<Vehicle> RequireChinaVehicleAsync(
         string vin,
         CancellationToken cancellationToken)
     {
@@ -654,6 +750,15 @@ public sealed class ChinaProtocolClient
         {
             throw new GwmApiException("CN_VEHICLE_NOT_FOUND", "The vehicle was not returned by the China account.");
         }
+
+        return vehicle;
+    }
+
+    private async Task<Vehicle> RequireNavInfoVehicleAsync(
+        string vin,
+        CancellationToken cancellationToken)
+    {
+        var vehicle = await RequireChinaVehicleAsync(vin, cancellationToken);
 
         if (!String.Equals(vehicle.BelongPlatform, "navinfo", StringComparison.OrdinalIgnoreCase))
         {
