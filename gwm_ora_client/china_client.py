@@ -3,7 +3,7 @@
 The China app protocol spans three independently authenticated services.  This
 module deliberately does not extend the overseas ``Region``/``GwmClient``
 abstractions: its immutable state, bounded initialization, gzip transport, and
-NavInfo read policy remain isolated until the later Home Assistant tasks.
+platform-routed read policy remain isolated until the later Home Assistant tasks.
 """
 
 from __future__ import annotations
@@ -34,7 +34,7 @@ from .china_crypto import (
     format_china_timestamp,
     sha256_hex,
 )
-from .china_status import map_china_status
+from .china_status import map_bean_tech_status, map_china_status
 from .china_transport import (
     ChinaAiohttpTransport,
     _ChinaAsyncTransport,
@@ -84,6 +84,8 @@ _SMS_REQUEST_URL = _G_APP_BASE + "api-guser/v5/user/login-sms/send"
 _SMS_LOGIN_URL = _G_APP_BASE + "api-guser/v5/user/sms-login"
 _REFRESH_URL = _G_APP_BASE + "api-guser/v5/token/refresh"
 _BEAN_TECH_LOGIN_URL = _BEAN_TECH_BASE + "app-api/api/v1.0/userAuth/loginSSOAccount"
+_BEAN_TECH_STATUS_PATH = "/app-api/api/v2.0/vehicle/getLastStatus"
+_BEAN_TECH_STATUS_URL = _BEAN_TECH_BASE.rstrip("/") + _BEAN_TECH_STATUS_PATH
 _AUTO_AI_LOGIN_URL = _G_APP_BASE + "tsp/v1/proxy/navinfo/GW.M.APP_LOGIN"
 _DISCOVERY_URL = _G_APP_BASE + "gcar/v1/app/android/vehicle/query-vehicle-list"
 _SOURCE_APP_VERSION = "2.1.5"
@@ -341,7 +343,6 @@ type ChinaAuthenticationResult = (
 class ChinaVehicle(CloudVehicle):
     """Safe China discovery fields plus the mapping/route metadata later tasks need."""
 
-    platform: str | None = field(default=None, repr=False)
     network_type: int | None = field(default=None, repr=False)
     tank_capacity: float | None = field(default=None, repr=False)
 
@@ -356,7 +357,7 @@ class _ChinaRiskControlError(GwmApiError):
 
 
 class ChinaClient:
-    """Lifecycle-managed China SMS authentication and NavInfo read client."""
+    """Lifecycle-managed China SMS authentication and routed read client."""
 
     def __init__(
         self,
@@ -517,7 +518,7 @@ class ChinaClient:
         *,
         timeout: float | None = None,
     ) -> ChinaVehicleStatus:
-        """Read and translate one previously discovered NavInfo vehicle status."""
+        """Read one discovered vehicle through its declared China platform."""
 
         operation = "get_last_status"
         if type(identifier) is not VehicleIdentifier:
@@ -894,9 +895,12 @@ class ChinaClient:
     ) -> ChinaVehicleStatus:
         state = self._required_session(operation="get_last_status")
         vehicle = self._vehicles.get(identifier.value.casefold())
-        if vehicle is None or vehicle.platform is None or vehicle.platform.casefold() != "navinfo":
+        if vehicle is None:
             raise GwmRoutePolicyError(operation="get_last_status")
-        response = await self._send_locked(
+        platform = None if vehicle.platform is None else vehicle.platform.strip().casefold()
+        if platform not in {"navinfo", "beantech"}:
+            raise GwmRoutePolicyError(operation="get_last_status")
+        request = (
             self._build_auto_ai_request(
                 operation="get_last_status",
                 state=state,
@@ -904,18 +908,31 @@ class ChinaClient:
                 body={"vin": vehicle.identifier.value},
                 url=_AUTO_AI_DIRECT,
                 include_token=True,
-            ),
+            )
+            if platform == "navinfo"
+            else self._build_bean_tech_status_request(state, vehicle.identifier)
+        )
+        response = await self._send_locked(
+            request,
             deadline=deadline,
         )
         try:
-            body = _decode_auto_ai_envelope(response, operation="get_last_status")
-            mapped = map_china_status(
-                body,
-                identifier=vehicle.identifier,
-                vehicle_id=vehicle.vehicle_id,
-                network_type=vehicle.network_type,
-                tank_capacity=vehicle.tank_capacity,
-            )
+            if platform == "navinfo":
+                body = _decode_auto_ai_envelope(response, operation="get_last_status")
+                mapped = map_china_status(
+                    body,
+                    identifier=vehicle.identifier,
+                    vehicle_id=vehicle.vehicle_id,
+                    network_type=vehicle.network_type,
+                    tank_capacity=vehicle.tank_capacity,
+                )
+            else:
+                body = _decode_g_app_envelope(response, operation="get_last_status")
+                mapped = map_bean_tech_status(
+                    body,
+                    identifier=vehicle.identifier,
+                    vehicle_id=vehicle.vehicle_id,
+                )
             return ChinaVehicleStatus(
                 device_id=mapped.device_id,
                 acquisition_time_ms=mapped.acquisition_time_ms,
@@ -1094,6 +1111,58 @@ class ChinaClient:
             },
             url=_AUTO_AI_LOGIN_URL,
             include_token=False,
+        )
+
+    def _build_bean_tech_status_request(
+        self,
+        state: ChinaAuthState,
+        identifier: VehicleIdentifier,
+    ) -> _ChinaTransportRequest:
+        operation: Literal["get_last_status"] = "get_last_status"
+        instant = self._read_clock(operation=operation)
+        timestamp = str(_epoch_milliseconds(instant))
+        try:
+            nonce = self._nonce_source()
+        except Exception:
+            raise GwmConfigurationError(operation=operation) from None
+        if not isinstance(nonce, str) or _NONCE.fullmatch(nonce) is None:
+            raise GwmConfigurationError(operation=operation)
+        bean_id = state.bean_tech_bean_id or state.bean_id
+        if state.bean_tech_access_token is None or bean_id is None or state.auto_ai_token_id is None:
+            raise GwmAuthenticationError(operation=operation)
+        headers = {
+            "bt-auth-appkey": BEAN_TECH_APP_KEY,
+            "bt-auth-nonce": nonce,
+            "bt-auth-timestamp": timestamp,
+            "bt-auth-sign": bean_tech_sign(
+                "GET",
+                _BEAN_TECH_STATUS_PATH,
+                nonce,
+                timestamp,
+                "vin=" + identifier.value,
+            ),
+            "rs": "2",
+            "appId": "097a7099af30d960",
+            "brand": "10",
+            "terminal": "GW_APP_GWM",
+            "enterPriseId": "CC01",
+            "accessToken": state.bean_tech_access_token,
+            "beanId": bean_id,
+            "cVer": _SOURCE_APP_VERSION,
+            "vin": identifier.value,
+            "tenantId": "1",
+            "operatorRole": "0",
+            "tokenId": state.auto_ai_token_id,
+            "Accept-Encoding": "gzip",
+            "User-Agent": _OFFICIAL_USER_AGENT,
+        }
+        return _ChinaTransportRequest(
+            operation=operation,
+            service="bean_tech",
+            method="GET",
+            url=_BEAN_TECH_STATUS_URL + "?vin=" + identifier.encoded,
+            headers=headers,
+            body=None,
         )
 
     def _build_auto_ai_request(

@@ -50,12 +50,18 @@ FIXTURE = json.loads(
         encoding="utf-8"
     )
 )
+BEAN_FIXTURE = json.loads(
+    (Path(__file__).with_name("fixtures") / "china_beantech_status_v1.json").read_text(
+        encoding="utf-8"
+    )
+)
 CLOCK = datetime.fromisoformat(FIXTURE["clock"])
 DEVICE_ID = FIXTURE["credentials"]["device_id"]
 PHONE = FIXTURE["credentials"]["phone"]
 CODE = FIXTURE["credentials"]["verification_code"]
 VIN = "LGWTEST0000000001"
 UNSUPPORTED_VIN = "LGWTEST0000000002"
+BEAN_VIN = BEAN_FIXTURE["vin"]
 SENSITIVE = "SENSITIVE-PRIVATE-VALUE-MUST-NOT-LEAK"
 
 
@@ -171,7 +177,7 @@ def _assert_request(request: _ChinaTransportRequest, expected_name: str) -> None
     assert (None if request.body is None else request.body.decode()) == expected["body"]
 
 
-def test_exact_fixed_contracts_cover_every_task9_route() -> None:
+def test_exact_fixed_contracts_cover_every_task16_route() -> None:
     credentials = _credentials()
     empty = _empty_state(credentials)
     partial = _partial_state(credentials)
@@ -220,6 +226,17 @@ def test_exact_fixed_contracts_cover_every_task9_route() -> None:
     }
     for name, request in requests.items():
         _assert_request(request, name)
+
+    bean_request = client._build_bean_tech_status_request(
+        complete,
+        VehicleIdentifier(BEAN_VIN),
+    )
+    expected = BEAN_FIXTURE["request"]
+    assert bean_request.method == expected["method"]
+    assert bean_request.service == expected["service"]
+    assert bean_request.url == expected["url"]
+    assert dict(bean_request.headers) == expected["headers"]
+    assert bean_request.body is expected["body"]
 
 
 def test_credentials_state_and_result_models_are_bound_immutable_and_repr_safe() -> None:
@@ -720,7 +737,10 @@ async def test_missing_platform_prerequisite_fails_locally_without_one_sided_ini
 @pytest.mark.asyncio
 async def test_discovery_and_status_return_cloud_compatible_typed_privacy_minimized_models() -> None:
     plans = _success_plans()
-    plans["get_last_status"] = [FIXTURE["responses"]["status"]]
+    plans["get_last_status"] = [
+        FIXTURE["responses"]["status"],
+        BEAN_FIXTURE["response"],
+    ]
     transport = _FakeTransport(**plans)
     client = _client(transport)
     authenticated = await client.authenticate(_credentials(), verification_code=CODE)
@@ -740,6 +760,25 @@ async def test_discovery_and_status_return_cloud_compatible_typed_privacy_minimi
     assert VIN not in repr(status)
     _assert_request(transport.calls[-1], "get_last_status")
 
+    bean_status = await client.get_last_status(VehicleIdentifier(BEAN_VIN))
+    bean_values = {item.code: item.value for item in bean_status.items}
+    assert bean_values["2013021"] == "71"
+    assert bean_values["2011501"] == "75"
+    assert bean_values["2103010"] == "22883"
+    assert bean_values["9000011"] == "82.5"
+    assert bean_values["9000024"] == "90"
+    assert bean_values["9000025"] == "68"
+    assert bean_status.latitude == 1.25
+    assert bean_status.longitude == -2.5
+    assert BEAN_VIN not in repr(bean_status)
+    expected = BEAN_FIXTURE["request"]
+    request = transport.calls[-1]
+    assert request.method == expected["method"]
+    assert request.service == expected["service"]
+    assert request.url == expected["url"]
+    assert dict(request.headers) == expected["headers"]
+    assert request.body is None
+
 
 @pytest.mark.asyncio
 async def test_discovery_models_retain_only_safe_mapping_metadata_and_navinfo_is_enforced() -> None:
@@ -757,6 +796,7 @@ async def test_discovery_models_retain_only_safe_mapping_metadata_and_navinfo_is
     assert vehicles[0].platform == "navinfo"
     assert vehicles[0].network_type == 2
     assert vehicles[0].tank_capacity == 56.0
+    assert vehicles[2].platform == "beantech"
     assert VIN not in repr(vehicles[0])
 
     before = len(transport.calls)

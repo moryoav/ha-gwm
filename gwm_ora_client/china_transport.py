@@ -67,6 +67,10 @@ _REFRESH_URL = _G_APP_ORIGIN + "/api-guser/v5/token/refresh"
 _BEAN_TECH_LOGIN_URL = (
     "https://gw-app-gateway.gwmapp-h.com/app-api/api/v1.0/userAuth/loginSSOAccount"
 )
+_BEAN_TECH_STATUS_URL = (
+    "https://gw-app-gateway.gwmapp-h.com/app-api/api/v2.0/vehicle/getLastStatus"
+)
+_BEAN_TECH_STATUS_PATH = "/app-api/api/v2.0/vehicle/getLastStatus"
 _AUTO_AI_LOGIN_ORIGIN = _G_APP_ORIGIN
 _AUTO_AI_LOGIN_PATH = "/tsp/v1/proxy/navinfo/GW.M.APP_LOGIN"
 _DISCOVERY_URL = "https://gapp-api.gwmapp-h.com/gcar/v1/app/android/vehicle/query-vehicle-list"
@@ -85,6 +89,7 @@ _SAFE_RESPONSE_HEADERS = frozenset({"content-type", "retry-after"})
 _SKIP_AUTO_HEADERS = frozenset({"Accept", "Accept-Encoding", "User-Agent"})
 _HEADER_NAME = re.compile(r"[-!#$%&'*+.^_`|~0-9A-Za-z]+")
 _DEVICE_ID = re.compile(r"[0-9A-Fa-f]{32}")
+_VIN = re.compile(r"[A-HJ-NPR-Z0-9]{17}", re.IGNORECASE)
 _G_APP_ENVELOPE = re.compile(r"G_A\([A-Za-z0-9+/]+={0,2},1\)")
 _LOWER_HEX_16 = re.compile(r"[0-9a-f]{16}")
 _LOWER_HEX_64 = re.compile(r"[0-9a-f]{64}")
@@ -177,6 +182,28 @@ _STATUS_HEADERS = frozenset(
         "User-Agent",
     }
 )
+_BEAN_TECH_STATUS_HEADERS = frozenset(
+    {
+        "bt-auth-appkey",
+        "bt-auth-nonce",
+        "bt-auth-timestamp",
+        "bt-auth-sign",
+        "rs",
+        "appId",
+        "brand",
+        "terminal",
+        "enterPriseId",
+        "accessToken",
+        "beanId",
+        "cVer",
+        "vin",
+        "tenantId",
+        "operatorRole",
+        "tokenId",
+        "Accept-Encoding",
+        "User-Agent",
+    }
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -184,7 +211,7 @@ class ChinaTransportCapabilities:
     """Non-secret evidence about the deliberately selected China adapter."""
 
     protocol_service_aliases: tuple[str, ...] = ("g_app", "bean_tech", "auto_ai")
-    enabled_read_service_aliases: tuple[str, ...] = ("g_app", "auto_ai")
+    enabled_read_service_aliases: tuple[str, ...] = ("g_app", "bean_tech", "auto_ai")
     enabled_auth_service_aliases: tuple[str, ...] = ("g_app", "bean_tech", "auto_ai")
     bean_tech_http_deferred: bool = False
     bounded_gzip: bool = True
@@ -836,6 +863,9 @@ def _validate_discovery_request(request: _ChinaTransportRequest, headers: Mappin
 
 
 def _validate_status_request(request: _ChinaTransportRequest, headers: Mapping[str, str]) -> None:
+    if request.service == "bean_tech":
+        _validate_bean_tech_status_request(request, headers)
+        return
     if (
         request.service != "auto_ai"
         or request.method != "GET"
@@ -850,6 +880,52 @@ def _validate_status_request(request: _ChinaTransportRequest, headers: Mapping[s
             function="GW.M.GET_VEHICLE_STATE",
             body_validator=_valid_status_body,
             token_required=True,
+        )
+    ):
+        raise ValueError("route_invalid")
+
+
+def _validate_bean_tech_status_request(
+    request: _ChinaTransportRequest,
+    headers: Mapping[str, str],
+) -> None:
+    vin = headers.get("vin", "")
+    expected_url = _BEAN_TECH_STATUS_URL + "?vin=" + quote(
+        vin,
+        safe="",
+        encoding="utf-8",
+        errors="strict",
+    )
+    if (
+        request.service != "bean_tech"
+        or request.method != "GET"
+        or request.body is not None
+        or request.url != expected_url
+        or set(headers) != _BEAN_TECH_STATUS_HEADERS
+        or _VIN.fullmatch(vin) is None
+        or headers.get("bt-auth-appkey") != BEAN_TECH_APP_KEY
+        or _LOWER_HEX_16.fullmatch(headers.get("bt-auth-nonce", "")) is None
+        or not _epoch_milliseconds(headers.get("bt-auth-timestamp", ""))
+        or headers.get("rs") != "2"
+        or headers.get("appId") != "097a7099af30d960"
+        or headers.get("brand") != "10"
+        or headers.get("terminal") != "GW_APP_GWM"
+        or headers.get("enterPriseId") != "CC01"
+        or not _safe_wire_text(headers.get("accessToken"), maximum=16 * 1024)
+        or not _safe_wire_text(headers.get("beanId"), maximum=16 * 1024)
+        or headers.get("cVer") != "2.1.5"
+        or headers.get("tenantId") != "1"
+        or headers.get("operatorRole") != "0"
+        or not _safe_wire_text(headers.get("tokenId"), maximum=16 * 1024)
+        or headers.get("Accept-Encoding") != "gzip"
+        or headers.get("User-Agent") != _OFFICIAL_USER_AGENT
+        or headers.get("bt-auth-sign")
+        != bean_tech_sign(
+            "GET",
+            _BEAN_TECH_STATUS_PATH,
+            headers["bt-auth-nonce"],
+            headers["bt-auth-timestamp"],
+            "vin=" + vin,
         )
     ):
         raise ValueError("route_invalid")

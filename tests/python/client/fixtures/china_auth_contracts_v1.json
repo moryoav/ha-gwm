@@ -231,6 +231,15 @@
             "vehicleId": "synthetic-vehicle-2",
             "belongPlatform": "unsupported-synthetic-platform",
             "vehicleNetworkType": 3
+          },
+          {
+            "vin": "LGWTEST0000000003",
+            "vehicleId": "synthetic-vehicle-3",
+            "belongPlatform": "beantech",
+            "vehicleNetworkType": 4,
+            "appShowSeriesName": "Synthetic BeanTech Series",
+            "brandName": "Synthetic Brand",
+            "vtype": "SYNTHETIC-BEAN"
           }
         ]
       }

@@ -69,6 +69,7 @@ class CloudVehicle:
     vehicle_type: str | None = field(default=None, repr=False)
     vehicle_type_name: str | None = field(default=None, repr=False)
     vehicle_id: str | None = field(default=None, repr=False)
+    platform: str | None = field(default=None, repr=False)
 
 
 @dataclass(frozen=True, slots=True)
@@ -164,6 +165,9 @@ def parse_cloud_vehicles(
                 ),
                 vehicle_id=_optional_string(
                     item.get("vehicleId"), allow_integer=allow_numbers_for_strings
+                ),
+                platform=_optional_string(
+                    item.get("belongPlatform"), allow_integer=allow_numbers_for_strings
                 ),
             )
         )

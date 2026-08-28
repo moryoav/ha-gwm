@@ -1,0 +1,131 @@
+{
+  "schema_version": 1,
+  "provenance": "fully synthetic Task 16 BeanTech read contract; contains no captured account, vehicle, session, or location data",
+  "vin": "LGWTEST0000000003",
+  "request": {
+    "method": "GET",
+    "service": "bean_tech",
+    "url": "https://gw-app-gateway.gwmapp-h.com/app-api/api/v2.0/vehicle/getLastStatus?vin=LGWTEST0000000003",
+    "body": null,
+    "headers": {
+      "bt-auth-appkey": "7863128529",
+      "bt-auth-nonce": "0123456789abcdef",
+      "bt-auth-timestamp": "1723456789123",
+      "bt-auth-sign": "865b2cbf6396faf76a6ddf344f53e5c347bea11e5bf4cc11508189532aef2d15",
+      "rs": "2",
+      "appId": "097a7099af30d960",
+      "brand": "10",
+      "terminal": "GW_APP_GWM",
+      "enterPriseId": "CC01",
+      "accessToken": "SYNTHETIC-BEAN-ACCESS",
+      "beanId": "SYNTHETIC-BEAN-PLATFORM",
+      "cVer": "2.1.5",
+      "vin": "LGWTEST0000000003",
+      "tenantId": "1",
+      "operatorRole": "0",
+      "tokenId": "SYNTHETIC-AUTO-TOKEN",
+      "Accept-Encoding": "gzip",
+      "User-Agent": "okhttp/4.2.2"
+    }
+  },
+  "response": {
+    "code": "000000",
+    "data": {
+      "deviceId": "SYNTHETIC-BEAN-DEVICE",
+      "acquisitionTime": 1723456789000,
+      "updateTime": 1723456790000,
+      "longitude": "-2.5",
+      "latitude": "1.25",
+      "vehicleStatusInfo": {
+        "mileage": "22883, km",
+        "preMileage": "306,km",
+        "batteryPreMileage": "75,km",
+        "remainOil": "29,L",
+        "remainElectricPercent": "90,%",
+        "powerBatteryPercent": "68,%",
+        "powerBatteryDisplayVal": "71,%",
+        "inCarTemperature": "23.5,°C",
+        "engineSts": 1,
+        "airConditionSts": 1,
+        "backFrost": 1,
+        "frontFrost": 0,
+        "steerWheelHeatdSts": 1,
+        "oilAlarmSts": 0,
+        "engineDoorSts": 0,
+        "acAutoModeSts": 1,
+        "airCleanSts": 1,
+        "cabinClean": 0,
+        "power": 12.5,
+        "hcuPowertrainSts": 6,
+        "batteryPackSts": 1,
+        "accBnClnOff": 0,
+        "tboxState": 0,
+        "wirelessLevel": 4,
+        "oilQty": 6,
+        "door": {
+          "mainDrveDoorLockSts": 0,
+          "mainDrveDoorSts": 1,
+          "viceDoorSts": 0,
+          "lbDoorSts": 1,
+          "rbDoorSts": 0,
+          "tailgateOpenUpSts": 0,
+          "backDoorSts": 0
+        },
+        "tirePress": {
+          "lfTirePressVal": "248,kPa",
+          "rfTirePressVal": "249,kPa",
+          "lbTirePressVal": "250,kPa",
+          "rbTirePressVal": "251,kPa",
+          "lfTirePressSts": 0,
+          "rfTirePressSts": 1,
+          "lbTirePressSts": 2,
+          "rbTirePressSts": 3,
+          "lfTirePressIndcrSts": 0,
+          "rfTirePressIndcrSts": 1,
+          "lbTirePressIndcrSts": 2,
+          "rbTirePressIndcrSts": 3
+        },
+        "tireTemp": {
+          "lfTireTempVal": "35,°C",
+          "rfTireTempVal": "36,°C",
+          "lbTireTempVal": "37,°C",
+          "rbTireTempVal": "38,°C",
+          "lfTireTempSts": 0,
+          "rfTireTempSts": 1,
+          "lbTireTempSts": 2,
+          "rbTireTempSts": 3
+        },
+        "seat": {
+          "mainDriverSeatHeatSts": 1,
+          "viceSeatHeatSts": 0,
+          "mainDriverSeatVentSts": 2,
+          "viceSeatVentSts": 0
+        },
+        "windows": {
+          "lfWinPosnSts": 5,
+          "rfWinPosnSts": 2,
+          "lbWinPosnSts": 2,
+          "rbWinPosnSts": 5,
+          "skyLightSts": 5,
+          "lfWinLearnSts": 1,
+          "rfWinLearnSts": 2,
+          "lbWinLearnSts": 3,
+          "rbWinLearnSts": 0
+        },
+        "charge": {
+          "chargeStatus": 3,
+          "chargingGunStatus": 1,
+          "chargingTime": "12,min",
+          "chargeSoc": "82.5,%",
+          "chargingGunModel": 0
+        },
+        "lighting": {
+          "nearBeamSts": 1,
+          "farBeamSts": 0,
+          "leftTurnLampSts": 1,
+          "rightTurnLampSts": 0
+        }
+      }
+    }
+  }
+}

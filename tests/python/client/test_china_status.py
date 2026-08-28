@@ -1,14 +1,21 @@
 from __future__ import annotations
 
+import json
 import math
+from pathlib import Path
 from typing import cast
 
 import pytest
 
-from gwm_ora_client.china_status import map_china_status
+from gwm_ora_client.china_status import map_bean_tech_status, map_china_status
 from gwm_ora_client.models import CloudVehicleStatus, VehicleIdentifier
 
 _VIN = "LGWTEST0000000001"
+_BEAN_FIXTURE = json.loads(
+    (Path(__file__).with_name("fixtures") / "china_beantech_status_v1.json").read_text(
+        encoding="utf-8"
+    )
+)
 
 
 def _map(
@@ -29,6 +36,64 @@ def _map(
 
 def _items(status: CloudVehicleStatus) -> dict[str, tuple[object, str | None]]:
     return {item.code: (item.value, item.unit) for item in status.items}
+
+
+def _map_bean(data: object) -> CloudVehicleStatus:
+    return map_bean_tech_status(
+        data,
+        identifier=VehicleIdentifier(_BEAN_FIXTURE["vin"]),
+        vehicle_id="SYNTHETIC-VEHICLE-3",
+    )
+
+
+def test_bean_tech_fixture_maps_released_and_platform_specific_signals() -> None:
+    status = _map_bean(_BEAN_FIXTURE["response"])
+    items = _items(status)
+
+    assert status.device_id == "SYNTHETIC-BEAN-DEVICE"
+    assert status.acquisition_time_ms == 1723456789000
+    assert status.update_time_ms == 1723456790000
+    assert status.latitude == 1.25
+    assert status.longitude == -2.5
+    assert items["2103010"] == ("22883", "km")
+    assert items["2011501"] == ("75", "km")
+    assert items["2011007"] == ("306", "km")
+    assert items["2017002"] == ("29", "L")
+    assert items["2013021"] == ("71", "%")
+    assert items["9000025"] == ("68", "%")
+    assert items["9000024"] == ("90", "%")
+    assert items["2101001"] == ("248", "kPa")
+    assert items["2101008"] == ("38", "°C")
+    assert items["2208001"] == ("0", None)
+    assert items["2206002"] == ("1", None)
+    assert items["2210001"] == ("1", None)
+    assert items["2210002"] == ("0", None)
+    assert items["2210004"] == ("0", None)
+    assert items["2210003"] == ("1", None)
+    assert items["2041142"] == ("3", None)
+    assert items["2013022"] == ("12", "min")
+    assert items["2201001"] == ("235", None)
+    assert items["9000001"] == ("1", None)
+    assert items["9000011"] == ("82.5", "%")
+    assert items["9000023"] == ("3", None)
+    assert items["2310001"] == ("1", None)
+    assert _BEAN_FIXTURE["vin"] not in repr(status)
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {},
+        {"data": {"vehicleStatusInfo": {}}},
+        {"data": {"vehicleStatusInfo": {"door": []}}},
+        {"data": {"vehicleStatusInfo": {"door": {}, "DOOR": {}}}},
+        {"data": {"vehicleStatusInfo": {"mileage": {"value": 1}}}},
+        {"data": {"vehicleStatusInfo": {"mileage": math.inf}}},
+    ],
+)
+def test_bean_tech_malformed_or_unrecognized_shapes_fail_closed(payload: object) -> None:
+    with pytest.raises(ValueError, match="^status_schema_invalid$"):
+        _map_bean(payload)
 
 
 def test_verified_vv6_status_maps_to_existing_signal_contract() -> None:

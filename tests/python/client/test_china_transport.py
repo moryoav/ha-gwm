@@ -402,6 +402,45 @@ def _status_request(**changes: object) -> _ChinaTransportRequest:
     return _ChinaTransportRequest(**values)  # type: ignore[arg-type]
 
 
+def _bean_status_request(**changes: object) -> _ChinaTransportRequest:
+    nonce = "0123456789abcdef"
+    timestamp = "1723456789123"
+    path = "/app-api/api/v2.0/vehicle/getLastStatus"
+    headers = {
+        "bt-auth-appkey": BEAN_TECH_APP_KEY,
+        "bt-auth-nonce": nonce,
+        "bt-auth-timestamp": timestamp,
+        "bt-auth-sign": bean_tech_sign("GET", path, nonce, timestamp, "vin=" + VIN),
+        "rs": "2",
+        "appId": "097a7099af30d960",
+        "brand": "10",
+        "terminal": "GW_APP_GWM",
+        "enterPriseId": "CC01",
+        "accessToken": "SYNTHETIC-BEAN-ACCESS",
+        "beanId": "SYNTHETIC-BEAN-PLATFORM",
+        "cVer": "2.1.5",
+        "vin": VIN,
+        "tenantId": "1",
+        "operatorRole": "0",
+        "tokenId": "SYNTHETIC-AUTO-TOKEN",
+        "Accept-Encoding": "gzip",
+        "User-Agent": "okhttp/4.2.2",
+    }
+    values: dict[str, object] = {
+        "operation": "get_last_status",
+        "service": "bean_tech",
+        "method": "GET",
+        "url": (
+            "https://gw-app-gateway.gwmapp-h.com/"
+            "app-api/api/v2.0/vehicle/getLastStatus?vin=" + quote(VIN, safe="")
+        ),
+        "body": None,
+        "headers": headers,
+    }
+    values.update(changes)
+    return _ChinaTransportRequest(**values)  # type: ignore[arg-type]
+
+
 async def _execute(
     response: _FakeResponse,
     *,
@@ -433,6 +472,7 @@ def test_capabilities_name_all_three_services_without_claiming_http2() -> None:
     )
     assert ChinaAiohttpTransport.capabilities.enabled_read_service_aliases == (
         "g_app",
+        "bean_tech",
         "auto_ai",
     )
     assert ChinaAiohttpTransport.capabilities.enabled_auth_service_aliases == (
@@ -457,9 +497,10 @@ def test_capabilities_name_all_three_services_without_claiming_http2() -> None:
         _auto_login_request,
         _discovery_request,
         _status_request,
+        _bean_status_request,
     ],
 )
-def test_closed_registry_accepts_exactly_the_seven_task9_operations(factory: Any) -> None:
+def test_closed_registry_accepts_task16_operations_and_platform_routes(factory: Any) -> None:
     request = factory()
     assert request.operation in {
         "request_verification",
@@ -762,6 +803,48 @@ def test_route_boundary_rejects_cross_service_method_path_query_and_body(
         factory(**changes)
 
 
+def test_bean_tech_status_get_has_exact_headers_query_and_signature() -> None:
+    request = _bean_status_request()
+
+    assert request.url.endswith("?vin=" + VIN)
+    assert request.body is None
+    assert request.headers["bt-auth-sign"] == bean_tech_sign(
+        "GET",
+        "/app-api/api/v2.0/vehicle/getLastStatus",
+        request.headers["bt-auth-nonce"],
+        request.headers["bt-auth-timestamp"],
+        "vin=" + VIN,
+    )
+    assert "Content-Type" not in request.headers
+
+
+@pytest.mark.parametrize(
+    "changes",
+    [
+        {"service": "auto_ai"},
+        {"method": "POST"},
+        {"url": "https://gw-app-gateway.gwmapp-h.com/app-api/api/v1.0/vehicle/getLastStatus?vin=" + VIN},
+        {"url": "https://gw-app-gateway.gwmapp-h.com/app-api/api/v2.0/vehicle/getLastStatus?vin=" + VIN + "&x=1"},
+        {"body": b"{}"},
+    ],
+)
+def test_bean_tech_status_route_rejects_cross_route_mutations(
+    changes: Mapping[str, object],
+) -> None:
+    with pytest.raises(ValueError, match="^route_invalid$"):
+        _bean_status_request(**changes)
+
+    headers = dict(_bean_status_request().headers)
+    headers["accessToken"] = " "
+    with pytest.raises(ValueError, match="^route_invalid$"):
+        _bean_status_request(headers=headers)
+
+    headers = dict(_bean_status_request().headers)
+    headers["bt-auth-sign"] = "0" * 64
+    with pytest.raises(ValueError, match="^route_invalid$"):
+        _bean_status_request(headers=headers)
+
+
 def test_status_route_rejects_duplicate_deep_oversized_and_userinfo_queries() -> None:
     valid_payload = unquote(urlsplit(_status_request().url).query[2:])
     duplicate_payload = valid_payload.replace(
@@ -898,6 +981,18 @@ async def test_transport_sends_exact_fixed_port_status_get_without_body() -> Non
     assert cast(URL, args[1]).port == 8443
     assert options["data"] is None
     assert cast(Mapping[str, str], options["headers"])["client"] == "phone"
+
+
+@pytest.mark.asyncio
+async def test_transport_sends_exact_bean_tech_status_get_without_body() -> None:
+    request = _bean_status_request()
+    body, session = await _execute(_FakeResponse(chunks=[b"{}"]), request=request)
+    assert body == b"{}"
+    args, options = session.calls[0]
+    assert args[0] == "GET"
+    assert cast(URL, args[1]).host == "gw-app-gateway.gwmapp-h.com"
+    assert options["data"] is None
+    assert cast(Mapping[str, str], options["headers"])["vin"] == VIN
 
 
 @pytest.mark.asyncio

@@ -15,18 +15,29 @@ from custom_components.gwm_ora.climate import GwmOraClimate
 from custom_components.gwm_ora.cloud_runtime import DirectReadOnlyCommandApi
 from custom_components.gwm_ora.coordinator import GwmOraDataUpdateCoordinator
 from custom_components.gwm_ora.entity import setup_vehicle_entities
-from custom_components.gwm_ora.sensor import SENSORS, GwmOraSensor
+from custom_components.gwm_ora.sensor import (
+    SENSORS,
+    GwmOraSensor,
+    _sensor_descriptions_for_vehicle,
+)
 
 
-def _vehicle(vin: str, soc: float) -> dict[str, Any]:
+def _vehicle(
+    vin: str,
+    soc: float,
+    *,
+    platform: str | None = None,
+    charge_soc: float | None = None,
+) -> dict[str, Any]:
     return {
         "vin": vin,
+        "platform": platform,
         "name": f"Vehicle {vin[-1]}",
         "manufacturer": "GWM",
         "model": "Synthetic",
         "serial_number": f"SERIAL-{vin[-1]}",
-        "capabilities": {"remote_commands": False},
-        "values": {"soc": soc},
+        "capabilities": {"remote_commands": False, "charging_control": False},
+        "values": {"soc": soc, "charge_soc": charge_soc},
         "timestamps": {},
         "climate": {},
         "raw_items": {},
@@ -90,3 +101,56 @@ async def test_existing_platform_adds_new_direct_vehicles_without_removing_old_e
 
     coordinator.last_update_success = False
     assert not added[1].available
+
+
+@pytest.mark.asyncio
+async def test_direct_coordinator_keeps_mixed_china_platform_entities_isolated() -> None:
+    coordinator = GwmOraDataUpdateCoordinator(
+        HomeAssistant("synthetic-config"),
+        DirectReadOnlyCommandApi(),
+        direct_client=SimpleNamespace(),  # type: ignore[arg-type]
+    )
+    coordinator.async_set_updated_data(
+        {
+            "region": "cn",
+            "remote_commands_enabled": False,
+            "charging_control_enabled": False,
+            "vehicles": [
+                _vehicle("SYNTHETIC-NAVINFO", 78, platform="navinfo"),
+                _vehicle(
+                    "SYNTHETIC-BEANTECH",
+                    71,
+                    platform="beantech",
+                    charge_soc=82.5,
+                ),
+            ],
+        }
+    )
+    added: list[GwmOraSensor] = []
+    entry = SimpleNamespace(
+        runtime_data=SimpleNamespace(coordinator=coordinator),
+        async_on_unload=lambda callback: None,
+    )
+
+    setup_vehicle_entities(
+        entry,  # type: ignore[arg-type]
+        lambda entities: added.extend(entities),  # type: ignore[arg-type]
+        lambda vehicle: (
+            GwmOraSensor(coordinator, vehicle["vin"], description)
+            for description in _sensor_descriptions_for_vehicle(
+                vehicle,
+                coordinator.region,
+            )
+        ),
+    )
+
+    by_vehicle = {
+        vin: {entity.entity_description.key: entity for entity in added if entity.vin == vin}
+        for vin in ("SYNTHETIC-NAVINFO", "SYNTHETIC-BEANTECH")
+    }
+    assert by_vehicle["SYNTHETIC-NAVINFO"]["soc"].native_value == 78
+    assert "charge_soc" not in by_vehicle["SYNTHETIC-NAVINFO"]
+    assert by_vehicle["SYNTHETIC-BEANTECH"]["soc"].native_value == 71
+    assert by_vehicle["SYNTHETIC-BEANTECH"]["charge_soc"].native_value == 82.5
+    assert all(not entity.remote_commands_available for entity in added)
+    assert all(not entity.charging_control_available for entity in added)

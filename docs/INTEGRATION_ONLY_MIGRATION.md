@@ -6,10 +6,10 @@ This document is the durable plan, behavior contract, decision log, and test led
 
 - Working branch: `feature/integration-only`
 - Branch point: `1184737` (`Update README GWM logo to SVG`)
-- Current checkpoint: Task 15 complete; released `main` v0.13.0 BeanTech support is merged, conflicts and translation topology are reconciled, and the complete Python/.NET baselines pass
-- Next checkpoint: Task 16 — port BeanTech status transport/mapping into the direct Python client and complete platform-aware read/entity parity (not yet approved)
+- Current checkpoint: Task 16 complete; the standalone Python China client now has offline-proven platform-routed NavInfo/BeanTech reads and platform-isolated normalized entities
+- Next checkpoint: Task 17 — add climate command parity, including NavInfo China heating and in-place parameter updates while keeping BeanTech climate hidden (not yet approved)
 - Synchronized `main`: `7b599cb` (`v0.13.0`) through a two-parent merge without rebasing or selective cherry-picks
-- Task 15 preserved the released BeanTech add-on, platform-aware entity, translation, version, and regression contracts alongside every Task 8-14 direct-cloud change; it did not implement the independent Python BeanTech status path, expose direct China, or enable writes
+- Task 16 ported the released BeanTech status contract into the independent Python client without exposing direct China, enabling writes, or making a live request; Gate A-CN still requires separately approved live read validation
 
 Work proceeds one explicitly approved task at a time. At the end of every task, update this document, run the checks appropriate to that checkpoint, create one focused commit, push it to `feature/integration-only`, report the result, and stop. Do not begin the next task without a new user green light.
 
@@ -21,6 +21,7 @@ Work proceeds one explicitly approved task at a time. At the end of every task, 
 - Live read-only tests require explicit approval for the corresponding task.
 - Live climate, lock, unlock, window, and charging-plan operations require an additional explicit confirmation immediately before testing them.
 - Push each completed task's focused commit to `feature/integration-only`. Do not publish packages, open a pull request, merge, or release without separate approval.
+- Keep Git operations sequential and bounded. Before checkpoint Git work, verify that no Codex-owned background Git diff workers are accumulating; keep large local reverse-engineering artifacts in repository-local excludes so status/diff scans cannot spawn an unbounded process queue.
 - If `main` moves materially during this long-lived effort, review and record the drift before synchronizing it. Because this published feature branch is long-lived, prefer an explicit merge checkpoint over rebasing or selective cherry-picking of a dependent release series.
 
 ## Architecture
@@ -268,7 +269,7 @@ After Task 24, packaging, installation migration, documentation, complete tests,
 - [x] Task 13 — Add the direct read-only coordinator and existing entity platforms.
 - [x] Task 14 — Add persistent account-bound client state and a restart-safe command journal.
 - [x] Task 15 — Merge released `main` v0.13.0, reconcile its BeanTech-aware integration contract, and re-establish both baselines.
-- [ ] Task 16 — Port BeanTech status transport/mapping into the direct Python client and complete platform-aware read/entity parity.
+- [x] Task 16 — Port BeanTech status transport/mapping into the direct Python client and complete platform-aware read/entity parity.
 - [ ] Task 17 — Add climate command parity, including NavInfo China heating and in-place parameter updates; keep unsupported BeanTech climate hidden.
 - [ ] Task 18 — Add lock/unlock and close-window parity with explicit NavInfo/BeanTech routing and isolated China no-PIN behavior.
 - [ ] Task 19 — Add platform-filtered China engine, horn/light, tailgate, and sunroof controls and HA buttons.
@@ -1120,6 +1121,44 @@ dotnet test GwmOra.sln --configuration Release --nologo
 
 The Home Assistant warning and .NET nullable-annotation warnings remain the unchanged dependency/baseline warnings. Task 15 changes no direct-cloud protocol behavior: it synchronizes the released replacement baseline so Task 16 can port BeanTech status into Python against the exact current add-on and entity contract.
 
+## Task 16 BeanTech Direct-Read Evidence
+
+Evidence captured on 2026-08-28 from `feature/integration-only`. Task 16 made no live cloud, login, SMS, vehicle-command, charging, publish, pull-request, merge, or release request.
+
+Delivered:
+
+- Added the exact signed BeanTech `GET /app-api/api/v2.0/vehicle/getLastStatus?vin=...` request to the closed China transport boundary, including canonical VIN encoding, the released app/header profile, strict token and identifier bounds, exact signature verification, no body, and no ambient HTTP state.
+- Routed `ChinaClient.get_last_status()` by the previously discovered `belongPlatform`: NavInfo remains on AutoAI, BeanTech uses the new BeanTech route, and missing, unknown, or undiscovered platforms fail locally before status traffic.
+- Ported the released BeanTech value/unit, body, window, door, tire, seat, charging, lighting, location, and timestamp mapper into immutable privacy-minimized Python status items with case-collision, malformed-shape, numeric, percentage, scalar-size, and finite-coordinate boundaries.
+- Extended shared vehicle discovery and normalized snapshots with a safe lowercase platform, explicit per-vehicle `remote_commands` and `charging_control` capabilities, `charging_complete`, and all released BeanTech-only diagnostic values. BeanTech charging capability is forced false even if a future account-level opt-in is true.
+- Added a versioned fully synthetic BeanTech request/response fixture, exact request/signature tests, mixed NavInfo/BeanTech client reads, hostile transport/mapping cases, direct-coordinator mixed-platform entity isolation, and privacy-boundary coverage.
+- Kept `cn` absent from Home Assistant selectors and the production direct runtime until Gate A-CN's separate live-read prerequisite passes. No command builder, command transport, direct write, or add-on behavior changed.
+
+Validation:
+
+```text
+# Focused Task 16 client/transport/mapping/snapshot/coordinator matrix
+py -3.13 -m pytest -q tests/python/client/test_china_status.py tests/python/client/test_china_transport.py tests/python/client/test_china_client.py tests/python/client/test_snapshots.py tests/python/test_direct_entities.py
+230 passed, 1 warning
+
+py -3.13 -m pytest -q
+1041 passed, 1 warning
+
+py -3.13 -m mypy gwm_ora_client
+Success: no issues found in 23 source files
+
+py -3.13 -m ruff check custom_components/gwm_ora gwm_ora_client tests/python
+All checks passed!
+
+py -3.13 -m compileall -q custom_components/gwm_ora gwm_ora_client tests/python
+Passed
+
+dotnet test GwmOra.sln --configuration Release --nologo
+153 passed, 0 failed
+```
+
+The Home Assistant warning and .NET nullable-annotation warnings remain the unchanged dependency/baseline warnings. Gate A-CN's offline NavInfo and BeanTech portions now pass independently in Python; a separately approved sanitized live read is still required before direct China can be exposed or either platform can be claimed cutover-ready.
+
 ## Checkpoint Log
 
 ### Task 1 — Branch, baseline, and migration ledger
@@ -1318,9 +1357,21 @@ Delivered:
 - Re-established 1,023 Python tests, 153 .NET tests, mypy, Ruff, compilation, and merge-sensitive entity/direct-runtime coverage without a live request.
 - Kept the Python BeanTech status port, direct China activation, and every direct write outside this synchronization checkpoint.
 
+### Task 16 — BeanTech direct status and platform-aware read parity
+
+Status: complete on 2026-08-28; Gate A-CN's independent offline NavInfo/BeanTech read matrix passed, with live activation still pending separate approval and evidence.
+
+Delivered:
+
+- Added the exact released BeanTech signed status GET to the closed bounded Python China transport and routed status strictly from discovered platform metadata.
+- Ported the released BeanTech status mapper and every new signal into the shared immutable cloud DTO and normalized snapshot boundary.
+- Added lowercase platform and explicit per-vehicle capabilities while forcing unsupported BeanTech charging control unavailable.
+- Proved exact fixed requests, strict malformed/route behavior, mixed-platform reads, snapshot serialization, direct-coordinator entity isolation, and fixture privacy with fully synthetic offline evidence.
+- Preserved the released add-on path, kept direct China hidden behind Gate A-CN, enabled no writes, and made no live request.
+
 ### Next checkpoint (requires explicit approval)
 
-Task 16 will add a platform-routed BeanTech read path to the standalone Python China client using the released signed `GET /app-api/api/v2.0/vehicle/getLastStatus` contract and sanitized fixtures. It must port strict BeanTech status mapping, extend the normalized snapshot with safe platform/per-vehicle capability fields and released BeanTech values, prove mixed NavInfo/BeanTech and entity-isolation behavior through the direct coordinator, and reject unknown platforms before status traffic. It remains read-only, must not expose `cn` in Home Assistant before Gate A-CN, and must not implement or send a vehicle command. Task 16 must not begin without a new user green light; any live read still requires separate explicit approval.
+Task 17 will add direct climate command parity through the Task 14 journal, including the existing overseas behavior plus NavInfo China cooling/heating and in-place parameter changes. It must keep unsupported BeanTech climate and run-time entities hidden, preserve platform routing and no-PIN China behavior, and fixture-test accepted command IDs, restart reconciliation, rejection, timeout, and availability before any live write. Task 17 must not begin without a new user green light; every live vehicle operation still requires separate explicit confirmation immediately before it is sent.
 
 ## Open Risks and Questions
 
@@ -1330,11 +1381,11 @@ Task 16 will add a platform-routed BeanTech read path to the standalone Python C
 - Modern `cryptography` rejects invalid PrintableString characters in the legacy OEM CA subjects; the POC validates their envelopes and lets OpenSSL consume the original signed bytes instead.
 - EU authentication is implemented and exhaustively fixture-tested offline, but its undocumented application-level token-expiry and wrong-verification-code values remain unverified. Until sanitized evidence establishes those codes, only HTTP 401/403 retires token state and unknown application errors propagate without fallback side effects.
 - Exact live parity of undocumented authentication and response behavior in ANZ and Russia remains unverified; EU read transport is proven live, while Task 5 EU auth, Task 6 ANZ auth/read, and Task 10 Russia auth/read semantics were deliberately not exercised live.
-- The overseas Python transport still deliberately rejects compressed responses. The separate China adapter, expanded through Task 9, proves independently bounded gzip over HTTP/1.1 against synthetic services, but `aiohttp` cannot prefer HTTP/2 and no live China read was approved; a sanitized live validation must decide whether the service accepts the permitted fallback or an isolated HTTP/2-capable dependency is required before Gate A-CN activation.
+- The overseas Python transport still deliberately rejects compressed responses. The separate China adapter, expanded through Task 16, proves independently bounded gzip and both NavInfo/BeanTech status routes over HTTP/1.1 against synthetic services, but `aiohttp` cannot prefer HTTP/2 and no live China read was approved; a sanitized live validation must decide whether each service accepts the permitted fallback or an isolated HTTP/2-capable dependency is required before Gate A-CN activation.
 - China authentication now crosses three services in the standalone client, but its exact live error-code behavior remains unverified. Unknown G-App, BeanTech, or AutoAI application codes therefore do not retire authentication, trigger SMS delivery/login, or discard a recoverable G-App-only partial; risk-control `1013` remains an explicit stop directing the user to the official app.
 - BeanTech and AutoAI initialization now use the narrowly bounded three-attempt policy selected in D-035. It is fixture-proven only; live validation must confirm gateway behavior, while SMS delivery/login, refresh, reads, schema/TLS/risk failures, and commands retain no automatic retry.
-- China evidence now includes a contributed NavInfo WEY VV6 with selected reads/controls and contributed live-tested BeanTech status through the released C# add-on. Neither proves the direct Python runtime against BeanTech, so Gate A-CN still needs a suitable sanitized Python read before that platform can be exposed; heating, platform-specific controls, charging, other models, and broader response encodings retain their own later evidence requirements.
-- The Python cloud DTOs and normalized snapshots cover the complete pre-v0.13 known signal table, but do not yet carry the released BeanTech platform/capability fields or its additional status values. Task 16 must add them without making absent, malformed, unknown-platform, or model-specific signals affect unrelated entities or vehicles.
+- China evidence now includes a contributed NavInfo WEY VV6 with selected reads/controls, contributed live-tested BeanTech status through the released C# add-on, and independent offline Python parity for both status routes. Gate A-CN still needs a suitable sanitized live Python read before either claimed platform can be exposed; heating, platform-specific controls, charging, other models, and broader response encodings retain their own later evidence requirements.
+- The Python cloud DTOs and normalized snapshots now carry the released BeanTech platform/capability fields and additional status values with mixed-platform isolation proven offline. Broader live response/model variation remains unverified, so absent, malformed, and unknown platform data must continue to fail closed or stay vehicle-local.
 - Task 14 persists account-bound authentication and the accepted-command journal, but provider-specific result-query identifiers, polling windows, terminal-code interpretation, and reconciliation policy still belong to Tasks 17-21 and require fixture plus explicitly approved live evidence before write parity can pass.
 - Availability of safe test accounts/vehicles for every regional read and write matrix.
 - ANZ side-by-side session effects remain untested. Task 6 prevents every password login without explicit one-shot consent and prevents automatic `607501` reclaim loops; Task 12 now presents that consent as a default-unchecked warning and the project still recommends a dedicated shared vehicle account.

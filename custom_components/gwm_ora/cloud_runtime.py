@@ -290,7 +290,7 @@ class DirectCloudReadClient:
                     basics,
                     refreshed_at=refreshed_at,
                     # Write support is deliberately unavailable until Tasks
-                    # 15-18, even when the user has opted in already.
+                    # 17-20, even when the user has opted in already.
                     remote_commands_available=False,
                 ).as_dict()
                 for vehicle, status, basics in records

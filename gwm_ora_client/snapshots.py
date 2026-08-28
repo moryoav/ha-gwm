@@ -81,11 +81,15 @@ class VehicleCapabilities:
     """Features enabled for one normalized vehicle."""
 
     remote_commands: bool = False
+    charging_control: bool = False
 
     def as_dict(self) -> SnapshotDictionary:
         """Return the existing integration wire shape."""
 
-        return {"remote_commands": self.remote_commands}
+        return {
+            "remote_commands": self.remote_commands,
+            "charging_control": self.charging_control,
+        }
 
 
 @dataclass(frozen=True, slots=True, repr=False)
@@ -152,6 +156,31 @@ class VehicleValues:
     front_passenger_seat_heater_level: int | None = None
     front_driver_seat_vent_level: int | None = None
     front_passenger_seat_vent_level: int | None = None
+    near_beam_active: bool | None = None
+    far_beam_active: bool | None = None
+    left_turn_lamp_active: bool | None = None
+    right_turn_lamp_active: bool | None = None
+    oil_alarm_active: bool | None = None
+    engine_door_open: bool | None = None
+    ac_auto_mode_active: bool | None = None
+    air_clean_active: bool | None = None
+    cabin_clean_active: bool | None = None
+    back_door_open: bool | None = None
+    charge_soc: float | None = None
+    charging_gun_model: int | None = None
+    hcu_powertrain_state: int | None = None
+    power: float | None = None
+    battery_pack_state: int | None = None
+    acc_clean_off: int | None = None
+    tbox_state: int | None = None
+    wireless_level: int | None = None
+    oil_segments: int | None = None
+    tire_pressure_indicator_front_left: bool | None = None
+    tire_pressure_indicator_front_right: bool | None = None
+    tire_pressure_indicator_rear_left: bool | None = None
+    tire_pressure_indicator_rear_right: bool | None = None
+    aux_battery_level: float | None = None
+    remaining_usable_charge_percent: float | None = None
 
     def as_dict(self) -> SnapshotDictionary:
         """Return every released value key, including unknown values."""
@@ -217,6 +246,31 @@ class VehicleValues:
             "front_passenger_seat_heater_level": self.front_passenger_seat_heater_level,
             "front_driver_seat_vent_level": self.front_driver_seat_vent_level,
             "front_passenger_seat_vent_level": self.front_passenger_seat_vent_level,
+            "near_beam_active": self.near_beam_active,
+            "far_beam_active": self.far_beam_active,
+            "left_turn_lamp_active": self.left_turn_lamp_active,
+            "right_turn_lamp_active": self.right_turn_lamp_active,
+            "oil_alarm_active": self.oil_alarm_active,
+            "engine_door_open": self.engine_door_open,
+            "ac_auto_mode_active": self.ac_auto_mode_active,
+            "air_clean_active": self.air_clean_active,
+            "cabin_clean_active": self.cabin_clean_active,
+            "back_door_open": self.back_door_open,
+            "charge_soc": self.charge_soc,
+            "charging_gun_model": self.charging_gun_model,
+            "hcu_powertrain_state": self.hcu_powertrain_state,
+            "power": self.power,
+            "battery_pack_state": self.battery_pack_state,
+            "acc_clean_off": self.acc_clean_off,
+            "tbox_state": self.tbox_state,
+            "wireless_level": self.wireless_level,
+            "oil_segments": self.oil_segments,
+            "tire_pressure_indicator_front_left": self.tire_pressure_indicator_front_left,
+            "tire_pressure_indicator_front_right": self.tire_pressure_indicator_front_right,
+            "tire_pressure_indicator_rear_left": self.tire_pressure_indicator_rear_left,
+            "tire_pressure_indicator_rear_right": self.tire_pressure_indicator_rear_right,
+            "aux_battery_level": self.aux_battery_level,
+            "remaining_usable_charge_percent": self.remaining_usable_charge_percent,
         }
 
 
@@ -266,6 +320,7 @@ class VehicleSnapshot:
     """One complete normalized vehicle snapshot."""
 
     vin: str = field(repr=False)
+    platform: str | None
     name: str
     manufacturer: str | None
     model: str | None
@@ -286,6 +341,7 @@ class VehicleSnapshot:
 
         return {
             "vin": self.vin,
+            "platform": self.platform,
             "name": self.name,
             "manufacturer": self.manufacturer,
             "model": self.model,
@@ -307,6 +363,7 @@ def map_vehicle_snapshot(
     *,
     refreshed_at: datetime,
     remote_commands_available: bool,
+    charging_control_available: bool = False,
     command_status: str = DEFAULT_COMMAND_STATUS,
 ) -> VehicleSnapshot:
     """Normalize one regional cloud DTO set into the shared snapshot contract."""
@@ -319,9 +376,12 @@ def map_vehicle_snapshot(
         raise TypeError("basics_invalid")
     if type(remote_commands_available) is not bool:
         raise TypeError("remote_commands_available_invalid")
+    if type(charging_control_available) is not bool:
+        raise TypeError("charging_control_available_invalid")
     if not isinstance(command_status, str):
         raise TypeError("command_status_invalid")
     normalized_refresh = _utc_datetime(refreshed_at)
+    platform = _normalized_platform(vehicle.platform)
 
     raw_items = _raw_items(status.items)
     interior_temperature = _number(raw_items, "2201001")
@@ -389,6 +449,31 @@ def map_vehicle_snapshot(
         front_passenger_seat_heater_level=_level(raw_items, "2220002"),
         front_driver_seat_vent_level=_level(raw_items, "2220003"),
         front_passenger_seat_vent_level=_level(raw_items, "2220004"),
+        near_beam_active=_bool(raw_items, "9000001"),
+        far_beam_active=_bool(raw_items, "9000002"),
+        left_turn_lamp_active=_bool(raw_items, "9000003"),
+        right_turn_lamp_active=_bool(raw_items, "9000004"),
+        oil_alarm_active=_bool(raw_items, "9000005"),
+        engine_door_open=_bool(raw_items, "9000006"),
+        ac_auto_mode_active=_bool(raw_items, "9000007"),
+        air_clean_active=_bool(raw_items, "9000008"),
+        cabin_clean_active=_bool(raw_items, "9000009"),
+        back_door_open=_bool(raw_items, "9000010"),
+        charge_soc=_number(raw_items, "9000011"),
+        charging_gun_model=_integer(raw_items, "9000012"),
+        hcu_powertrain_state=_integer(raw_items, "9000013"),
+        power=_number(raw_items, "9000014"),
+        battery_pack_state=_integer(raw_items, "9000015"),
+        acc_clean_off=_integer(raw_items, "9000016"),
+        tbox_state=_integer(raw_items, "9000017"),
+        wireless_level=_integer(raw_items, "9000018"),
+        oil_segments=_integer(raw_items, "9000019"),
+        tire_pressure_indicator_front_left=_bool(raw_items, "9000020"),
+        tire_pressure_indicator_front_right=_bool(raw_items, "9000021"),
+        tire_pressure_indicator_rear_left=_bool(raw_items, "9000022"),
+        tire_pressure_indicator_rear_right=_bool(raw_items, "9000023"),
+        aux_battery_level=_number(raw_items, "9000024"),
+        remaining_usable_charge_percent=_number(raw_items, "9000025"),
     )
     ac_on = values.ac_active is True
     climate_configuration = basics.climate
@@ -403,6 +488,7 @@ def map_vehicle_snapshot(
 
     return VehicleSnapshot(
         vin=vehicle.identifier.value,
+        platform=platform,
         name=_first_nonempty(
             vehicle.app_show_series_name,
             vehicle.vehicle_nickname,
@@ -418,7 +504,10 @@ def map_vehicle_snapshot(
             update_time=_unix_milliseconds(status.update_time_ms),
             last_refresh=normalized_refresh,
         ),
-        capabilities=VehicleCapabilities(remote_commands=remote_commands_available),
+        capabilities=VehicleCapabilities(
+            remote_commands=remote_commands_available,
+            charging_control=charging_control_available and platform != "beantech",
+        ),
         values=values,
         climate=ClimateSnapshot(
             mode="cool" if ac_on else "off",
@@ -569,6 +658,7 @@ def _charging_status(items: Mapping[str, RawItemSnapshot]) -> str | None:
     return {
         1: "charging",
         2: "awaiting_charging",
+        3: "charging_complete",
         5: "waiting_for_power",
         6: "error",
     }.get(value)
@@ -578,7 +668,7 @@ def _charging_active(items: Mapping[str, RawItemSnapshot]) -> bool | None:
     value = _integer(items, "2041142")
     if value == 1:
         return True
-    if value in {0, 2, 5, 6}:
+    if value in {0, 2, 3, 5, 6}:
         return False
     return None
 
@@ -635,6 +725,13 @@ def _location(latitude: float | None, longitude: float | None) -> LocationSnapsh
 
 def _first_nonempty(*values: str | None) -> str:
     return next((value for value in values if value is not None and value.strip()), "")
+
+
+def _normalized_platform(value: str | None) -> str | None:
+    if value is None:
+        return None
+    normalized = value.strip().casefold()
+    return normalized or None
 
 
 def _utc_datetime(value: datetime) -> datetime:

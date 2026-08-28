@@ -26,7 +26,7 @@ from gwm_ora_client import (
     normalize_temperature,
     valid_temperature,
 )
-from gwm_ora_client.china_status import map_china_status
+from gwm_ora_client.china_status import map_bean_tech_status, map_china_status
 from gwm_ora_client.models import (
     FrozenJsonValue,
     parse_cloud_vehicle_basics,
@@ -307,6 +307,66 @@ def test_china_fixture_translation_reaches_the_same_normalized_snapshot_boundary
     json.dumps(snapshot.as_dict(), allow_nan=False)
 
 
+def test_bean_tech_fixture_reaches_platform_aware_snapshot_without_commands() -> None:
+    fixture = cast(
+        "dict[str, object]",
+        json.loads((_FIXTURES / "china_beantech_status_v1.json").read_text(encoding="utf-8")),
+    )
+    identifier = VehicleIdentifier(cast("str", fixture["vin"]))
+    vehicle = ChinaVehicle(
+        identifier=identifier,
+        app_show_series_name="Synthetic BeanTech Series",
+        brand_name="Synthetic Brand",
+        vehicle_type="SYNTHETIC-BEAN",
+        vehicle_id="SYNTHETIC-VEHICLE-3",
+        platform=" BeanTech ",
+        network_type=4,
+    )
+    response = cast("dict[str, object]", fixture["response"])
+    status = map_bean_tech_status(
+        response,
+        identifier=identifier,
+        vehicle_id=vehicle.vehicle_id,
+    )
+
+    snapshot = map_vehicle_snapshot(
+        vehicle,
+        status,
+        CloudVehicleBasics(),
+        refreshed_at=_REFRESHED_AT,
+        remote_commands_available=False,
+        charging_control_available=True,
+    )
+    serialized = snapshot.as_dict()
+
+    assert snapshot.platform == "beantech"
+    assert snapshot.capabilities.remote_commands is False
+    assert snapshot.capabilities.charging_control is False
+    assert snapshot.values.soc == 71
+    assert snapshot.values.range_km == 75
+    assert snapshot.values.fuel_range_km == 306
+    assert snapshot.values.fuel_level_l == 29
+    assert snapshot.values.remaining_charging_time_min == 12
+    assert snapshot.values.charging_status == "charging_complete"
+    assert snapshot.values.charging_active is False
+    assert snapshot.values.near_beam_active is True
+    assert snapshot.values.far_beam_active is False
+    assert snapshot.values.charge_soc == 82.5
+    assert snapshot.values.acc_clean_off == 0
+    assert snapshot.values.tire_pressure_indicator_front_left is False
+    assert snapshot.values.tire_pressure_indicator_front_right is True
+    assert snapshot.values.tire_pressure_indicator_rear_left is None
+    assert snapshot.values.tire_pressure_indicator_rear_right is None
+    assert snapshot.values.aux_battery_level == 90
+    assert snapshot.values.remaining_usable_charge_percent == 68
+    assert serialized["platform"] == "beantech"
+    assert serialized["capabilities"] == {
+        "remote_commands": False,
+        "charging_control": False,
+    }
+    json.dumps(serialized, allow_nan=False)
+
+
 def test_missing_optional_signals_stay_unknown_and_identity_fallbacks_match() -> None:
     snapshot = map_vehicle_snapshot(
         CloudVehicle(
@@ -389,6 +449,7 @@ def test_malformed_values_fail_closed_and_latest_non_null_duplicate_wins() -> No
         (0, 1, "connected", False),
         (1, 1, "charging", True),
         (2, 1, "awaiting_charging", False),
+        (3, 1, "charging_complete", False),
         (5, 1, "waiting_for_power", False),
         (6, 1, "error", False),
         (7, 1, None, None),

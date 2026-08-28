@@ -1,9 +1,9 @@
-"""Privacy-minimizing China AutoAI status translation.
+"""Privacy-minimizing China platform status translation.
 
-The mainland-China service returns a field-oriented ``vehicleSts`` object
-instead of the signal-code list used by the overseas gateways.  This module
-translates only the fields needed by the existing typed cloud model and never
-retains the source mapping.
+The mainland-China services return field-oriented AutoAI ``vehicleSts`` and
+BeanTech ``vehicleStatusInfo`` objects instead of the signal-code list used by
+the overseas gateways. This module translates only released fields needed by
+the typed cloud model and never retains the source mapping.
 """
 
 from __future__ import annotations
@@ -133,6 +133,182 @@ def map_china_status(
         device_id=device_id,
         acquisition_time_ms=last_update,
         update_time_ms=last_update,
+        latitude=latitude,
+        longitude=longitude,
+        items=tuple(items),
+    )
+
+
+def map_bean_tech_status(
+    data: object,
+    *,
+    identifier: VehicleIdentifier,
+    vehicle_id: str | None,
+) -> CloudVehicleStatus:
+    """Translate one BeanTech response into immutable cloud status items.
+
+    The released app returns comma-delimited value/unit scalars and several
+    nested status groups. Case-colliding keys and malformed relevant objects
+    are rejected, while unknown fields are ignored and never retained.
+    """
+
+    if type(identifier) is not VehicleIdentifier:
+        raise ValueError("status_schema_invalid")
+
+    root = _copy_object(data)
+    data_value = root.get("data")
+    body = root if data_value is None else _copy_object(data_value)
+    status_value = body.get("vehiclestatusinfo")
+    status = body if status_value is None else _copy_object(status_value)
+    recognizable = {
+        "mileage",
+        "batterypremileage",
+        "powerbatterydisplayval",
+        "enginests",
+        "door",
+        "tirepress",
+        "tiretemp",
+        "seat",
+        "windows",
+        "charge",
+        "lighting",
+    }
+    if not any(status.get(name) is not None for name in recognizable):
+        raise ValueError("status_schema_invalid")
+
+    door = _child_object(status, "door")
+    tire_press = _child_object(status, "tirepress")
+    tire_temp = _child_object(status, "tiretemp")
+    seat = _child_object(status, "seat")
+    windows = _child_object(status, "windows")
+    charge = _child_object(status, "charge")
+    lighting = _child_object(status, "lighting")
+    items: list[CloudStatusItem] = []
+
+    _add_split_non_negative(items, "2103010", status, "mileage")
+    _add_split_non_negative(items, "2011501", status, "batterypremileage")
+    _add_split_non_negative(items, "2011007", status, "premileage")
+    _add_split_non_negative(items, "2017002", status, "remainoil")
+    _add_split_percentage(items, "2013021", status, "powerbatterydisplayval")
+    _add_split_percentage(items, "9000025", status, "powerbatterypercent")
+    _add_split_percentage(items, "9000024", status, "remainelectricpercent")
+
+    for node, property_name, code in (
+        (tire_press, "lftirepressval", "2101001"),
+        (tire_press, "rftirepressval", "2101002"),
+        (tire_press, "lbtirepressval", "2101003"),
+        (tire_press, "rbtirepressval", "2101004"),
+        (tire_temp, "lftiretempval", "2101005"),
+        (tire_temp, "rftiretempval", "2101006"),
+        (tire_temp, "lbtiretempval", "2101007"),
+        (tire_temp, "rbtiretempval", "2101008"),
+    ):
+        value, unit = _split_number_unit(node, property_name)
+        _add(items, code, value, unit)
+
+    for node, property_name, code in (
+        (tire_press, "lftirepresssts", "2102001"),
+        (tire_press, "rftirepresssts", "2102002"),
+        (tire_press, "lbtirepresssts", "2102003"),
+        (tire_press, "rbtirepresssts", "2102004"),
+        (tire_temp, "lftiretempsts", "2102007"),
+        (tire_temp, "rftiretempsts", "2102008"),
+        (tire_temp, "lbtiretempsts", "2102009"),
+        (tire_temp, "rbtiretempsts", "2102010"),
+        (door, "maindrvedoorlocksts", "2208001"),
+        (door, "maindrvedoorsts", "2206002"),
+        (door, "vicedoorsts", "2206004"),
+        (door, "lbdoorsts", "2206003"),
+        (door, "rbdoorsts", "2206005"),
+        (door, "tailgateopenupsts", "2206001"),
+        (seat, "maindriverseatheatsts", "2220001"),
+        (seat, "viceseatheatsts", "2220002"),
+        (seat, "maindriverseatventsts", "2220003"),
+        (seat, "viceseatventsts", "2220004"),
+    ):
+        _add(items, code, _value(node, property_name))
+
+    for property_name, code in (
+        ("lfwinposnsts", "2210001"),
+        ("rfwinposnsts", "2210002"),
+        ("lbwinposnsts", "2210004"),
+        ("rbwinposnsts", "2210003"),
+    ):
+        _add(items, code, _window_closed_code(windows, property_name))
+    _add(items, "2210005", _value(windows, "skylightsts"))
+
+    for property_name, code in (
+        ("lfwinlearnsts", "2210011"),
+        ("rfwinlearnsts", "2210010"),
+        ("lbwinlearnsts", "2210013"),
+        ("rbwinlearnsts", "2210012"),
+    ):
+        _add(items, code, _value(windows, property_name))
+
+    for property_name, code in (
+        ("enginests", "2016001"),
+        ("airconditionsts", "2202001"),
+        ("backfrost", "2210032"),
+        ("frontfrost", "2222001"),
+        ("steerwheelheatdsts", "2060016"),
+    ):
+        _add(items, code, _value(status, property_name))
+    _add(items, "2041142", _value(charge, "chargestatus"))
+    _add(items, "2042082", _value(charge, "charginggunstatus"))
+    charging_time, charging_time_unit = _split_number_unit(charge, "chargingtime")
+    _add_non_negative_number(
+        items,
+        "2013022",
+        charging_time,
+        charging_time_unit or "min",
+    )
+
+    in_car_temperature, _ = _split_number_unit(status, "incartemperature")
+    temperature = _double(in_car_temperature)
+    if temperature is not None:
+        _add(items, "2201001", f"{temperature * 10:.0f}")
+
+    for node, property_name, code in (
+        (lighting, "nearbeamsts", "9000001"),
+        (lighting, "farbeamsts", "9000002"),
+        (lighting, "leftturnlampsts", "9000003"),
+        (lighting, "rightturnlampsts", "9000004"),
+        (status, "oilalarmsts", "9000005"),
+        (status, "enginedoorsts", "9000006"),
+        (status, "acautomodests", "9000007"),
+        (status, "aircleansts", "9000008"),
+        (status, "cabinclean", "9000009"),
+        (door, "backdoorsts", "9000010"),
+        (charge, "charginggunmodel", "9000012"),
+        (status, "hcupowertrainsts", "9000013"),
+        (status, "power", "9000014"),
+        (status, "batterypacksts", "9000015"),
+        (status, "accbnclnoff", "9000016"),
+        (status, "tboxstate", "9000017"),
+        (status, "wirelesslevel", "9000018"),
+        (status, "oilqty", "9000019"),
+        (tire_press, "lftirepressindcrsts", "9000020"),
+        (tire_press, "rftirepressindcrsts", "9000021"),
+        (tire_press, "lbtirepressindcrsts", "9000022"),
+        (tire_press, "rbtirepressindcrsts", "9000023"),
+    ):
+        _add(items, code, _value(node, property_name))
+    charge_soc, charge_soc_unit = _split_number_unit(charge, "chargesoc")
+    _add_percentage(items, "9000011", charge_soc, charge_soc_unit or "%")
+
+    latitude = _double(body.get("latitude"))
+    longitude = _double(body.get("longitude"))
+    if latitude is not None and longitude is not None:
+        _add(items, "2310001", "1")
+
+    device_id = _validated_device_id(
+        _first_non_empty(_value(body, "deviceid"), vehicle_id, identifier.value),
+        identifier,
+    )
+    return CloudVehicleStatus(
+        device_id=device_id,
+        acquisition_time_ms=_long(body.get("acquisitiontime")) or 0,
+        update_time_ms=_long(body.get("updatetime")) or 0,
         latitude=latitude,
         longitude=longitude,
         items=tuple(items),
@@ -414,4 +590,66 @@ def _non_negative_value(node: _Object | None, property_name: str) -> str | None:
     return _format_number(value) if value is not None and value >= 0 else None
 
 
-__all__ = ["map_china_status"]
+def _split_number_unit(
+    node: _Object | None,
+    property_name: str,
+) -> tuple[str | None, str | None]:
+    raw = _value(node, property_name)
+    if raw is None or not raw.strip():
+        return None, None
+    value, separator, unit = raw.partition(",")
+    return value.strip(), unit.strip() if separator else None
+
+
+def _add_non_negative_number(
+    items: list[CloudStatusItem],
+    code: str,
+    value: str | None,
+    unit: str | None = None,
+) -> None:
+    number = _double(value)
+    if number is not None and number >= 0:
+        _add(items, code, _format_number(number), unit)
+
+
+def _add_split_non_negative(
+    items: list[CloudStatusItem],
+    code: str,
+    node: _Object | None,
+    property_name: str,
+) -> None:
+    value, unit = _split_number_unit(node, property_name)
+    _add_non_negative_number(items, code, value, unit)
+
+
+def _add_percentage(
+    items: list[CloudStatusItem],
+    code: str,
+    value: str | None,
+    unit: str | None = None,
+) -> None:
+    number = _double(value)
+    if number is not None and 0 <= number <= 100:
+        _add(items, code, _format_number(number), unit)
+
+
+def _add_split_percentage(
+    items: list[CloudStatusItem],
+    code: str,
+    node: _Object | None,
+    property_name: str,
+) -> None:
+    value, unit = _split_number_unit(node, property_name)
+    _add_percentage(items, code, value, unit)
+
+
+def _window_closed_code(node: _Object | None, property_name: str) -> str | None:
+    value = _integer(_get(node, property_name))
+    if value == 5:
+        return "1"
+    if value is not None and 0 <= value <= 4:
+        return "0"
+    return None
+
+
+__all__ = ["map_bean_tech_status", "map_china_status"]
