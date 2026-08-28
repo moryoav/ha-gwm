@@ -6,10 +6,10 @@ This document is the durable plan, behavior contract, decision log, and test led
 
 - Working branch: `feature/integration-only`
 - Branch point: `1184737` (`Update README GWM logo to SVG`)
-- Current checkpoint: Task 10 complete; Russia production authentication/read parity is proven offline, while live Russia behavior remains deliberately unverified
-- Next checkpoint: Task 11 — four-region normalized snapshot/model mapping (not yet approved)
+- Current checkpoint: Task 11 complete; the complete four-region normalized snapshot/model contract is ported and fixture-proven offline
+- Next checkpoint: Task 12 — direct-cloud config, verification, reauth, reconfigure, and options flows (not yet approved)
 - Synchronized local `main`: `9daff32` (`v0.12.0`) through a two-parent merge without rebasing or selective cherry-picks
-- Task 10 completed offline authentication and three-read parity for every supported region without changing Home Assistant, the add-on/proxy runtime, persistence, commands, or charging
+- Task 11 completed immutable normalized snapshot models, exact known-signal mapping, and the existing snake-case entity contract without changing Home Assistant, the add-on/proxy runtime, persistence, commands, or charging
 
 Work proceeds one explicitly approved task at a time. At the end of every task, update this document, run the checks appropriate to that checkpoint, create one focused commit, push it to `feature/integration-only`, report the result, and stop. Do not begin the next task without a new user green light.
 
@@ -263,7 +263,7 @@ After Task 22, packaging, installation migration, documentation, complete tests,
 - [x] Task 8 — Prove the isolated China crypto, transport, and reuse-only read path.
 - [x] Task 9 — Implement China production SMS authentication, multi-service sessions, and read parity.
 - [x] Task 10 — Implement Russia production authentication and read parity.
-- [ ] Task 11 — Port and fixture-test four-region normalized snapshot/model mapping.
+- [x] Task 11 — Port and fixture-test four-region normalized snapshot/model mapping.
 - [ ] Task 12 — Add direct-cloud config, verification, reauth, reconfigure, and options flows.
 - [ ] Task 13 — Add the direct read-only coordinator and existing entity platforms.
 - [ ] Task 14 — Add persistent account-bound client state and a restart-safe command journal.
@@ -327,6 +327,7 @@ The changed checkpoints stay intentionally narrow:
 | D-037 | 2026-08-28 | Implement Russia as its own authentication and static-identity strategy inside the existing overseas `GwmClient`. | Russia shares the overseas single-token/read model and routes, but its login/SMS payloads and fixed regional mTLS identity are distinct from EU enrollment and ANZ session reclaim. A separate strategy preserves those boundaries without inventing a fourth client shape. |
 | D-038 | 2026-08-28 | Classify Russia authentication side effects only from endpoint-scoped evidence. | Exact raw `110641` requests verification only after password login; submitted-code application errors remain unknown, only HTTP 401/403 proves code or token rejection, `429` remains rate limiting, and every other failure stops without refresh, login, SMS, retry, or state retirement. |
 | D-039 | 2026-08-28 | Preflight and exact-bind the static Russia bootstrap identity before every authentication network side effect. | Russia app reads use the bundled general RU identity rather than per-user enrollment. Exact RU subject/issuer, key, chain, validity, and scoped legacy TLS validation prevents swapped EU material or local certificate failure from causing a login or SMS request. |
+| D-040 | 2026-08-28 | Keep normalized snapshots immutable, redaction-safe, Home Assistant-independent, and shared by all four regional clients. | Every region now converges on the same privacy-minimized cloud DTOs. One mapper with an explicitly supplied refresh time and an explicit snake-case serialization boundary preserves the released entity contract without hidden clock access, regional duplication, or premature HA coupling. |
 
 ## Post-Branch Main Drift Review
 
@@ -538,7 +539,7 @@ dotnet test --no-restore --configuration Release
 128 passed, 0 failed, 0 skipped
 ```
 
-The dependency-minimal Ruff, mypy, compile, and 321-test client gate also passed under WSL/Linux with Python 3.13. The Python warning and .NET nullable-annotation warnings are the unchanged baseline warnings. Tasks 5, 6, 9, and 10 have since added production-shaped offline authentication/read behavior for every region; Task 11 must now complete the normalized four-region snapshot mapping before Home Assistant can use those clients directly.
+The dependency-minimal Ruff, mypy, compile, and 321-test client gate also passed under WSL/Linux with Python 3.13. The Python warning and .NET nullable-annotation warnings are the unchanged baseline warnings. Tasks 5, 6, 9, and 10 have since added production-shaped offline authentication/read behavior for every region, and Task 11 has added the shared normalized four-region snapshot mapping before Home Assistant wiring begins.
 
 ## Task 5 EU Authentication and Read-Parity Evidence
 
@@ -832,6 +833,57 @@ All checks passed!
 
 The Python warning and .NET nullable-annotation warnings remain the unchanged baseline warnings. Russia authentication and reads are production-shaped and offline-parity complete, but undocumented live token expiry, wrong-code behavior, response variation, gateway acceptance, and supported ARM TLS behavior remain deliberately unclaimed until separately approved sanitized validation is available.
 
+## Task 11 Four-Region Normalized Snapshot Evidence
+
+Evidence captured on 2026-08-28 from `feature/integration-only`. Task 11 used only the existing versioned synthetic EU, ANZ, Russia, and China response contracts plus constructed adversarial values. It made no live cloud, login, verification-code, Home Assistant, add-on, account, phone-app, vehicle, command, charging, publish, merge, or release request and used no live credential or session state.
+
+Delivered:
+
+- Added immutable, slots-based, redaction-safe normalized models for vehicle identity, location, timestamps, capabilities, every released value field, climate state/bounds, and the complete diagnostic raw-item map. An explicit JSON-serializable snake-case copy preserves the current add-on API/entity contract without importing Home Assistant.
+- Ported the complete `VehicleSnapshotMapper` signal table once behind the shared cloud DTO boundary: battery/range/fuel/charging, tires, odometer/cabin temperature, lock/door/window/trunk/sunroof, circulation/defrost/GPS, warning/learning states, steering/windscreen/seat comfort, engine codes, and market-aware plus compatibility window aliases.
+- Preserved the add-on's identity fallbacks, finite coordinate/range validation, positive bounded Unix timestamps, lock/window/charging semantics, 0-3 comfort levels, nonnegative fuel values, latest-non-null duplicate behavior, raw code trimming, and unsupported/malformed-as-unknown behavior.
+- Ported climate temperature clamping/validation and the legacy-minutes/current-seconds operation-time normalization for later command reuse. Refresh time is an explicit aware input and is normalized to UTC, making fixture output deterministic and preventing a hidden clock dependency.
+- Proved EU, ANZ, and Russia response parsing through the new mapper using their existing versioned synthetic fixtures, and proved the China field-oriented status translator reaches the same normalized contract using its existing synthetic discovery/status fixture. A complete constructed signal matrix covers every released value, while adversarial tests cover malformed numbers, non-finite values, bounds, duplicates, nested raw JSON, location/timestamp rejection, charging states, absent signals, serialization, and secret-safe representations.
+- Corrected stale client comments that assigned persistence to Task 11; durable account-bound state remains intentionally deferred to Task 14. Home Assistant flows/coordinator/entities, persistence, commands, charging, packaging, migration, and the released add-on/proxy runtime remain unchanged.
+
+Validation:
+
+```text
+# Task 11 focused normalized snapshot matrix (Windows, CPython 3.13.13)
+py -3.13 -m pytest -q tests/python/client/test_snapshots.py
+33 passed
+
+py -3.13 -m pytest -q tests/python/client
+920 passed
+
+py -3.13 -m pytest -q tests/python
+958 passed, 1 warning
+
+py -3.13 -m mypy gwm_ora_client
+Success: no issues found in 23 source files
+
+py -3.13 -m ruff check gwm_ora_client custom_components tests/python
+All checks passed!
+
+py -3.13 -m compileall -q gwm_ora_client custom_components tests/python
+# no output; exit 0
+
+dotnet test --configuration Release --nologo --verbosity quiet
+149 passed, 0 failed, 0 skipped
+
+# Dependency-minimal WSL/Linux, CPython 3.13.13
+python -m pytest -q tests/python/client
+920 passed
+
+python -m mypy gwm_ora_client
+Success: no issues found in 23 source files
+
+ruff check gwm_ora_client tests/python/client
+All checks passed!
+```
+
+The Python warning and .NET nullable-annotation warnings remain the unchanged baseline warnings. Task 11 proves deterministic normalized read-model parity offline for all four regional paths; it does not change the separate live-evidence limitations already recorded for ANZ, Russia, or China.
+
 ## Checkpoint Log
 
 ### Task 1 — Branch, baseline, and migration ledger
@@ -970,9 +1022,20 @@ Delivered:
 - Added fully synthetic auth/read contracts and expanded privacy guards so raw certificate/key material, codes, credentials, tokens, VINs, locations, and response captures cannot enter fixtures unnoticed.
 - Kept Home Assistant, normalized snapshot mapping, durable state, commands, charging, packaging, migration, add-on/proxy behavior, and live Russia access unchanged.
 
+### Task 11 — Four-region normalized snapshot/model mapping
+
+Status: complete on 2026-08-28; offline normalized read-model parity passed for EU, ANZ, Russia, and China.
+
+Delivered:
+
+- Added immutable, redaction-safe normalized snapshot models and an explicit JSON-serializable snake-case boundary matching the current integration contract.
+- Ported every released signal, identity/location/timestamp, raw-item, climate-state, temperature, and operation-time rule from the add-on mapper behind the shared cloud DTOs.
+- Proved all four regional fixture paths, the complete known-signal matrix, malformed/unknown behavior, compatibility aliases, charging states, deterministic refresh time, serialization, and representation redaction.
+- Kept Home Assistant config and reauthentication flows, coordinator/entities, durable state, commands, charging, packaging, migration, add-on/proxy behavior, and live access unchanged.
+
 ### Next checkpoint (requires explicit approval)
 
-Task 11 will port and fixture-test the complete four-region normalized snapshot/model mapping without adding Home Assistant flows, persistence, commands, or charging behavior. Task 11 must not begin without a new user green light; any live cloud access still requires separate explicit approval.
+Task 12 will add native direct-cloud config, verification, reauthentication, reconfigure, and options flows without switching the existing coordinator/entities away from the add-on yet. Task 12 must not begin without a new user green light; any live cloud access still requires separate explicit approval.
 
 ## Open Risks and Questions
 
@@ -986,7 +1049,7 @@ Task 11 will port and fixture-test the complete four-region normalized snapshot/
 - China authentication now crosses three services in the standalone client, but its exact live error-code behavior remains unverified. Unknown G-App, BeanTech, or AutoAI application codes therefore do not retire authentication, trigger SMS delivery/login, or discard a recoverable G-App-only partial; risk-control `1013` remains an explicit stop directing the user to the official app.
 - BeanTech and AutoAI initialization now use the narrowly bounded three-attempt policy selected in D-035. It is fixture-proven only; live validation must confirm gateway behavior, while SMS delivery/login, refresh, reads, schema/TLS/risk failures, and commands retain no automatic retry.
 - China live evidence is currently limited to a contributed NavInfo WEY VV6 and selected reads/controls. Gate A-CN needs suitable sanitized access before direct China setup can be exposed, while heating, extended controls, charging, other platforms/models, and broader response encodings need their own later evidence.
-- The cloud DTOs intentionally retain only the fields required to establish the protocol boundary. All four regions now have sanitized response fixtures; Task 11's complete four-region normalized-snapshot mapping remains outstanding.
+- The cloud DTOs intentionally retain only the fields required by authentication, reads, and normalized snapshots. All four regional paths and the complete known signal table are fixture-proven, but undocumented live/model-specific signal variations can still require future additive mappings without making other entities unavailable.
 - ANZ's exact basics `607099` response is now a typed raw-client optional-endpoint failure. The Task 13 coordinator must deliberately map it to empty basics to preserve the add-on polling service's nonfatal behavior.
 - Whether Task 12 should use one dedicated cookie-free client session per config entry or a policy-validated HA-owned session while preserving scoped TLS and unload ownership.
 - Availability of safe test accounts/vehicles for every regional read and write matrix.

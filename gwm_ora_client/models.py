@@ -82,7 +82,7 @@ class CloudStatusItem:
 
 @dataclass(frozen=True, slots=True)
 class CloudVehicleStatus:
-    """The typed cloud status envelope before Task 8 normalization."""
+    """The typed cloud status envelope before normalized snapshot mapping."""
 
     device_id: str | None = field(default=None, repr=False)
     acquisition_time_ms: int | None = field(default=None, repr=False)

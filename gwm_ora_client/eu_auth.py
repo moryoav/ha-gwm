@@ -188,7 +188,7 @@ class EuCredentials:
 
 @dataclass(frozen=True, slots=True)
 class EuAuthState:
-    """Immutable persistence candidate; Task 11 will own writing it to disk."""
+    """Immutable persistence candidate; Task 14 will own writing it to disk."""
 
     account_binding: str = field(repr=False)
     country: str
