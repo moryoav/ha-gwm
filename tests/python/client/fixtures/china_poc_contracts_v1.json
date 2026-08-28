@@ -1,0 +1,67 @@
+{
+  "schema_version": 1,
+  "provenance": "fully synthetic Task 8 contract; contains no captured account, vehicle, or location data",
+  "clock": "2024-08-12T09:59:49.123+00:00",
+  "session": {
+    "device_id": "0123456789abcdef0123456789abcdef",
+    "g_token": "SYNTHETIC-G-TOKEN",
+    "bean_tech_access_token": "SYNTHETIC-BEAN-ACCESS",
+    "user_id": "SYNTHETIC-USER",
+    "bean_id": "SYNTHETIC-BEAN",
+    "auto_ai_token_id": "SYNTHETIC-AUTO-TOKEN"
+  },
+  "discovery_request": {
+    "url": "https://gapp-api.gwmapp-h.com/gcar/v1/app/android/vehicle/query-vehicle-list",
+    "body": "{\"vehicleVersion\":13}",
+    "timestamp": "1723456789000",
+    "signature": "01fad524296563af05cf30b705d7b894338fb80b43b49909235df5175c5c98d2"
+  },
+  "status_request": {
+    "url_without_query": "https://ti.gwm.com.cn:8443/tsp/ead",
+    "url": "https://ti.gwm.com.cn:8443/tsp/ead?p=%7B%22body%22%3A%7B%22vin%22%3A%22LGWTEST0000000001%22%7D%2C%22header%22%3A%7B%22brandType%22%3A%22gwm%22%2C%22cVer%22%3A%222.1.5%22%2C%22fn%22%3A%22GW.M.GET_VEHICLE_STATE%22%2C%22fv%22%3A%220202%22%2C%22mobileId%22%3A%220123456789abcdef0123456789abcdef%22%2C%22osType%22%3A%22Android%22%2C%22osVer%22%3A%22%22%2C%22rs%22%3A%222%22%2C%22ts%22%3A%2220240812175949123%22%2C%22tk%22%3A%22SYNTHETIC-AUTO-TOKEN%22%2C%22v%22%3A%221.0%22%7D%7D",
+    "timestamp": "1723456789123",
+    "china_timestamp": "20240812175949123",
+    "signature": "bI5QLYve+aQBeu2pyb0yLUf3GuU=",
+    "function": "GW.M.GET_VEHICLE_STATE"
+  },
+  "discovery_response": {
+    "code": "000000",
+    "data": {
+      "acquireVehiclesList": [
+        {
+          "vin": "LGWTEST0000000001",
+          "vehicleId": "synthetic-vehicle-1",
+          "belongPlatform": "navinfo",
+          "vehicleNetworkType": "2",
+          "appShowSeriesName": "Synthetic Series",
+          "brandName": "Synthetic Brand",
+          "vtype": "SYNTHETIC"
+        },
+        {
+          "vin": "LGWTEST0000000002",
+          "vehicleId": "synthetic-vehicle-2",
+          "belongPlatform": "unsupported-synthetic-platform",
+          "vehicleNetworkType": 3
+        }
+      ]
+    }
+  },
+  "status_response": {
+    "header": {
+      "c": 0
+    },
+    "body": {
+      "vehicleSts": {
+        "lastUpdate": "1723456789000",
+        "battSts": {
+          "battSoc": "78",
+          "battSoh": "95"
+        },
+        "carStatus": {
+          "drvDoorLockSts": 2,
+          "odo": "56040"
+        }
+      }
+    }
+  }
+}

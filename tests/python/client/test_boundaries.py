@@ -91,6 +91,14 @@ def _assert_sensitive_fixture_values_are_synthetic(value: object) -> None:
             normalized_key = key.replace("_", "").lower()
             if normalized_key in {"accesstoken", "refreshtoken"}:
                 assert isinstance(child, str) and child.startswith("SYNTHETIC-")
+            if normalized_key in {
+                "gtoken",
+                "beantechaccesstoken",
+                "autoaitokenid",
+                "userid",
+                "beanid",
+            }:
+                assert isinstance(child, str) and child.startswith("SYNTHETIC-")
             if normalized_key == "password":
                 assert isinstance(child, str) and child.startswith("SYNTHETIC-")
             if normalized_key in {"account", "email"}:
@@ -109,7 +117,20 @@ def _assert_sensitive_fixture_values_are_synthetic(value: object) -> None:
             _assert_sensitive_fixture_values_are_synthetic(child)
 
 
-@pytest.mark.parametrize("key", ["access_token", "accessToken", "refresh_token", "refreshToken"])
+@pytest.mark.parametrize(
+    "key",
+    [
+        "access_token",
+        "accessToken",
+        "refresh_token",
+        "refreshToken",
+        "g_token",
+        "bean_tech_access_token",
+        "auto_ai_token_id",
+        "user_id",
+        "bean_id",
+    ],
+)
 def test_fixture_guard_covers_wire_and_python_token_spellings(key: str) -> None:
     with pytest.raises(AssertionError):
         _assert_sensitive_fixture_values_are_synthetic({key: "REAL-TOKEN-MUST-FAIL"})

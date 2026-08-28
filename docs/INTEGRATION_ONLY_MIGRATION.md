@@ -6,10 +6,10 @@ This document is the durable plan, behavior contract, decision log, and test led
 
 - Working branch: `feature/integration-only`
 - Branch point: `1184737` (`Update README GWM logo to SVG`)
-- Current checkpoint: Task 7 complete; the branch is synchronized with reviewed `main`/`v0.12.0`; Gate A remains passed
-- Next checkpoint: Task 8 — China crypto, transport, and reuse-only read POC (not yet approved)
+- Current checkpoint: Task 8 complete; Gate A-CN's offline synthetic portion is passed, while its live China activation prerequisite remains pending
+- Next checkpoint: Task 9 — China production SMS authentication, multi-service sessions, and read parity (not yet approved)
 - Synchronized local `main`: `9daff32` (`v0.12.0`) through a two-parent merge without rebasing or selective cherry-picks
-- Task 7 changed no `gwm_ora_client` or direct-cloud runtime behavior; the existing add-on/proxy path now includes all released China behavior
+- Task 8 added an isolated reuse-only China POC without changing `GwmClient`, `Region`, Home Assistant, the add-on/proxy runtime, authentication, persistence, commands, or charging
 
 Work proceeds one explicitly approved task at a time. At the end of every task, update this document, run the checks appropriate to that checkpoint, create one focused local commit, report the result, and stop. Do not begin the next task without a new user green light.
 
@@ -235,7 +235,7 @@ Task 8 is a second, China-specific feasibility checkpoint. It will remain reuse-
 
 After Task 3, Python must reproduce the offline signing/certificate vectors and retrieve a sanitized live vehicle snapshot directly from at least one GWM region using scoped TLS. Failure pauses the migration for reassessment.
 
-### Gate A-CN — China transport feasibility
+### Gate A-CN — China transport feasibility (offline portion passed 2026-08-28; live activation prerequisite pending)
 
 After Task 8, Python must reproduce all three China crypto/signing families and complete a bounded end-to-end synthetic-service discovery/status round trip using the selected transport. Before `cn` can be enabled in a direct Home Assistant flow or the add-on can be retired for a China user, a sanitized live read-only validation must also pass using either an existing session or an explicitly approved Task 9 SMS login. Lack of suitable China access does not block work for the other regions, but it does block claiming China cutover readiness.
 
@@ -260,7 +260,7 @@ After Task 22, packaging, installation migration, documentation, complete tests,
 - [x] Task 5 — Implement EU production authentication and read parity.
 - [x] Task 6 — Implement ANZ production authentication and read parity.
 - [x] Task 7 — Merge the reviewed released `main` series into this branch and re-establish the full baseline.
-- [ ] Task 8 — Prove the isolated China crypto, transport, and reuse-only read path.
+- [x] Task 8 — Prove the isolated China crypto, transport, and reuse-only read path.
 - [ ] Task 9 — Implement China production SMS authentication, multi-service sessions, and read parity.
 - [ ] Task 10 — Implement Russia production authentication and read parity.
 - [ ] Task 11 — Port and fixture-test four-region normalized snapshot/model mapping.
@@ -317,6 +317,9 @@ The changed checkpoints stay intentionally narrow:
 | D-027 | 2026-08-27 | Retire China transport risk before production SMS authentication. | The existing Python transport rejects compressed responses and does not provide HTTP/2, while the observed China app profile advertises gzip and prefers HTTP/2. A bounded read-only POC can decide the transport without requesting codes or mutating an account or vehicle. |
 | D-028 | 2026-08-27 | Bind all durable authentication and ownership state to the complete account context and clear it atomically when that context changes. | Main now prevents tokens, certificates, partial China sessions, verification throttles, charging ownership, or command outcomes from crossing region, country, account, or password changes; the direct integration must preserve that safety behavior without persisting a reversible credential fingerprint. |
 | D-029 | 2026-08-27 | Preserve evidence labels for China capabilities instead of treating fixture parity as live validation. | Discovery, VV6 status, cooling, lock/unlock, and close-window behavior have initial live evidence; heating, extended controls, charging, other models/platforms, and broader response encodings remain experimental and require distinct approvals and results. |
+| D-030 | 2026-08-28 | Keep the Task 8 China proof reuse-only, read-only, and separate from the production overseas client. | Discovery needs existing G-App and BeanTech state while status needs existing AutoAI state; a dedicated minimal snapshot and closed two-read client prove that boundary without adding China to `Region`, importing durable state, requesting SMS, refreshing tokens, or exposing mutations. |
+| D-031 | 2026-08-28 | Select an isolated bounded-gzip `aiohttp` adapter for the offline China proof without claiming HTTP/2 or live compatibility. | The C# app profile prefers HTTP/2 but permits a lower version. Python's HTTP/1.1 adapter proves exact bytes, ordinary verified TLS, ambient-state isolation, and bounded synthetic gzip; only a separately approved live read can establish whether the service accepts that fallback or an HTTP/2-capable dependency is required. |
+| D-032 | 2026-08-28 | Treat BeanTech as a distinct modeled/signing boundary, but defer BeanTech HTTP traffic to production China authentication. | Reused-session discovery transmits the BeanTech access token to G-App and its signing algorithm has a golden vector; discovery/status themselves call only G-App and direct AutoAI, so inventing a BeanTech POC request would exceed the two-read feasibility scope. |
 
 ## Post-Branch Main Drift Review
 
@@ -663,6 +666,59 @@ dotnet test --configuration Release
 
 The Python warning and .NET nullable-annotation warnings are the unchanged baseline warnings. Integration JSON and add-on YAML parsed successfully; configuration, manifest, and quality assertions agree on version `0.12.0`. The existing untracked analysis artifacts remained outside the merge.
 
+## Task 8 China Feasibility Evidence
+
+Evidence captured on 2026-08-28 from `feature/integration-only`. Task 8 performed no GWM, Home Assistant, add-on, account, SMS, phone-app, vehicle, command, charging, or release operation and did not inspect or import live session state.
+
+Delivered:
+
+- Ported the G-App `G_A` AES-256-CBC/OpenSSL envelope, G-App default SHA-256 signing, BeanTech SHA-256/Java-URL signing, AutoAI HMAC-SHA1 signing, MD5/SHA helpers, and fixed UTC+08:00 protocol time into a deterministic HA-independent module. The authoritative C# golden vectors, both G-App key IDs, fixed-salt OpenSSL ciphertext, padding boundaries, malformed wrappers, invalid UTF-8, canonicalization edges, and secret-safe exceptions are covered offline.
+- Added an immutable minimal reused-read snapshot containing only the 32-character normalized device identity and the five existing G-App/BeanTech/AutoAI values actually transmitted by discovery/status. It has no phone, refresh/SSO token, loader, persistence, login, SMS, refresh, command, or charging surface.
+- Added a closed `ChinaPocClient` with exactly G-App vehicle discovery and direct AutoAI/NavInfo status. It emits the exact compact discovery body, System.Text.Json-compatible AutoAI wrapper and percent-encoded target, fixed app headers and times, enforces prior discovery plus case-insensitive NavInfo membership, and retains only privacy-minimized typed POC results.
+- Added a separate China-only `aiohttp` adapter using ordinary verified TLS 1.2+, exact G-App and AutoAI route/method/header validation, no redirects, ambient proxies, cookies, default authentication, hidden headers, retries, or implicit decompression, and independent compressed-wire/decompressed-body ceilings. It accepts one valid gzip member and rejects unsupported/multiple encodings, duplicate security-relevant headers, truncated/corrupt/trailing/concatenated streams, decompression bombs, lying lengths, and unsafe external-session state.
+- Modeled all three protocol services without inventing a third read call: the synthetic round trip sends G-App discovery then direct AutoAI status; BeanTech's distinct signing vector and use of its access token are proven, while BeanTech HTTP initialization remains Task 9 work.
+- Added a versioned, fully synthetic request/response contract with static discovery signature, exact full AutoAI URL, fixed timestamps, two synthetic vehicles, and a non-empty status. The selected adapter completed the gzip-compressed synthetic discovery-to-status round trip end to end.
+- Kept the POC outside `gwm_ora_client.__all__`, the production `GwmClient`/`Region` strategy, Home Assistant, persistence, and released add-on/proxy behavior. Failed re-discovery and AutoAI authentication revoke status eligibility; full logical operations share one deadline/lock and are covered for cancellation, close, concurrency, parser, error-category, and redaction behavior.
+- Recorded the transport result conservatively: bounded China gzip over HTTP/1.1 is proven synthetically, but no live China request was approved. HTTP/2 preference, live gateway acceptance, and Gate A-CN cutover readiness remain explicitly unresolved.
+
+Validation:
+
+```text
+# Task 8 plus cross-fixture boundary tests (Windows, CPython 3.13.13)
+py -3.13 -m pytest -q tests/python/client/test_boundaries.py tests/python/client/test_china_crypto.py tests/python/client/test_china_transport.py tests/python/client/test_china_poc.py
+174 passed
+
+py -3.13 -m pytest tests/python/client
+647 passed
+
+py -3.13 -m mypy gwm_ora_client
+Success: no issues found in 18 source files
+
+py -3.13 -m ruff check gwm_ora_client custom_components tests/python
+All checks passed!
+
+py -3.13 -m compileall -q gwm_ora_client custom_components tests/python
+# no output; exit 0
+
+py -3.13 -m pytest tests/python
+685 passed, 1 warning
+
+dotnet test --configuration Release
+149 passed, 0 failed, 0 skipped
+
+# Dependency-minimal WSL/Linux, CPython 3.13.13
+python -m pytest tests/python/client
+647 passed
+
+python -m mypy gwm_ora_client
+Success: no issues found in 18 source files
+
+ruff check gwm_ora_client tests/python/client
+All checks passed!
+```
+
+The Python warning and .NET nullable-annotation warnings remain the unchanged baseline warnings. The live portion of Gate A-CN is deliberately not passed: a separately approved sanitized read must still establish service acceptance and the HTTP-version decision before direct China setup or China-inclusive add-on retirement.
+
 ## Checkpoint Log
 
 ### Task 1 — Branch, baseline, and migration ledger
@@ -758,9 +814,23 @@ Delivered:
 - Re-established the unchanged 487-test client gate, expanded 525-test Python baseline, and expanded 149-test .NET baseline.
 - Made no live request and no China direct-cloud Python behavior change.
 
+### Task 8 — Isolated China crypto, transport, and reuse-only read proof
+
+Status: complete on 2026-08-28; Gate A-CN's offline synthetic portion passed, live activation prerequisite pending.
+
+Delivered:
+
+- Ported all three China service crypto/signing families and fixed UTC+08:00 time with authoritative and independently fixed-salt golden vectors.
+- Added a minimal immutable existing-session snapshot and an isolated two-operation discovery/status POC with exact app-like bytes, 32-character device identity, prior-discovery/NavInfo enforcement, typed privacy-minimized results, and no authentication or mutation APIs.
+- Added a dedicated ordinary-TLS China adapter with a closed G-App/AutoAI route registry, ambient-state isolation, one monotonic logical-operation deadline, and independently bounded single-member gzip decompression.
+- Proved a fully synthetic gzip G-App discovery to direct AutoAI status round trip, exact full request targets/headers/signatures, strict envelopes/parsers, lifecycle/concurrency, revocation, redaction, and hostile transport inputs across 155 new Task 8 tests plus five expanded fixture-boundary cases.
+- Proved BeanTech's signing boundary without sending an unnecessary BeanTech request; its session initialization and HTTP routes remain deferred to Task 9.
+- Kept `GwmClient`, `Region`, Home Assistant, add-on/proxy runtime behavior, durable state, SMS, refresh, commands, charging, live access, publishing, and pushing unchanged.
+- Selected bounded HTTP/1.1 `aiohttp` for the offline proof only. No live China request was authorized, so HTTP/2 necessity and live compatibility remain unresolved Gate A-CN activation conditions.
+
 ### Next checkpoint (requires explicit approval)
 
-Task 8 will build the isolated, reuse-only China feasibility POC. It will port deterministic crypto/time vectors, exact request serialization and app-profile headers, 32-character device identity, bounded gzip handling, and the G-App/BeanTech/AutoAI transport boundary needed for synthetic vehicle discovery and status reads. It will not request or submit an SMS code, refresh or persist a live session, send a command, change a charging plan, wire Home Assistant to China direct cloud, publish or push anything, or begin Task 9. Any reuse-only live China read requires separate explicit approval and an agreed sanitized-state procedure.
+Task 9 will turn the isolated proof into production China authentication, multi-service session lifecycle, and read parity without Home Assistant wiring or persistence. It must add the explicit SMS continuation/throttle, exact risk-control and error handling, G-App refresh, bounded BeanTech/AutoAI initialization, partial-session publication, production typed discovery/status behavior, and sanitized fixtures while preserving the corrected G-App route and NavInfo-only boundary. Task 9 must not begin without a new user green light; any SMS delivery/login or live China read needs a separately agreed procedure and approval before execution.
 
 ## Open Risks and Questions
 
@@ -769,7 +839,7 @@ Task 8 will build the isolated, reuse-only China feasibility POC. It will port d
 - Modern `cryptography` rejects invalid PrintableString characters in the legacy OEM CA subjects; the POC validates their envelopes and lets OpenSSL consume the original signed bytes instead.
 - EU authentication is implemented and exhaustively fixture-tested offline, but its undocumented application-level token-expiry and wrong-verification-code values remain unverified. Until sanitized evidence establishes those codes, only HTTP 401/403 retires token state and unknown application errors propagate without fallback side effects.
 - Exact live parity of undocumented authentication and response behavior in ANZ and Russia remains unverified; EU read transport is proven live, while Task 5 EU auth and Task 6 ANZ auth/read semantics were deliberately not exercised live.
-- The current Python `aiohttp` transport rejects compressed responses and has no HTTP/2 client support. Task 8 must prove whether bounded China-only gzip over HTTP/1.1 is accepted by the corrected gateway or whether an isolated HTTP/2-capable dependency is required without weakening existing transport boundaries.
+- The overseas Python transport still deliberately rejects compressed responses. Task 8's separate China adapter now proves independently bounded gzip over HTTP/1.1 against synthetic services, but `aiohttp` cannot prefer HTTP/2 and no live China read was approved; a sanitized live validation must decide whether the service accepts the permitted fallback or an isolated HTTP/2-capable dependency is required before Gate A-CN activation.
 - China authentication crosses three services. Unknown G-App, BeanTech, or AutoAI application codes must not be treated as token rejection, trigger SMS delivery/login, or discard a still-recoverable partial session without sanitized evidence. Risk-control `1013` remains an explicit stop that directs the user to the official app.
 - Main retries BeanTech and AutoAI initialization three times. The Python port must decide from fixtures/evidence whether narrowly bounded retries of those idempotent initialization calls are safe under one deadline; it must not introduce general retries for SMS delivery, SMS login, reads, or commands.
 - China live evidence is currently limited to a contributed NavInfo WEY VV6 and selected reads/controls. Gate A-CN needs suitable sanitized access before direct China setup can be exposed, while heating, extended controls, charging, other platforms/models, and broader response encodings need their own later evidence.
