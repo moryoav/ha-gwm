@@ -112,7 +112,7 @@ class RussiaCredentials:
 
 @dataclass(frozen=True, slots=True)
 class RussiaAuthState:
-    """Immutable Russia continuation state; persistence is a later task."""
+    """Immutable Russia state candidate for caller-owned persistence."""
 
     account_binding: str = field(repr=False)
     country: str
@@ -289,6 +289,7 @@ async def authenticate_russia(
     bootstrap_material: RussiaBootstrapMaterial,
     deadline: _Deadline,
     progress: _RussiaAuthProgress,
+    allow_password_login: bool = True,
 ) -> RussiaAuthenticationResult:
     """Run one serialized, finite Russia authentication continuation."""
 
@@ -297,6 +298,7 @@ async def authenticate_russia(
         or config.region is not Region.RUSSIA
         or type(credentials) is not RussiaCredentials
         or (state is not None and type(state) is not RussiaAuthState)
+        or type(allow_password_login) is not bool
         or type(bootstrap_material) is not RussiaBootstrapMaterial
         or type(deadline) is not _Deadline
         or type(progress) is not _RussiaAuthProgress
@@ -407,6 +409,9 @@ async def authenticate_russia(
             access_token=None,
             refresh_token=None,
         )
+
+    if not allow_password_login:
+        raise GwmAuthenticationError(operation="login")
 
     if code is not None:
         try:

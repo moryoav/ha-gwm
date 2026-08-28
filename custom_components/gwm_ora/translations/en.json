@@ -44,7 +44,7 @@
         "data_description": {
           "country": "Two-letter country where the account is registered.",
           "account": "Use the same account identifier as the official GWM app.",
-          "password": "Stored in the Home Assistant config entry so the next read-only checkpoint can authenticate; it is redacted from diagnostics."
+          "password": "Stored in the Home Assistant config entry for account-bound restart recovery and reauthentication; it is redacted from diagnostics."
         }
       },
       "verification": {

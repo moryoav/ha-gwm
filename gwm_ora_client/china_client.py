@@ -166,7 +166,7 @@ class ChinaCredentials:
 
 @dataclass(frozen=True, slots=True)
 class ChinaAuthState:
-    """Immutable complete-or-partial state candidate; persistence is a later task."""
+    """Immutable complete-or-partial state for caller-owned persistence."""
 
     account_binding: str = field(repr=False)
     device_id: str = field(repr=False)

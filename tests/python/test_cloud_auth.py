@@ -176,7 +176,39 @@ async def test_overseas_attempt_dispatches_and_always_closes(
     assert clients[0].config.region.value == region
     assert clients[0].calls[0][0] == region
     assert clients[0].calls[0][1]["verification_code"] == "123456"
+    if region != "aus":
+        assert clients[0].calls[0][1]["allow_password_login"] is True
     assert clients[0].closed
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("region", ["eu", "rus"])
+async def test_resume_only_flag_reaches_overseas_client(region: str) -> None:
+    marker = object()
+    clients: list[_OverseasClient] = []
+
+    def factory(config: GwmClientConfig) -> Any:
+        client = _OverseasClient(config, marker)
+        clients.append(client)
+        return client
+
+    authenticator = DirectCloudAuthenticator(overseas_client_factory=factory)
+    credentials = DirectCloudCredentials(
+        region,
+        "DE" if region == "eu" else "RU",
+        "private-account",
+        "private-password",
+        _DEVICE_ID,
+    )
+
+    assert (
+        await authenticator.async_authenticate(
+            credentials,
+            allow_password_login=False,
+        )
+        is marker
+    )
+    assert clients[0].calls[0][1]["allow_password_login"] is False
 
 
 @pytest.mark.asyncio

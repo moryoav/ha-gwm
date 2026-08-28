@@ -201,6 +201,7 @@ class GwmClient:
         *,
         state: EuAuthState | None = None,
         verification_code: str | None = None,
+        allow_password_login: bool = True,
         ca_bundle: bytes,
         bootstrap_material: EuBootstrapMaterial | None = None,
         timeout: float | None = None,
@@ -212,6 +213,7 @@ class GwmClient:
             self._protocol.region is not Region.EU
             or type(credentials) is not EuCredentials
             or (state is not None and type(state) is not EuAuthState)
+            or type(allow_password_login) is not bool
             or not isinstance(ca_bundle, bytes)
             or not ca_bundle
             or (
@@ -253,6 +255,7 @@ class GwmClient:
                             credentials=credentials,
                             state=state,
                             verification_code=verification_code,
+                            allow_password_login=allow_password_login,
                             ca_bundle=ca_bundle,
                             bootstrap_material=bootstrap_material,
                             deadline=deadline,
@@ -395,6 +398,7 @@ class GwmClient:
         *,
         state: RussiaAuthState | None = None,
         verification_code: str | None = None,
+        allow_password_login: bool = True,
         bootstrap_material: RussiaBootstrapMaterial,
         timeout: float | None = None,
     ) -> RussiaAuthenticationResult:
@@ -405,6 +409,7 @@ class GwmClient:
             self._protocol.region is not Region.RUSSIA
             or type(credentials) is not RussiaCredentials
             or (state is not None and type(state) is not RussiaAuthState)
+            or type(allow_password_login) is not bool
             or type(bootstrap_material) is not RussiaBootstrapMaterial
         ):
             raise GwmConfigurationError(operation=operation)
@@ -441,6 +446,7 @@ class GwmClient:
                             credentials=credentials,
                             state=state,
                             verification_code=verification_code,
+                            allow_password_login=allow_password_login,
                             bootstrap_material=bootstrap_material,
                             deadline=deadline,
                             progress=progress,

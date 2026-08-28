@@ -62,6 +62,52 @@ from gwm_ora_client import (
 _DEVICE_ID = "0123456789abcdef0123456789abcdef"
 
 
+@pytest.fixture(autouse=True)
+def _memory_direct_state_store(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Keep config-flow unit tests independent of Home Assistant disk I/O."""
+
+    stores: dict[str, object] = {}
+
+    class StateStore:
+        def __init__(self) -> None:
+            self.saved: list[tuple[object, object]] = []
+            self.loaded: object | None = None
+
+        async def async_load_auth_state(self, data: object) -> object | None:
+            assert data is not None
+            return self.loaded
+
+        async def async_save_auth_state(
+            self,
+            credentials: object,
+            state: object,
+        ) -> None:
+            self.saved.append((credentials, state))
+
+        async def async_clear_auth_state(self, data: object) -> None:
+            assert data is not None
+
+    def get_store(hass: object, unique_id: str) -> StateStore:
+        assert hass is not None
+        if hasattr(hass, "data"):
+            hass.data["_test_direct_state_stores"] = stores  # type: ignore[attr-defined]
+        store = stores.setdefault(unique_id, StateStore())
+        assert isinstance(store, StateStore)
+        return store
+
+    async def remove_store(hass: object, unique_id: str | None) -> None:
+        assert hass is not None
+        if hasattr(hass, "data"):
+            hass.data.setdefault("_test_removed_direct_states", []).append(  # type: ignore[attr-defined]
+                unique_id
+            )
+        if unique_id is not None:
+            stores.pop(unique_id, None)
+
+    monkeypatch.setattr(config_flow, "direct_cloud_state_store", get_store)
+    monkeypatch.setattr(config_flow, "async_remove_direct_cloud_state", remove_store)
+
+
 def _set_flow_hass(flow: Any) -> None:
     try:
         flow.hass = object()
@@ -289,6 +335,8 @@ async def test_user_eu_verification_creates_config_only_entry(
         flow.hass,
         flow.context["unique_id"],
     ) is not None
+    stores = flow.hass.data["_test_direct_state_stores"]
+    assert len(stores[flow.context["unique_id"]].saved) == 2
     assert authenticator.calls[1]["verification_code"] == "123456"
     assert set(result["data"]).isdisjoint(
         {"access_token", "device_id", "verification_code", "certificate", "private_key"}
@@ -370,8 +418,56 @@ async def test_russia_authentication_can_complete_without_verification(
 
 
 @pytest.mark.asyncio
+async def test_restarted_flow_resumes_persisted_device_bound_continuation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    persisted_device = "f" * 32
+    persisted_credentials = config_flow.DirectCloudCredentials(
+        "aus",
+        "AU",
+        "account@example.invalid",
+        "password",
+        persisted_device,
+    )
+    regional = persisted_credentials.client_credentials()
+    assert isinstance(regional, AnzCredentials)
+    persisted_state = replace(
+        AnzAuthState.for_credentials(regional),
+        access_token="persisted-access-token",
+    )
+
+    class Authenticator:
+        async def async_authenticate(
+            self,
+            credentials: config_flow.DirectCloudCredentials,
+            **kwargs: Any,
+        ) -> object:
+            assert credentials.device_id == persisted_device
+            assert kwargs["state"] == persisted_state
+            return _authenticated(credentials)
+
+    flow = _prepare_user_flow(monkeypatch, Authenticator())
+    unique_id = direct_unique_id(persisted_credentials)
+    store = config_flow.direct_cloud_state_store(flow.hass, unique_id)
+    store.loaded = persisted_state
+
+    await flow.async_step_cloud({CONF_REGION: "aus"})
+    result = await flow.async_step_account(
+        {
+            CONF_COUNTRY: "AU",
+            CONF_ACCOUNT: "account@example.invalid",
+            CONF_PASSWORD: "password",
+        }
+    )
+
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert flow.context["unique_id"] == unique_id
+
+
+@pytest.mark.asyncio
 async def test_china_is_gated_but_risk_result_has_finite_internal_route() -> None:
     flow = config_flow.GwmOraConfigFlow()
+    flow.hass = _Hass()  # type: ignore[assignment]
     gated = await flow.async_step_cloud({CONF_REGION: "cn"})
     assert gated["type"] is FlowResultType.ABORT
     assert gated["reason"] == "china_live_validation_required"
@@ -478,6 +574,8 @@ async def test_direct_reauth_updates_password_only_after_authentication(
     assert updates[0]["data"][CONF_PASSWORD] == "new-password"
     assert updates[0]["data"][CONF_ACCOUNT] == entry.data[CONF_ACCOUNT]
     assert consume_direct_cloud_bootstrap(flow.hass, entry.unique_id) is not None
+    stores = flow.hass.data["_test_direct_state_stores"]
+    assert len(stores[entry.unique_id].saved) == 1
 
 
 @pytest.mark.asyncio
@@ -528,6 +626,7 @@ async def test_direct_reconfigure_authenticates_before_replacing_entry(
     assert updates[0]["data"][CONF_ACCOUNT] == "replacement"
     assert updates[0]["unique_id"].startswith("cloud:rus:")
     assert consume_direct_cloud_bootstrap(flow.hass, updates[0]["unique_id"]) is not None
+    assert flow.hass.data["_test_removed_direct_states"] == [entry.unique_id]
 
 
 @pytest.mark.asyncio

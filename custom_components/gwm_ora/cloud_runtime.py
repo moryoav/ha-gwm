@@ -1,9 +1,8 @@
 """Read-only direct-cloud runtime and bounded config-flow handoff.
 
-Task 13 deliberately keeps authenticated state in memory only. A successful
-config, reauth, or reconfigure flow stages one validated overseas read session
-for entry setup. Task 14 will replace this bounded handoff with account-bound,
-restart-safe storage.
+A successful config, reauth, or reconfigure flow stages one validated overseas
+read session for immediate entry setup. The bounded handoff is only an
+in-process optimization; private account-bound storage owns restart recovery.
 """
 
 from __future__ import annotations
@@ -19,10 +18,12 @@ from homeassistant.core import HomeAssistant
 
 from gwm_ora_client import (
     AnzAuthenticated,
+    AnzAuthState,
     CloudVehicle,
     CloudVehicleBasics,
     CloudVehicleStatus,
     EuAuthenticated,
+    EuAuthState,
     GwmClient,
     GwmClientConfig,
     GwmConfigurationError,
@@ -31,6 +32,7 @@ from gwm_ora_client import (
     GwmSession,
     Region,
     RussiaAuthenticated,
+    RussiaAuthState,
     VehicleIdentifier,
     map_vehicle_snapshot,
 )
@@ -73,12 +75,20 @@ class _OverseasReadClient(Protocol):
     async def aclose(self) -> None: ...
 
 
+class _AuthStateStore(Protocol):
+    async def async_clear_auth_state(
+        self,
+        entry_data: dict[str, object],
+    ) -> None: ...
+
+
 @dataclass(frozen=True, slots=True, repr=False)
 class DirectCloudBootstrap:
     """One validated, memory-only overseas session handoff."""
 
     region: str
     account_binding: str = field(repr=False)
+    state: EuAuthState | AnzAuthState | RussiaAuthState = field(repr=False)
     session: GwmSession = field(repr=False)
 
     def __post_init__(self) -> None:
@@ -87,6 +97,12 @@ class DirectCloudBootstrap:
             or not isinstance(self.account_binding, str)
             or _ACCOUNT_BINDING.fullmatch(self.account_binding) is None
             or type(self.session) is not GwmSession
+            or not _bootstrap_state_matches(
+                self.region,
+                self.account_binding,
+                self.state,
+                self.session,
+            )
         ):
             raise GwmConfigurationError(operation="login")
 
@@ -119,6 +135,7 @@ class DirectCloudBootstrap:
         return cls(
             region=credentials.region,
             account_binding=credentials.account_binding,
+            state=result.state,
             session=result.session,
         )
 
@@ -186,6 +203,8 @@ class DirectCloudReadClient:
         *,
         clock: Callable[[], datetime] | None = None,
         bootstrap: DirectCloudBootstrap | None = None,
+        state_store: _AuthStateStore | None = None,
+        entry_data: dict[str, object] | None = None,
     ) -> None:
         if region not in {REGION_EU, REGION_ANZ, REGION_RUSSIA}:
             raise GwmConfigurationError(operation="request")
@@ -193,6 +212,8 @@ class DirectCloudReadClient:
         self._client = client
         self._clock = clock or (lambda: datetime.now(UTC))
         self._bootstrap = bootstrap
+        self._state_store = state_store
+        self._entry_data = dict(entry_data or {})
 
     @classmethod
     def from_entry_data(
@@ -200,6 +221,8 @@ class DirectCloudReadClient:
         data: dict[str, object],
         unique_id: str | None,
         bootstrap: DirectCloudBootstrap,
+        *,
+        state_store: _AuthStateStore | None = None,
     ) -> DirectCloudReadClient:
         """Validate a staged handoff against the current config entry."""
 
@@ -229,7 +252,13 @@ class DirectCloudReadClient:
         except ValueError:
             raise GwmConfigurationError(operation="login") from None
         client = GwmClient(GwmClientConfig(region), session=bootstrap.session)
-        return cls(credentials.region, client, bootstrap=bootstrap)
+        return cls(
+            credentials.region,
+            client,
+            bootstrap=bootstrap,
+            state_store=state_store,
+            entry_data=data,
+        )
 
     @property
     def reusable_bootstrap(self) -> DirectCloudBootstrap | None:
@@ -280,6 +309,35 @@ class DirectCloudReadClient:
         """Close the owned regional transport."""
 
         await self._client.aclose()
+
+    async def async_authentication_rejected(self) -> None:
+        """Retire a rejected durable revision without logging its contents."""
+
+        self._bootstrap = None
+        if self._state_store is not None:
+            await self._state_store.async_clear_auth_state(self._entry_data)
+
+
+def _bootstrap_state_matches(
+    region: str,
+    account_binding: str,
+    state: object,
+    session: GwmSession,
+) -> bool:
+    expected = {
+        REGION_EU: EuAuthState,
+        REGION_ANZ: AnzAuthState,
+        REGION_RUSSIA: RussiaAuthState,
+    }.get(region)
+    if expected is None or type(state) is not expected:
+        return False
+    return (
+        state.account_binding == account_binding
+        and state.country == session.country
+        and state.device_id == session.device_id
+        and state.access_token is not None
+        and state.access_token == session.access_token
+    )
 
 
 class DirectReadOnlyCommandApi:

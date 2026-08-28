@@ -54,6 +54,8 @@ class GwmOraDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             try:
                 return await self.direct_client.async_get_vehicle_data()
             except GwmAuthenticationError as err:
+                with suppress(Exception):
+                    await self.direct_client.async_authentication_rejected()
                 raise ConfigEntryAuthFailed(
                     "Direct GWM cloud authentication was rejected"
                 ) from err

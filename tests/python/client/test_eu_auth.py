@@ -870,6 +870,32 @@ async def test_refreshed_token_rejection_falls_through_to_fresh_verification() -
 
 
 @pytest.mark.asyncio
+async def test_resume_only_rejection_never_falls_through_to_password_or_sms() -> None:
+    state = _state(identity=_identity())
+    transport = _QueueTransport(
+        [
+            _response(status=401),
+            _response({"accessToken": NEW_ACCESS, "refreshToken": NEW_REFRESH}),
+            _response(status=401),
+        ]
+    )
+
+    with pytest.raises(GwmAuthenticationError):
+        await _client(transport).authenticate_eu(
+            _credentials(),
+            state=state,
+            allow_password_login=False,
+            ca_bundle=CA_BUNDLE,
+        )
+
+    assert [request.operation for request in transport.requests] == [
+        "get_user_info",
+        "refresh_token",
+        "get_user_info",
+    ]
+
+
+@pytest.mark.asyncio
 async def test_unknown_access_api_error_does_not_trigger_refresh_or_login() -> None:
     transport = _QueueTransport([_response(code="900001", description=SENSITIVE)])
     with pytest.raises(GwmApiError) as raised:

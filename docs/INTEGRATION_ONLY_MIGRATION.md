@@ -6,10 +6,10 @@ This document is the durable plan, behavior contract, decision log, and test led
 
 - Working branch: `feature/integration-only`
 - Branch point: `1184737` (`Update README GWM logo to SVG`)
-- Current checkpoint: Task 13 complete; the direct overseas-cloud coordinator and existing entity platforms are wired and lifecycle-tested offline with bounded in-memory authentication handoff
-- Next checkpoint: Task 14 — persistent account-bound client state and restart-safe command journal (not yet approved)
+- Current checkpoint: Task 14 complete; private account-bound cloud state, resume-only restart authentication, and the bounded command-journal foundation are wired and lifecycle-tested offline
+- Next checkpoint: Task 15 — climate command parity, including China heating and in-place parameter updates (not yet approved)
 - Synchronized local `main`: `9daff32` (`v0.12.0`) through a two-parent merge without rebasing or selective cherry-picks
-- Task 13 added atomic direct discovery/status/basics polling, normalized multi-vehicle entities, strict availability/reauth handling, ANZ optional-basics parity, and owned unload/reload cleanup without durable state, writes, China activation, or add-on removal
+- Task 14 replaced restart-time memory-only authentication with atomic private storage, persisted every regional complete/partial state shape, added validation/refresh-only resume and exact account-context invalidation, and established a serialized restart-safe command journal without enabling writes or China
 
 Work proceeds one explicitly approved task at a time. At the end of every task, update this document, run the checks appropriate to that checkpoint, create one focused commit, push it to `feature/integration-only`, report the result, and stop. Do not begin the next task without a new user green light.
 
@@ -239,7 +239,7 @@ After Task 3, Python must reproduce the offline signing/certificate vectors and 
 
 After Task 8, Python must reproduce all three China crypto/signing families and complete a bounded end-to-end synthetic-service discovery/status round trip using the selected transport. Before `cn` can be enabled in a direct Home Assistant flow or the add-on can be retired for a China user, a sanitized live read-only validation must also pass using either an existing session or a separately approved SMS-login procedure. Lack of suitable China access does not block work for the other regions, but it does block claiming China cutover readiness.
 
-### Gate B — Read-only integration
+### Gate B — Read-only integration (passed 2026-08-28)
 
 After Task 14, native config flows, account-bound state, and a direct coordinator must provide stable read-only entities without the add-on, with correct reauthentication, restart behavior, availability, unloading, and redaction.
 
@@ -266,7 +266,7 @@ After Task 22, packaging, installation migration, documentation, complete tests,
 - [x] Task 11 — Port and fixture-test four-region normalized snapshot/model mapping.
 - [x] Task 12 — Add direct-cloud config, verification, reauth, reconfigure, and options flows.
 - [x] Task 13 — Add the direct read-only coordinator and existing entity platforms.
-- [ ] Task 14 — Add persistent account-bound client state and a restart-safe command journal.
+- [x] Task 14 — Add persistent account-bound client state and a restart-safe command journal.
 - [ ] Task 15 — Add climate command parity, including China heating and in-place parameter updates.
 - [ ] Task 16 — Add lock/unlock and close-window parity, including isolated China no-PIN behavior.
 - [ ] Task 17 — Add China-only engine, horn/light, tailgate, and sunroof controls and HA buttons.
@@ -334,6 +334,9 @@ The changed checkpoints stay intentionally narrow:
 | D-044 | 2026-08-28 | Bridge a completed config/reauth flow into Task 13 with a one-shot, five-minute, account-validated in-memory session handoff; never perform an implicit password login during entry setup. | The handoff makes the just-authenticated entry usable without serializing tokens, device identity, or TLS state early. A process restart fails closed into reauthentication, and ANZ can never reclaim a session without the explicit flow acknowledgement; Task 14 remains the sole owner of restart-safe authentication state. |
 | D-045 | 2026-08-28 | Give every direct entry one owned overseas read client and one account-level coordinator that publishes a refresh only after every discovered vehicle's status and required basics data are normalized. | Client serialization and the coordinator prevent overlapping account refreshes, while atomic publication avoids mixing old and new vehicles. Authentication rejection triggers reauth; typed transport/protocol/rate failures make all existing entities unavailable while retaining their last data and registry identity. |
 | D-046 | 2026-08-28 | Keep all direct writes fail-closed and exclude direct entries from legacy charging-service resolution until their dedicated command/charging tasks land. | User opt-ins are preferences, not premature implementation. Existing add-on commands must keep working when add-on and direct entries coexist, while direct climate, lock, button, number, switch, and service writes cannot cross the read-only Task 13 boundary. |
+| D-047 | 2026-08-28 | Store each direct account in a private, atomically written Home Assistant record keyed by a hash of its pseudonymous unique ID and bound to normalized region, country, account, and password context. | Tokens, device/user identifiers, EU issued identity, verification throttle, China complete-or-G-App-only partial, and command journal survive restart without entering config-entry data or diagnostics. Any context mismatch replaces the complete revision with an empty same-context record, so no state crosses an account/password change. |
+| D-048 | 2026-08-28 | Resume persisted sessions with access validation and refresh only; never fall through from startup into password login, SMS delivery, verification submission, or ANZ session reclaim. | Valid and rotated sessions can restart unattended. Definitive rejection retires only authentication and starts reauth while retaining same-account command reconciliation data; transient service/transport failure preserves the revision and retries setup. The bounded memory handoff remains only an in-process optimization. |
+| D-049 | 2026-08-28 | Persist an accepted provider command identifier before any future background result polling, under the same account lock and context binding. | The bounded 100-entry journal has strict identifiers, UTC timestamps, legal monotonic transitions, crash-safe serialized writes, secret-safe representations, and automatic removal on account context change or entry deletion. Tasks 15-18 can add writes without inventing a second lifecycle or losing an accepted command at reload. |
 
 ## Post-Branch Main Drift Review
 
@@ -990,6 +993,58 @@ All checks passed!
 
 The Python warning and .NET nullable-annotation warnings remain the unchanged baseline warnings. Task 13 proves the direct Home Assistant read/runtime contract offline; it deliberately does not claim restart-safe authentication, live regional coordinator validation, China activation, or write capability. Gate B remains pending until Task 14 completes durable state, reload/restart behavior, and the command-journal foundation.
 
+## Task 14 Persistent State and Restart-Safe Journal Evidence
+
+Evidence captured on 2026-08-28 from `feature/integration-only`. Task 14 used only synthetic credentials, constructed state revisions, existing versioned regional fixtures, temporary Home Assistant configuration directories, and fake transports. It made no live cloud, login, password, SMS, verification, ANZ session-claim, account, phone-app, vehicle, command, charging, publish, merge, or release request and used no live credential or session state.
+
+Delivered:
+
+- Added one private Home Assistant storage record per pseudonymous direct-account unique ID, with atomic file replacement, serialized in-process mutation, a closed versioned schema, bounded fields, strict four-region reconstruction, and secret-safe object representations. Config-entry data continues to contain only normalized user configuration; diagnostics never traverse the storage owner.
+- Persisted EU access/refresh/user identifiers and issued certificate/private key, ANZ access/refresh/reclaim/throttle state, Russia access/refresh/user identifiers, and China complete or recoverable G-App-only partial state. Submitted verification codes are never serialized.
+- Bound every record to domain-separated hashes of normalized region, country, account, and password plus the region-specific pseudonymous account binding. A change to any context field atomically removes authentication, verification throttle, partial China state, and every journal entry; reconfiguration publishes the replacement record before deleting the previous account record.
+- Made new, reauth, and reconfigure flows publish every authenticated revision before entry creation/update. Verification, ANZ reclaim, and China downstream-initialization continuations also persist their device-bound state, allowing a restarted flow to resume after the user resubmits the matching account context without changing device identity.
+- Added startup resume that validates a stored access token and may rotate it through the existing refresh-token path, then persists the new revision before coordinator setup. Resume-only EU/Russia authentication cannot fall through to password login or SMS delivery; ANZ retains its existing default-denied session-reclaim gate. Definitive rejection retires auth and opens reauth, while transient failures preserve state and retry setup.
+- Retained the Task 13 five-minute handoff only as a one-shot in-process reload optimization. Normal restart no longer depends on it; unload still closes all owned transports, rejected runtime state cannot be restaged, and config-entry removal deletes the private record.
+- Added the Task 15-18 command-journal foundation without enabling any vehicle write. An accepted provider command ID is awaited to disk before future polling can start; at most 100 account-bound records survive restart, concurrent writes serialize, timestamps normalize to UTC, and terminal states cannot move backward.
+- Kept direct climate, lock, window, extended-control, charging, number, switch, button, and legacy service writes fail-closed. Mainland China remains absent from selectors behind Gate A-CN even though its durable partial-state contract is fixture-tested.
+
+Validation:
+
+```text
+# Task 14 focused persistence/auth/resume/lifecycle/journal/regional matrix
+# Windows, CPython 3.13.13; Home Assistant 2026.2.3
+python -m pytest -q tests/python/test_cloud_auth.py tests/python/test_cloud_storage.py tests/python/test_cloud_runtime.py tests/python/test_config_flow.py tests/python/test_coordinator.py tests/python/test_direct_entry.py tests/python/test_direct_entities.py tests/python/test_quality_files.py tests/python/client/test_eu_auth.py tests/python/client/test_anz_auth.py tests/python/client/test_russia_auth.py
+229 passed, 1 warning
+
+python -m pytest -q tests/python
+1019 passed, 1 warning
+
+python -m pytest -q tests/python/client
+923 passed
+
+python -m mypy gwm_ora_client
+Success: no issues found in 23 source files
+
+ruff check custom_components/gwm_ora gwm_ora_client tests/python
+All checks passed!
+
+python -m compileall -q custom_components/gwm_ora gwm_ora_client tests/python
+Passed
+
+dotnet test GwmOra.sln --configuration Release --nologo
+149 passed, 0 failed
+
+# WSL/Linux, CPython 3.13.13
+python -m pytest -q tests/python/client
+923 passed
+python -m mypy gwm_ora_client
+Success: no issues found in 23 source files
+ruff check gwm_ora_client tests/python/client
+All checks passed!
+```
+
+The Python warning and .NET nullable-annotation warnings remain the unchanged baseline warnings. Task 14 passes Gate B for the offline/native Home Assistant read-only contract: direct EU, ANZ, and Russia entries now have persistent account-bound setup, refresh, restart, reauth, reload/unload, availability, removal, and redaction behavior without the add-on. It deliberately does not enable writes or claim live regional authentication/coordinator validation, and China cutover remains blocked by Gate A-CN's separately approved live-read prerequisite.
+
 ## Checkpoint Log
 
 ### Task 1 — Branch, baseline, and migration ledger
@@ -1163,9 +1218,22 @@ Delivered:
 - Kept direct writes, charging, and China activation fail-closed, prevented direct entries from intercepting add-on charging services, expanded redacted direct diagnostics, and preserved add-on polling/entity behavior.
 - Added focused runtime, coordinator, handoff, retry/reload/unload, multi-vehicle, entity-availability, and redaction tests and made no live request.
 
+### Task 14 — Persistent account-bound state and command journal
+
+Status: complete on 2026-08-28; Gate B passed for the offline direct read-only integration contract, with writes and China activation still gated.
+
+Delivered:
+
+- Added atomic private per-account storage for every overseas authentication field plus complete-or-partial China state, with strict schema/bounds, pseudonymous keys, secret-safe representations, and no diagnostic exposure.
+- Bound state and journal ownership to region, country, account, and password context; any mismatch clears the whole revision, reconfiguration replaces stores safely, and entry removal deletes storage.
+- Added restart-time access validation and refresh rotation that cannot fall through to fresh password/SMS login or ANZ reclaim; rejected auth starts reauth, transient failures preserve state, and in-process handoff remains only a reload optimization.
+- Persisted verification/reclaim/China-initialization continuations without one-time codes and retained their stable device identity across a restarted matching flow.
+- Added a serialized, bounded, restart-safe accepted-command journal with strict legal transitions for Tasks 15-18 while keeping every direct write surface fail-closed.
+- Added focused storage, malformed-state, context-invalidation, continuation, token-rotation, restart, retry, reload/unload, removal, journal, and redaction tests and made no live request.
+
 ### Next checkpoint (requires explicit approval)
 
-Task 14 will replace the bounded in-memory handoff with serialized, crash-safe, account-context-bound device/token/identifier/certificate state and add the restart-safe command-journal foundation without enabling vehicle writes yet. It must invalidate every stored revision on region, country, account, or password context changes; preserve a bounded recoverable China partial; serialize writes; never expose state through diagnostics/logs; and prove setup, refresh, reload, restart, reauth, and unload behavior before Gate B can pass. Task 14 must not begin without a new user green light; any live cloud access still requires separate explicit approval.
+Task 15 will add direct climate command parity on top of the persistent client/journal boundary, including target temperature and operation-time handling, on/off behavior, China cooling/heating differences, and in-place parameter updates when climate is already active. It must persist an accepted provider command identifier before result polling, reconcile reload/restart safely, preserve explicit remote-command/PIN opt-ins outside China, keep other write families disabled, and fixture-test every regional wire shape and failure boundary. Task 15 must not begin without a new user green light; any live cloud or vehicle command still requires separate explicit approval.
 
 ## Open Risks and Questions
 
@@ -1180,7 +1248,7 @@ Task 14 will replace the bounded in-memory handoff with serialized, crash-safe, 
 - BeanTech and AutoAI initialization now use the narrowly bounded three-attempt policy selected in D-035. It is fixture-proven only; live validation must confirm gateway behavior, while SMS delivery/login, refresh, reads, schema/TLS/risk failures, and commands retain no automatic retry.
 - China live evidence is currently limited to a contributed NavInfo WEY VV6 and selected reads/controls. Gate A-CN needs suitable sanitized access before direct China setup can be exposed, while heating, extended controls, charging, other platforms/models, and broader response encodings need their own later evidence.
 - The cloud DTOs intentionally retain only the fields required by authentication, reads, and normalized snapshots. All four regional paths and the complete known signal table are fixture-proven, but undocumented live/model-specific signal variations can still require future additive mappings without making other entities unavailable.
-- Task 13 authentication state is deliberately memory-only: a full HA process restart requires reauthentication, while in-process option reloads and bounded transient setup retries reuse the validated session. Task 14 must replace this limitation with crash-safe account-bound state before Gate B can pass.
+- Task 14 persists account-bound authentication and the accepted-command journal, but provider-specific result-query identifiers, polling windows, terminal-code interpretation, and reconciliation policy still belong to Tasks 15-19 and require fixture plus explicitly approved live evidence before write parity can pass.
 - Availability of safe test accounts/vehicles for every regional read and write matrix.
 - ANZ side-by-side session effects remain untested. Task 6 prevents every password login without explicit one-shot consent and prevents automatic `607501` reclaim loops; Task 12 now presents that consent as a default-unchecked warning and the project still recommends a dedicated shared vehicle account.
 - ANZ `110641`, current token-expiry/rotation behavior, verification delivery/expiry, AU-versus-NZ differences, and unknown `checkSMSCode` failures lack sanitized current-service evidence; unknown errors stop without attempting the final login.
@@ -1190,4 +1258,4 @@ Task 14 will replace the bounded in-memory handoff with serialized, crash-safe, 
 - Whether the final client is bundled for HACS or published as a separately versioned Python dependency.
 - Whether existing users perform one fresh authentication or use a temporary secured state-export path.
 - Blocking certificate/key workers finish protected temporary-file cleanup before propagating cancellation, so a cancelled authentication may return after its nominal deadline even though no network stage may continue past that deadline.
-- Durable reconciliation semantics for a command accepted immediately before HA reload, shutdown, or loss of connectivity.
+- Live confirmation that each regional provider returns every command identifier needed by the Task 14 journal before result polling can begin; until the corresponding Task 15-18 fixture and live gates pass, that write family remains disabled.

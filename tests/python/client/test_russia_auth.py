@@ -233,6 +233,7 @@ async def _authenticate(
     state: RussiaAuthState | None = None,
     verification_code: str | None = None,
     progress: _RussiaAuthProgress | None = None,
+    allow_password_login: bool = True,
 ) -> RussiaAuthenticated | RussiaVerificationRequired:
     return await authenticate_russia(
         config=GwmClientConfig(region=Region.RUSSIA),
@@ -240,6 +241,7 @@ async def _authenticate(
         credentials=credentials or _credentials(),
         state=state,
         verification_code=verification_code,
+        allow_password_login=allow_password_login,
         bootstrap_material=_material(),
         deadline=_deadline(),
         progress=progress or _RussiaAuthProgress(),
@@ -497,6 +499,35 @@ async def test_access_and_refresh_auth_rejections_fall_through_to_password_login
         "refresh_token",
         "login",
         "get_user_info",
+    ]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("status", [401, 403])
+async def test_resume_only_rejection_never_falls_through_to_password_or_sms(
+    monkeypatch: pytest.MonkeyPatch,
+    status: int,
+) -> None:
+    _patch_identity(monkeypatch)
+    state = _state(
+        access_token="SYNTHETIC-OLD-ACCESS",
+        refresh_token="SYNTHETIC-OLD-REFRESH",
+    )
+    transport = _FakeTransport(
+        _response({}, status=status),
+        _response({}, status=status),
+    )
+
+    with pytest.raises(GwmAuthenticationError):
+        await _authenticate(
+            transport,
+            state=state,
+            allow_password_login=False,
+        )
+
+    assert [request.operation for request in transport.requests] == [
+        "get_user_info",
+        "refresh_token",
     ]
 
 

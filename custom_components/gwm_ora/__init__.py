@@ -19,14 +19,29 @@ from homeassistant.helpers import issue_registry as ir
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.util import dt as dt_util
 
-from gwm_ora_client import GwmConfigurationError
+from gwm_ora_client import (
+    AnzAuthenticated,
+    EuAuthenticated,
+    GwmAuthenticationError,
+    GwmClientError,
+    GwmConfigurationError,
+    RussiaAuthenticated,
+)
 
 from .api import GwmOraApiAuthError, GwmOraApiClient, GwmOraApiError, GwmOraApiUnavailable
+from .cloud_auth import DirectCloudAuthenticator
 from .cloud_runtime import (
+    DirectCloudBootstrap,
     DirectCloudReadClient,
     DirectReadOnlyCommandApi,
     consume_direct_cloud_bootstrap,
     stage_direct_cloud_bootstrap,
+)
+from .cloud_storage import (
+    DirectCloudStateStore,
+    async_remove_direct_cloud_state,
+    credentials_for_auth_state,
+    direct_cloud_state_store,
 )
 from .const import (
     ATTR_END_TIME,
@@ -56,6 +71,7 @@ class GwmOraRuntimeData:
     api: GwmOraApiClient | DirectReadOnlyCommandApi
     coordinator: GwmOraDataUpdateCoordinator
     cloud: DirectCloudReadClient | None = None
+    state_store: DirectCloudStateStore | None = None
 
 
 GwmOraConfigEntry = ConfigEntry[GwmOraRuntimeData]
@@ -208,19 +224,24 @@ async def _async_setup_direct_entry(
     hass: HomeAssistant,
     entry: GwmOraConfigEntry,
 ) -> bool:
-    """Set up one memory-only direct read runtime."""
+    """Set up one restart-safe direct read runtime."""
 
-    bootstrap = consume_direct_cloud_bootstrap(hass, entry.unique_id)
-    if bootstrap is None:
+    if entry.unique_id is None:
+        raise ConfigEntryAuthFailed("Direct GWM cloud account identity is missing")
+    try:
+        state_store = direct_cloud_state_store(hass, entry.unique_id)
+    except (TypeError, ValueError) as err:
         raise ConfigEntryAuthFailed(
-            "Direct GWM cloud authentication must be renewed after restart"
-        )
+            "Direct GWM cloud account identity is invalid"
+        ) from err
+    bootstrap = await _async_load_direct_bootstrap(hass, entry, state_store)
 
     try:
         cloud = DirectCloudReadClient.from_entry_data(
             dict(entry.data),
             entry.unique_id,
             bootstrap,
+            state_store=state_store,
         )
     except (GwmConfigurationError, TypeError, ValueError) as err:
         raise ConfigEntryAuthFailed(
@@ -246,6 +267,7 @@ async def _async_setup_direct_entry(
             api=api,
             coordinator=coordinator,
             cloud=cloud,
+            state_store=state_store,
         )
         _async_register_services(hass)
         await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
@@ -258,3 +280,85 @@ async def _async_setup_direct_entry(
         await cloud.aclose()
         raise
     return True
+
+
+async def _async_load_direct_bootstrap(
+    hass: HomeAssistant,
+    entry: GwmOraConfigEntry,
+    state_store: DirectCloudStateStore,
+) -> DirectCloudBootstrap:
+    """Load or resume one account-bound session without a fresh login."""
+
+    bootstrap = consume_direct_cloud_bootstrap(hass, entry.unique_id)
+    if bootstrap is not None:
+        try:
+            credentials = credentials_for_auth_state(dict(entry.data), bootstrap.state)
+            await state_store.async_save_auth_state(credentials, bootstrap.state)
+        except (TypeError, ValueError) as err:
+            raise ConfigEntryAuthFailed(
+                "Direct GWM cloud authentication handoff is invalid"
+            ) from err
+        return bootstrap
+
+    try:
+        auth_state = await state_store.async_load_auth_state(dict(entry.data))
+        if auth_state is None:
+            raise ConfigEntryAuthFailed(
+                "Direct GWM cloud authentication must be renewed"
+            )
+        credentials = credentials_for_auth_state(dict(entry.data), auth_state)
+    except ConfigEntryAuthFailed:
+        raise
+    except (TypeError, ValueError) as err:
+        raise ConfigEntryAuthFailed(
+            "Direct GWM cloud authentication state is invalid"
+        ) from err
+    except Exception as err:
+        raise ConfigEntryNotReady(
+            "Direct GWM cloud private state is temporarily unavailable"
+        ) from err
+
+    try:
+        result = await DirectCloudAuthenticator().async_authenticate(
+            credentials,
+            state=auth_state,
+            allow_session_reclaim=False,
+            allow_password_login=False,
+        )
+        if not isinstance(
+            result,
+            (EuAuthenticated, AnzAuthenticated, RussiaAuthenticated),
+        ):
+            await state_store.async_clear_auth_state(dict(entry.data))
+            raise ConfigEntryAuthFailed(
+                "Direct GWM cloud authentication requires user confirmation"
+            )
+        bootstrap = DirectCloudBootstrap.from_authentication(credentials, result)
+        await state_store.async_save_auth_state(credentials, result.state)
+        return bootstrap
+    except ConfigEntryAuthFailed:
+        raise
+    except GwmAuthenticationError as err:
+        await state_store.async_clear_auth_state(dict(entry.data))
+        raise ConfigEntryAuthFailed(
+            "Direct GWM cloud authentication was rejected"
+        ) from err
+    except GwmClientError as err:
+        raise ConfigEntryNotReady(
+            f"Direct GWM cloud {err.category} during {err.operation}"
+        ) from err
+    except (TypeError, ValueError) as err:
+        await state_store.async_clear_auth_state(dict(entry.data))
+        raise ConfigEntryAuthFailed(
+            "Direct GWM cloud authentication state is invalid"
+        ) from err
+
+
+async def async_remove_entry(
+    hass: HomeAssistant,
+    entry: GwmOraConfigEntry,
+) -> None:
+    """Remove private durable state with a deleted direct config entry."""
+
+    if entry.data.get(CONF_CONNECTION_TYPE) == CONNECTION_TYPE_CLOUD:
+        await async_remove_direct_cloud_state(hass, entry.unique_id)

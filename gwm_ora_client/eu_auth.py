@@ -188,7 +188,7 @@ class EuCredentials:
 
 @dataclass(frozen=True, slots=True)
 class EuAuthState:
-    """Immutable persistence candidate; Task 14 will own writing it to disk."""
+    """Immutable state candidate for a caller-owned persistence boundary."""
 
     account_binding: str = field(repr=False)
     country: str
@@ -337,6 +337,7 @@ async def authenticate_eu(
     bootstrap_material: EuBootstrapMaterial | None,
     deadline: _Deadline,
     progress: _EuAuthProgress,
+    allow_password_login: bool = True,
 ) -> EuAuthenticationResult:
     """Run one serialized finite EU authentication continuation."""
 
@@ -345,6 +346,7 @@ async def authenticate_eu(
         or config.region is not Region.EU
         or type(credentials) is not EuCredentials
         or (state is not None and type(state) is not EuAuthState)
+        or type(allow_password_login) is not bool
         or not isinstance(ca_bundle, bytes)
         or not 0 < len(ca_bundle) <= _MAX_CA_BUNDLE_BYTES
         or (bootstrap_material is not None and type(bootstrap_material) is not EuBootstrapMaterial)
@@ -461,6 +463,9 @@ async def authenticate_eu(
             access_token=None,
             refresh_token=None,
         )
+
+    if not allow_password_login:
+        raise GwmAuthenticationError(operation="login")
 
     if code is not None:
         try:

@@ -89,14 +89,22 @@ async def test_direct_coordinator_classifies_refresh_failures(
     expected: type[Exception],
 ) -> None:
     class DirectClient:
+        retired = False
+
         async def async_get_vehicle_data(self) -> dict:
             raise error
+
+        async def async_authentication_rejected(self) -> None:
+            self.retired = True
+
+    direct_client = DirectClient()
 
     coordinator = GwmOraDataUpdateCoordinator(
         HomeAssistant("synthetic-config"),
         DirectReadOnlyCommandApi(),
-        direct_client=DirectClient(),  # type: ignore[arg-type]
+        direct_client=direct_client,  # type: ignore[arg-type]
     )
 
     with pytest.raises(expected):
         await coordinator._async_update_data()
+    assert direct_client.retired is isinstance(error, GwmAuthenticationError)

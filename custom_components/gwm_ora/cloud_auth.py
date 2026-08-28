@@ -1,9 +1,8 @@
 """Direct-cloud authentication boundary for native Home Assistant flows.
 
-Every call owns and closes a short-lived protocol client.  Flow continuations
-may keep an immutable authentication candidate in memory, but this module does
-not serialize tokens, certificates, private keys, verification codes, or
-generated device identities.  Durable client state remains Task 14 work.
+Every call owns and closes a short-lived protocol client. Immutable results are
+published to the Home Assistant storage boundary by the caller; this module
+never writes state or retains submitted verification codes.
 """
 
 from __future__ import annotations
@@ -161,14 +160,22 @@ class DirectCloudAuthenticator:
         state: CloudAuthState | None = None,
         verification_code: str | None = None,
         allow_session_reclaim: bool = False,
+        allow_password_login: bool = True,
     ) -> CloudAuthenticationResult:
         """Authenticate once and close the temporary protocol client."""
 
-        if type(credentials) is not DirectCloudCredentials or type(allow_session_reclaim) is not bool:
+        if (
+            type(credentials) is not DirectCloudCredentials
+            or type(allow_session_reclaim) is not bool
+            or type(allow_password_login) is not bool
+            or (allow_session_reclaim and not allow_password_login)
+        ):
             raise GwmConfigurationError(operation="login")
 
         regional_credentials = credentials.client_credentials()
         if credentials.region == REGION_CHINA:
+            if not allow_password_login:
+                raise GwmConfigurationError(operation="login")
             if state is not None and type(state) is not ChinaAuthState:
                 raise GwmConfigurationError(operation="login")
             client = self._china_client_factory(ChinaClientConfig())
@@ -194,6 +201,7 @@ class DirectCloudAuthenticator:
                     regional_credentials,
                     state=state,
                     verification_code=verification_code,
+                    allow_password_login=allow_password_login,
                     ca_bundle=material.ca_bundle,
                     bootstrap_material=material,
                 )
@@ -220,6 +228,7 @@ class DirectCloudAuthenticator:
                     regional_credentials,
                     state=state,
                     verification_code=verification_code,
+                    allow_password_login=allow_password_login,
                     bootstrap_material=material,
                 )
             raise GwmConfigurationError(operation="login")

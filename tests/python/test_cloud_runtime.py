@@ -219,3 +219,28 @@ async def test_read_only_command_boundary_fails_closed() -> None:
         await api.async_set_climate("SYNTHETIC-VEHICLE-A", mode="cool")
     with pytest.raises(GwmOraApiForbidden):
         await api.async_set_charging_plan("SYNTHETIC-VEHICLE-A", enable=True)
+
+
+@pytest.mark.asyncio
+async def test_rejected_runtime_revision_cannot_be_restaged() -> None:
+    credentials, bootstrap = _bootstrap()
+
+    class StateStore:
+        cleared: dict[str, object] | None = None
+
+        async def async_clear_auth_state(self, data: dict[str, object]) -> None:
+            self.cleared = data
+
+    state_store = StateStore()
+    runtime = DirectCloudReadClient(
+        "aus",
+        _ReadClient(),
+        bootstrap=bootstrap,
+        state_store=state_store,
+        entry_data=direct_entry_data(credentials),
+    )
+
+    await runtime.async_authentication_rejected()
+
+    assert runtime.reusable_bootstrap is None
+    assert state_store.cleared == direct_entry_data(credentials)

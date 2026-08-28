@@ -99,7 +99,7 @@ class AnzCredentials:
 
 @dataclass(frozen=True, slots=True)
 class AnzAuthState:
-    """Immutable ANZ continuation state; Task 14 will own persistence."""
+    """Immutable ANZ state candidate for caller-owned persistence."""
 
     account_binding: str = field(repr=False)
     country: str

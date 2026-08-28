@@ -49,6 +49,11 @@ from .cloud_runtime import (
     DirectCloudBootstrap,
     stage_direct_cloud_bootstrap,
 )
+from .cloud_storage import (
+    async_remove_direct_cloud_state,
+    credentials_for_auth_state,
+    direct_cloud_state_store,
+)
 from .const import (
     CONF_ACCOUNT,
     CONF_ALLOW_SESSION_RECLAIM,
@@ -364,9 +369,12 @@ class GwmOraConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     user_input,
                 )
                 self._auth_state = None
+                early_result = await self._async_restore_direct_state()
             except (TypeError, ValueError):
                 errors["base"] = "invalid_account"
             else:
+                if early_result is not None:
+                    return early_result
                 result, error = await self._async_authenticate()
                 if error:
                     errors["base"] = error
@@ -475,9 +483,12 @@ class GwmOraConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     device_id=generate_device_id(),
                 )
                 self._auth_state = None
+                early_result = await self._async_restore_direct_state()
             except (TypeError, ValueError):
                 errors["base"] = "invalid_account"
             else:
+                if early_result is not None:
+                    return early_result
                 result, error = await self._async_authenticate()
                 if error:
                     errors["base"] = error
@@ -546,9 +557,12 @@ class GwmOraConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     user_input,
                 )
                 self._auth_state = None
+                early_result = await self._async_restore_direct_state()
             except (TypeError, ValueError):
                 errors["base"] = "invalid_account"
             else:
+                if early_result is not None:
+                    return early_result
                 result, error = await self._async_authenticate()
                 if error:
                     errors["base"] = error
@@ -620,12 +634,14 @@ class GwmOraConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         if isinstance(result, _AUTHENTICATED_TYPES):
             return await self._async_finish_direct(result)
         if isinstance(result, _VERIFICATION_TYPES):
+            await self._async_persist_auth_state(result.state)
             self._auth_state = result.state
             verification_errors = dict(errors or {})
             if result.code_rejected:
                 verification_errors[CONF_VERIFICATION_CODE] = "invalid_verification_code"
             return self._show_verification(verification_errors)
         if isinstance(result, AnzSessionReclaimRequired):
+            await self._async_persist_auth_state(result.state)
             self._auth_state = result.state
             return self.async_show_form(
                 step_id="session_reclaim",
@@ -635,13 +651,69 @@ class GwmOraConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 errors=errors,
             )
         if isinstance(result, ChinaInitializationRequired):
+            await self._async_persist_auth_state(result.state)
             self._auth_state = result.state
             self._initialization_failures = result.failures
             return self._show_initialization(errors)
         if isinstance(result, ChinaRiskControlRequired):
+            await self._async_clear_persisted_auth_state()
             self._auth_state = None
             return self.async_abort(reason="risk_control_required")
         return self.async_abort(reason="invalid_flow_state")
+
+    async def _async_restore_direct_state(self) -> ConfigFlowResult | None:
+        """Restore a matching continuation before one explicit flow attempt."""
+
+        credentials = self._direct_credentials
+        if credentials is None:
+            return self.async_abort(reason="invalid_flow_state")
+        unique_id = direct_unique_id(credentials)
+        if self._direct_mode == "user":
+            await self.async_set_unique_id(unique_id)
+            self._abort_if_unique_id_configured()
+        elif self._direct_mode == "reauth":
+            if self._get_reauth_entry().unique_id != unique_id:
+                return self.async_abort(reason="invalid_flow_state")
+        elif self._direct_mode == "reconfigure":
+            entry = self._get_reconfigure_entry()
+            duplicate = self.hass.config_entries.async_entry_for_domain_unique_id(
+                DOMAIN,
+                unique_id,
+            )
+            if duplicate is not None and duplicate.entry_id != entry.entry_id:
+                return self.async_abort(reason="already_configured")
+        else:
+            return self.async_abort(reason="invalid_flow_state")
+
+        state = await direct_cloud_state_store(
+            self.hass,
+            unique_id,
+        ).async_load_auth_state(direct_entry_data(credentials))
+        if state is not None:
+            self._direct_credentials = credentials_for_auth_state(
+                direct_entry_data(credentials),
+                state,
+            )
+            self._auth_state = state
+        return None
+
+    async def _async_persist_auth_state(self, state: CloudAuthState) -> None:
+        credentials = self._direct_credentials
+        if credentials is None:
+            raise ValueError("invalid_flow_state")
+        await direct_cloud_state_store(
+            self.hass,
+            direct_unique_id(credentials),
+        ).async_save_auth_state(credentials, state)
+
+    async def _async_clear_persisted_auth_state(self) -> None:
+        credentials = self._direct_credentials
+        if credentials is None:
+            return
+        await direct_cloud_state_store(
+            self.hass,
+            direct_unique_id(credentials),
+        ).async_clear_auth_state(direct_entry_data(credentials))
 
     async def _async_finish_direct(
         self,
@@ -662,6 +734,10 @@ class GwmOraConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         if self._direct_mode == "user":
             await self.async_set_unique_id(unique_id)
             self._abort_if_unique_id_configured()
+            await direct_cloud_state_store(
+                self.hass,
+                unique_id,
+            ).async_save_auth_state(credentials, result.state)
             stage_direct_cloud_bootstrap(self.hass, unique_id, bootstrap)
             self._direct_credentials = None
             return self.async_create_entry(title=title, data=data)
@@ -670,6 +746,10 @@ class GwmOraConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             entry = self._get_reauth_entry()
             if entry.unique_id != unique_id:
                 return self.async_abort(reason="invalid_flow_state")
+            await direct_cloud_state_store(
+                self.hass,
+                unique_id,
+            ).async_save_auth_state(credentials, result.state)
             stage_direct_cloud_bootstrap(self.hass, unique_id, bootstrap)
             self._direct_credentials = None
             return self.async_update_reload_and_abort(
@@ -680,20 +760,28 @@ class GwmOraConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         if self._direct_mode == "reconfigure":
             entry = self._get_reconfigure_entry()
+            previous_unique_id = entry.unique_id
             duplicate = self.hass.config_entries.async_entry_for_domain_unique_id(
                 DOMAIN,
                 unique_id,
             )
             if duplicate is not None and duplicate.entry_id != entry.entry_id:
                 return self.async_abort(reason="already_configured")
+            await direct_cloud_state_store(
+                self.hass,
+                unique_id,
+            ).async_save_auth_state(credentials, result.state)
             stage_direct_cloud_bootstrap(self.hass, unique_id, bootstrap)
-            self._direct_credentials = None
-            return self.async_update_reload_and_abort(
+            flow_result = self.async_update_reload_and_abort(
                 entry,
                 unique_id=unique_id,
                 title=title,
                 data=data,
             )
+            if previous_unique_id != unique_id:
+                await async_remove_direct_cloud_state(self.hass, previous_unique_id)
+            self._direct_credentials = None
+            return flow_result
         return self.async_abort(reason="invalid_flow_state")
 
     def _show_verification(self, errors: dict[str, str] | None = None) -> ConfigFlowResult:
