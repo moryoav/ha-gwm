@@ -10,11 +10,9 @@ from homeassistant.core import HomeAssistant
 from . import GwmOraConfigEntry
 from .const import (
     CONF_ACCOUNT,
-    CONF_CONNECTION_TYPE,
     CONF_PASSWORD,
     CONF_SECURITY_PIN,
     CONF_TOKEN,
-    CONNECTION_TYPE_CLOUD,
 )
 
 TO_REDACT = {
@@ -66,11 +64,6 @@ async def async_get_config_entry_diagnostics(
     entry: GwmOraConfigEntry,
 ) -> dict[str, Any]:
     """Return diagnostics for a config entry."""
-    vehicles = (
-        None
-        if entry.data.get(CONF_CONNECTION_TYPE) == CONNECTION_TYPE_CLOUD
-        else entry.runtime_data.coordinator.data
-    )
     data = {
         "entry": {
             "data": dict(entry.data),
@@ -78,6 +71,6 @@ async def async_get_config_entry_diagnostics(
             "title": entry.title,
             "unique_id": entry.unique_id,
         },
-        "vehicles": vehicles,
+        "vehicles": entry.runtime_data.coordinator.data,
     }
     return async_redact_data(data, TO_REDACT)

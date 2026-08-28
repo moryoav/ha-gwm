@@ -19,15 +19,25 @@ from homeassistant.helpers import issue_registry as ir
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.util import dt as dt_util
 
+from gwm_ora_client import GwmConfigurationError
+
 from .api import GwmOraApiAuthError, GwmOraApiClient, GwmOraApiError, GwmOraApiUnavailable
+from .cloud_runtime import (
+    DirectCloudReadClient,
+    DirectReadOnlyCommandApi,
+    consume_direct_cloud_bootstrap,
+    stage_direct_cloud_bootstrap,
+)
 from .const import (
     ATTR_END_TIME,
     ATTR_START_TIME,
     ATTR_VIN,
     CONF_CONNECTION_TYPE,
+    CONF_POLL_INTERVAL_SECONDS,
     CONF_TOKEN,
     CONNECTION_TYPE_CLOUD,
     DEFAULT_NAME,
+    DEFAULT_POLL_INTERVAL_SECONDS,
     DOMAIN,
     LEGACY_DEFAULT_NAME,
     MIN_CHARGE_WINDOW_MINUTES,
@@ -43,8 +53,9 @@ from .entity import async_call_addon_api
 class GwmOraRuntimeData:
     """Runtime data for a GWM config entry."""
 
-    api: GwmOraApiClient
+    api: GwmOraApiClient | DirectReadOnlyCommandApi
     coordinator: GwmOraDataUpdateCoordinator
+    cloud: DirectCloudReadClient | None = None
 
 
 GwmOraConfigEntry = ConfigEntry[GwmOraRuntimeData]
@@ -90,6 +101,8 @@ def _async_register_services(hass: HomeAssistant) -> None:
         """
         identifier = vin.strip()
         for entry in hass.config_entries.async_loaded_entries(DOMAIN):
+            if entry.data.get(CONF_CONNECTION_TYPE) == CONNECTION_TYPE_CLOUD:
+                continue
             vehicle = entry.runtime_data.coordinator.resolve_vehicle(identifier)
             if vehicle is not None:
                 return (
@@ -134,11 +147,8 @@ def _async_register_services(hass: HomeAssistant) -> None:
 
 async def async_setup_entry(hass: HomeAssistant, entry: GwmOraConfigEntry) -> bool:
     """Set up GWM from a config entry."""
-    # Task 12 owns native account flows only. Task 13 will attach the direct
-    # coordinator and entity platforms; until then a validated direct entry is
-    # intentionally inert while the released add-on path remains unchanged.
     if entry.data.get(CONF_CONNECTION_TYPE) == CONNECTION_TYPE_CLOUD:
-        return True
+        return await _async_setup_direct_entry(hass, entry)
 
     if entry.title == LEGACY_DEFAULT_NAME:
         hass.config_entries.async_update_entry(entry, title=DEFAULT_NAME)
@@ -150,7 +160,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: GwmOraConfigEntry) -> bo
         entry.data[CONF_PORT],
         entry.data[CONF_TOKEN],
     )
-    coordinator = GwmOraDataUpdateCoordinator(hass, api)
+    coordinator = GwmOraDataUpdateCoordinator(hass, api, config_entry=entry)
 
     try:
         await coordinator.async_config_entry_first_refresh()
@@ -177,6 +187,74 @@ async def async_setup_entry(hass: HomeAssistant, entry: GwmOraConfigEntry) -> bo
 async def async_unload_entry(hass: HomeAssistant, entry: GwmOraConfigEntry) -> bool:
     """Unload a config entry."""
     if entry.data.get(CONF_CONNECTION_TYPE) == CONNECTION_TYPE_CLOUD:
+        unloaded = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+        if not unloaded:
+            return False
+        entry.runtime_data.coordinator.async_cancel_command_tasks()
+        cloud = entry.runtime_data.cloud
+        if cloud is not None:
+            if (
+                (bootstrap := cloud.reusable_bootstrap) is not None
+                and entry.unique_id is not None
+            ):
+                stage_direct_cloud_bootstrap(hass, entry.unique_id, bootstrap)
+            await cloud.aclose()
         return True
     entry.runtime_data.coordinator.async_cancel_command_tasks()
     return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+
+
+async def _async_setup_direct_entry(
+    hass: HomeAssistant,
+    entry: GwmOraConfigEntry,
+) -> bool:
+    """Set up one memory-only direct read runtime."""
+
+    bootstrap = consume_direct_cloud_bootstrap(hass, entry.unique_id)
+    if bootstrap is None:
+        raise ConfigEntryAuthFailed(
+            "Direct GWM cloud authentication must be renewed after restart"
+        )
+
+    try:
+        cloud = DirectCloudReadClient.from_entry_data(
+            dict(entry.data),
+            entry.unique_id,
+            bootstrap,
+        )
+    except (GwmConfigurationError, TypeError, ValueError) as err:
+        raise ConfigEntryAuthFailed(
+            "Direct GWM cloud authentication handoff is invalid"
+        ) from err
+
+    api = DirectReadOnlyCommandApi()
+    coordinator = GwmOraDataUpdateCoordinator(
+        hass,
+        api,
+        config_entry=entry,
+        direct_client=cloud,
+        update_interval_seconds=int(
+            entry.options.get(
+                CONF_POLL_INTERVAL_SECONDS,
+                DEFAULT_POLL_INTERVAL_SECONDS,
+            )
+        ),
+    )
+    try:
+        await coordinator.async_config_entry_first_refresh()
+        entry.runtime_data = GwmOraRuntimeData(
+            api=api,
+            coordinator=coordinator,
+            cloud=cloud,
+        )
+        _async_register_services(hass)
+        await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+    except BaseException:
+        if (
+            (reusable := cloud.reusable_bootstrap) is not None
+            and entry.unique_id is not None
+        ):
+            stage_direct_cloud_bootstrap(hass, entry.unique_id, reusable)
+        await cloud.aclose()
+        raise
+    return True

@@ -17,6 +17,8 @@ from homeassistant.const import CONF_HOST, CONF_PORT
 from homeassistant.data_entry_flow import FlowResultType
 
 from custom_components.gwm_ora import config_flow
+from custom_components.gwm_ora.cloud_auth import direct_unique_id
+from custom_components.gwm_ora.cloud_runtime import consume_direct_cloud_bootstrap
 from custom_components.gwm_ora.const import (
     CONF_ACCOUNT,
     CONF_ALLOW_SESSION_RECLAIM,
@@ -137,6 +139,7 @@ class _ConfigEntries:
 class _Hass:
     def __init__(self, entry: ConfigEntry | None = None) -> None:
         self.config_entries = _ConfigEntries(entry)
+        self.data: dict[str, Any] = {}
 
 
 def _entry(
@@ -145,6 +148,16 @@ def _entry(
     options: dict[str, Any] | None = None,
     entry_id: str = "synthetic-entry",
 ) -> ConfigEntry:
+    unique_id = "synthetic-unique-id"
+    if all(key in data for key in (CONF_REGION, CONF_COUNTRY, CONF_ACCOUNT, CONF_PASSWORD)):
+        credentials = config_flow.DirectCloudCredentials(
+            str(data[CONF_REGION]),
+            str(data[CONF_COUNTRY]),
+            str(data[CONF_ACCOUNT]),
+            str(data[CONF_PASSWORD]),
+            _DEVICE_ID,
+        )
+        unique_id = direct_unique_id(credentials)
     return ConfigEntry(
         data=data,
         discovery_keys=MappingProxyType({}),
@@ -155,7 +168,7 @@ def _entry(
         source="user",
         subentries_data=None,
         title="GWM test",
-        unique_id="synthetic-unique-id",
+        unique_id=unique_id,
         version=1,
     )
 
@@ -272,6 +285,10 @@ async def test_user_eu_verification_creates_config_only_entry(
         CONF_PASSWORD: "password",
     }
     assert flow.context["unique_id"].startswith("cloud:eu:")
+    assert consume_direct_cloud_bootstrap(
+        flow.hass,
+        flow.context["unique_id"],
+    ) is not None
     assert authenticator.calls[1]["verification_code"] == "123456"
     assert set(result["data"]).isdisjoint(
         {"access_token", "device_id", "verification_code", "certificate", "private_key"}
@@ -325,6 +342,7 @@ async def test_anz_reclaim_requires_explicit_unchecked_consent(
     result = await flow.async_step_session_reclaim({CONF_ALLOW_SESSION_RECLAIM: True})
     assert result["type"] is FlowResultType.CREATE_ENTRY
     assert authenticator.calls == [False, True]
+    assert consume_direct_cloud_bootstrap(flow.hass, flow.context["unique_id"]) is not None
 
 
 @pytest.mark.asyncio
@@ -348,6 +366,7 @@ async def test_russia_authentication_can_complete_without_verification(
     assert result["type"] is FlowResultType.CREATE_ENTRY
     assert result["data"][CONF_COUNTRY] == "RU"
     assert result["title"] == "GWM Russia"
+    assert consume_direct_cloud_bootstrap(flow.hass, flow.context["unique_id"]) is not None
 
 
 @pytest.mark.asyncio
@@ -458,6 +477,7 @@ async def test_direct_reauth_updates_password_only_after_authentication(
     assert result["reason"] == "reauth_successful"
     assert updates[0]["data"][CONF_PASSWORD] == "new-password"
     assert updates[0]["data"][CONF_ACCOUNT] == entry.data[CONF_ACCOUNT]
+    assert consume_direct_cloud_bootstrap(flow.hass, entry.unique_id) is not None
 
 
 @pytest.mark.asyncio
@@ -507,6 +527,7 @@ async def test_direct_reconfigure_authenticates_before_replacing_entry(
     assert updates[0]["data"][CONF_REGION] == "rus"
     assert updates[0]["data"][CONF_ACCOUNT] == "replacement"
     assert updates[0]["unique_id"].startswith("cloud:rus:")
+    assert consume_direct_cloud_bootstrap(flow.hass, updates[0]["unique_id"]) is not None
 
 
 @pytest.mark.asyncio

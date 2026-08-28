@@ -9,11 +9,15 @@ from contextlib import suppress
 from datetime import timedelta
 from typing import Any
 
+from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
+from gwm_ora_client import GwmAuthenticationError, GwmClientError
+
 from .api import GwmOraApiAuthError, GwmOraApiClient, GwmOraApiError, GwmOraApiUnavailable
+from .cloud_runtime import DirectCloudReadClient, DirectReadOnlyCommandApi
 from .const import DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
@@ -24,18 +28,39 @@ class GwmOraDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
     _TERMINAL_COMMAND_STATES = {"completed", "failed", "timeout", "canceled"}
 
-    def __init__(self, hass: HomeAssistant, api: GwmOraApiClient) -> None:
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        api: GwmOraApiClient | DirectReadOnlyCommandApi,
+        *,
+        config_entry: ConfigEntry | None = None,
+        direct_client: DirectCloudReadClient | None = None,
+        update_interval_seconds: int = 30,
+    ) -> None:
         super().__init__(
             hass,
             _LOGGER,
+            config_entry=config_entry,
             name=DOMAIN,
-            update_interval=timedelta(seconds=30),
+            update_interval=timedelta(seconds=update_interval_seconds),
         )
         self.api = api
+        self.direct_client = direct_client
         self._command_tasks: dict[str, asyncio.Task[None]] = {}
         self._charging_plan_active: dict[str, bool] = {}
 
     async def _async_update_data(self) -> dict[str, Any]:
+        if self.direct_client is not None:
+            try:
+                return await self.direct_client.async_get_vehicle_data()
+            except GwmAuthenticationError as err:
+                raise ConfigEntryAuthFailed(
+                    "Direct GWM cloud authentication was rejected"
+                ) from err
+            except GwmClientError as err:
+                raise UpdateFailed(
+                    f"Direct GWM cloud {err.category} during {err.operation}"
+                ) from err
         try:
             return await self.api.async_get_vehicles()
         except GwmOraApiAuthError as err:

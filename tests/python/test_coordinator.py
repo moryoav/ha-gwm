@@ -6,7 +6,13 @@ import pytest
 
 pytest.importorskip("homeassistant")
 
+from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import ConfigEntryAuthFailed
+from homeassistant.helpers.update_coordinator import UpdateFailed
+
+from custom_components.gwm_ora.cloud_runtime import DirectReadOnlyCommandApi
 from custom_components.gwm_ora.coordinator import GwmOraDataUpdateCoordinator
+from gwm_ora_client import GwmAuthenticationError, GwmNetworkError
 
 
 def _coordinator_with(vehicles: list[dict]) -> GwmOraDataUpdateCoordinator:
@@ -51,3 +57,46 @@ def test_charging_plan_state_is_kept_per_vehicle() -> None:
     assert coordinator.charging_plan_active("VIN-A") is True
     assert coordinator.charging_plan_active("VIN-B") is False
     assert coordinator.charging_plan_active("VIN-C") is None
+
+
+@pytest.mark.asyncio
+async def test_direct_coordinator_uses_configured_account_interval() -> None:
+    class DirectClient:
+        async def async_get_vehicle_data(self) -> dict:
+            return {"region": "eu", "vehicles": []}
+
+    coordinator = GwmOraDataUpdateCoordinator(
+        HomeAssistant("synthetic-config"),
+        DirectReadOnlyCommandApi(),
+        direct_client=DirectClient(),  # type: ignore[arg-type]
+        update_interval_seconds=120,
+    )
+
+    assert await coordinator._async_update_data() == {"region": "eu", "vehicles": []}
+    assert coordinator.update_interval.total_seconds() == 120
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("error", "expected"),
+    [
+        (GwmAuthenticationError(operation="acquire_vehicles"), ConfigEntryAuthFailed),
+        (GwmNetworkError(operation="acquire_vehicles"), UpdateFailed),
+    ],
+)
+async def test_direct_coordinator_classifies_refresh_failures(
+    error: Exception,
+    expected: type[Exception],
+) -> None:
+    class DirectClient:
+        async def async_get_vehicle_data(self) -> dict:
+            raise error
+
+    coordinator = GwmOraDataUpdateCoordinator(
+        HomeAssistant("synthetic-config"),
+        DirectReadOnlyCommandApi(),
+        direct_client=DirectClient(),  # type: ignore[arg-type]
+    )
+
+    with pytest.raises(expected):
+        await coordinator._async_update_data()

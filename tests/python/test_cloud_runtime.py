@@ -1,0 +1,221 @@
+"""Offline tests for the direct-cloud read runtime and bounded handoff."""
+
+from __future__ import annotations
+
+import ssl
+from dataclasses import replace
+from datetime import UTC, datetime
+
+import pytest
+
+pytest.importorskip("homeassistant")
+
+from homeassistant.core import HomeAssistant
+
+from custom_components.gwm_ora.api import GwmOraApiForbidden
+from custom_components.gwm_ora.cloud_auth import (
+    DirectCloudCredentials,
+    direct_entry_data,
+    direct_unique_id,
+)
+from custom_components.gwm_ora.cloud_runtime import (
+    DirectCloudBootstrap,
+    DirectCloudReadClient,
+    DirectReadOnlyCommandApi,
+    consume_direct_cloud_bootstrap,
+    stage_direct_cloud_bootstrap,
+)
+from gwm_ora_client import (
+    AnzAuthenticated,
+    AnzAuthState,
+    CloudClimateConfiguration,
+    CloudStatusItem,
+    CloudVehicle,
+    CloudVehicleBasics,
+    CloudVehicleStatus,
+    GwmConfigurationError,
+    GwmNetworkError,
+    GwmOptionalEndpointError,
+    GwmSession,
+    VehicleIdentifier,
+)
+
+_DEVICE_ID = "0123456789abcdef0123456789abcdef"
+_REFRESHED_AT = datetime(2026, 8, 28, 12, 0, tzinfo=UTC)
+
+
+def _bootstrap() -> tuple[DirectCloudCredentials, DirectCloudBootstrap]:
+    credentials = DirectCloudCredentials(
+        "aus",
+        "AU",
+        "account@example.invalid",
+        "password",
+        _DEVICE_ID,
+    )
+    regional = credentials.client_credentials()
+    state = replace(
+        AnzAuthState.for_credentials(regional),
+        access_token="synthetic-access-token",
+    )
+    session = GwmSession(
+        "AU",
+        _DEVICE_ID,
+        "synthetic-access-token",
+        ssl.create_default_context(),
+    )
+    return credentials, DirectCloudBootstrap.from_authentication(
+        credentials,
+        AnzAuthenticated(state, session),
+    )
+
+
+class _ReadClient:
+    def __init__(self) -> None:
+        self.authenticated = True
+        self.closed = False
+        self.vehicles = (
+            CloudVehicle(
+                identifier=VehicleIdentifier("SYNTHETIC-VEHICLE-A"),
+                app_show_series_name="Synthetic One",
+                brand_name="GWM",
+                vehicle_type="ORA",
+            ),
+            CloudVehicle(
+                identifier=VehicleIdentifier("SYNTHETIC-VEHICLE-B"),
+                vehicle_nickname="Synthetic Two",
+                brand_name="GWM",
+                vehicle_type="HAVAL",
+            ),
+        )
+        self.statuses = {
+            "SYNTHETIC-VEHICLE-A": CloudVehicleStatus(
+                device_id="SYNTHETIC-SERIAL-A",
+                items=(CloudStatusItem("2013021", 80, "%"),),
+            ),
+            "SYNTHETIC-VEHICLE-B": CloudVehicleStatus(
+                device_id="SYNTHETIC-SERIAL-B",
+                items=(CloudStatusItem("2013021", 55, "%"),),
+            ),
+        }
+        self.basics: dict[str, CloudVehicleBasics | Exception] = {
+            "SYNTHETIC-VEHICLE-A": CloudVehicleBasics(
+                CloudClimateConfiguration(temperature="23", operation_time="15")
+            ),
+            "SYNTHETIC-VEHICLE-B": GwmOptionalEndpointError(
+                operation="vehicle_basics",
+                api_code="607099",
+            ),
+        }
+        self.calls: list[tuple[str, str | None]] = []
+
+    async def acquire_vehicles(self) -> tuple[CloudVehicle, ...]:
+        self.calls.append(("vehicles", None))
+        return self.vehicles
+
+    async def get_last_status(self, identifier: VehicleIdentifier) -> CloudVehicleStatus:
+        self.calls.append(("status", identifier.value))
+        return self.statuses[identifier.value]
+
+    async def get_vehicle_basics(self, identifier: VehicleIdentifier) -> CloudVehicleBasics:
+        self.calls.append(("basics", identifier.value))
+        value = self.basics[identifier.value]
+        if isinstance(value, Exception):
+            raise value
+        return value
+
+    async def aclose(self) -> None:
+        self.closed = True
+        self.authenticated = False
+
+
+@pytest.mark.asyncio
+async def test_handoff_is_one_shot_and_validates_entry_identity() -> None:
+    credentials, bootstrap = _bootstrap()
+    hass = HomeAssistant("synthetic-config")
+    unique_id = direct_unique_id(credentials)
+
+    stage_direct_cloud_bootstrap(hass, unique_id, bootstrap)
+    consumed = consume_direct_cloud_bootstrap(hass, unique_id)
+
+    assert consumed is bootstrap
+    assert consume_direct_cloud_bootstrap(hass, unique_id) is None
+    runtime = DirectCloudReadClient.from_entry_data(
+        direct_entry_data(credentials),
+        unique_id,
+        bootstrap,
+    )
+    assert runtime.region == "aus"
+    assert runtime.reusable_bootstrap is bootstrap
+    await runtime.aclose()
+
+
+def test_handoff_rejects_a_different_entry_unique_id() -> None:
+    credentials, bootstrap = _bootstrap()
+
+    with pytest.raises(GwmConfigurationError):
+        DirectCloudReadClient.from_entry_data(
+            direct_entry_data(credentials),
+            "cloud:aus:different-account",
+            bootstrap,
+        )
+
+
+@pytest.mark.asyncio
+async def test_multi_vehicle_refresh_maps_snapshots_and_anz_optional_basics() -> None:
+    client = _ReadClient()
+    runtime = DirectCloudReadClient("aus", client, clock=lambda: _REFRESHED_AT)
+
+    result = await runtime.async_get_vehicle_data()
+
+    assert result["region"] == "aus"
+    assert result["remote_commands_enabled"] is False
+    assert result["charging_control_enabled"] is False
+    vehicles = result["vehicles"]
+    assert isinstance(vehicles, list)
+    assert [vehicle["vin"] for vehicle in vehicles] == [
+        "SYNTHETIC-VEHICLE-A",
+        "SYNTHETIC-VEHICLE-B",
+    ]
+    assert vehicles[0]["values"]["soc"] == 80.0
+    assert vehicles[0]["climate"]["target_temperature_c"] == 23
+    assert vehicles[1]["values"]["soc"] == 55.0
+    assert vehicles[1]["climate"]["target_temperature_c"] == 22
+    assert all(
+        vehicle["timestamps"]["last_refresh"] == "2026-08-28T12:00:00+00:00"
+        for vehicle in vehicles
+    )
+
+
+@pytest.mark.asyncio
+async def test_optional_basics_is_not_hidden_outside_anz() -> None:
+    client = _ReadClient()
+    runtime = DirectCloudReadClient("eu", client, clock=lambda: _REFRESHED_AT)
+
+    with pytest.raises(GwmOptionalEndpointError):
+        await runtime.async_get_vehicle_data()
+
+
+@pytest.mark.asyncio
+async def test_refresh_is_atomic_when_any_vehicle_read_fails() -> None:
+    client = _ReadClient()
+
+    async def failed_status(identifier: VehicleIdentifier) -> CloudVehicleStatus:
+        if identifier.value == "SYNTHETIC-VEHICLE-B":
+            raise GwmNetworkError(operation="get_last_status")
+        return client.statuses[identifier.value]
+
+    client.get_last_status = failed_status  # type: ignore[method-assign]
+    runtime = DirectCloudReadClient("aus", client, clock=lambda: _REFRESHED_AT)
+
+    with pytest.raises(GwmNetworkError):
+        await runtime.async_get_vehicle_data()
+
+
+@pytest.mark.asyncio
+async def test_read_only_command_boundary_fails_closed() -> None:
+    api = DirectReadOnlyCommandApi()
+
+    with pytest.raises(GwmOraApiForbidden):
+        await api.async_set_climate("SYNTHETIC-VEHICLE-A", mode="cool")
+    with pytest.raises(GwmOraApiForbidden):
+        await api.async_set_charging_plan("SYNTHETIC-VEHICLE-A", enable=True)
