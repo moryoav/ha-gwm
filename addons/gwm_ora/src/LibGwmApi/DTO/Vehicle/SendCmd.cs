@@ -4,6 +4,12 @@ namespace libgwmapi.DTO.Vehicle;
 
 public class SendCmd
 {
+    // Mainland China uses AutoAI command codes instead of the overseas 0x04/0x05/0x08
+    // instruction envelope. Keep this process-local descriptor out of JSON so adding China
+    // controls cannot change requests sent to established regions.
+    [JsonIgnore]
+    public ChinaRemoteCommand ChinaCommand { get; set; }
+
     [JsonPropertyName("instructions")]
     public SendCmdInstruction Instructions { get; set; }
     [JsonPropertyName("remoteType")]
@@ -28,6 +34,25 @@ public class SendCmd
 
     [JsonPropertyName("vin")]
     public string Vin { get; set; }
+}
+
+public enum ChinaRemoteCommandKind
+{
+    Common,
+    EngineStart,
+    SunroofOpen,
+    Climate
+}
+
+public class ChinaRemoteCommand
+{
+    public ChinaRemoteCommandKind Kind { get; set; }
+    public int CommandCode { get; set; }
+    public int? RunTimeMinutes { get; set; }
+    public int? Temperature { get; set; }
+    public int? OpenAngle { get; set; }
+    public string ClimateMode { get; set; }
+    public bool AirAlreadyOn { get; set; }
 }
 
 public class SendCmdInstruction

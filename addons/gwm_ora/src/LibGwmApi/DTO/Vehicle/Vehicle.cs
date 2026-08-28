@@ -211,6 +211,9 @@ namespace libgwmapi.DTO.Vehicle
         [JsonPropertyName("vehicleId")]
         public string VehicleId { get; set; }
 
+        [JsonPropertyName("vehicleNetworkType")]
+        public int? VehicleNetworkType { get; set; }
+
         [JsonPropertyName("vehicleNick")]
         public object VehicleNick { get; set; }
 

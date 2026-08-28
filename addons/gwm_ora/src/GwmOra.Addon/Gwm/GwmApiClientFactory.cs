@@ -3,6 +3,7 @@ using System.Runtime.InteropServices;
 using System.Security.Cryptography.X509Certificates;
 using GwmOra.Addon.Configuration;
 using libgwmapi;
+using libgwmapi.China;
 
 namespace GwmOra.Addon.Gwm;
 
@@ -19,7 +20,24 @@ public sealed class GwmApiClientFactory
     {
         GwmApiClient client;
 
-        if (String.Equals(options.Region, "aus", StringComparison.OrdinalIgnoreCase))
+        if (String.Equals(options.Region, "cn", StringComparison.OrdinalIgnoreCase))
+        {
+            var china = new ChinaProtocolClient(
+                new HttpClient(CreateChinaHandler()),
+                new HttpClient(CreateChinaHandler()),
+                new HttpClient(CreateChinaHandler()),
+                new HttpClient(CreateChinaHandler()),
+                _loggerFactory)
+            {
+                DeviceId = ChinaDeviceId(state.DeviceId)
+            };
+            china.SetSession(state.ChinaSession);
+            client = new GwmApiClient(china, _loggerFactory)
+            {
+                DeviceId = ChinaDeviceId(state.DeviceId)
+            };
+        }
+        else if (String.Equals(options.Region, "aus", StringComparison.OrdinalIgnoreCase))
         {
             var h5 = new HttpClient(new BtAuthSigningHandler
             {
@@ -142,7 +160,8 @@ public sealed class GwmApiClientFactory
             }
         }
 
-        if (!String.IsNullOrWhiteSpace(state.AccessToken))
+        if (!String.Equals(options.Region, "cn", StringComparison.OrdinalIgnoreCase)
+            && !String.IsNullOrWhiteSpace(state.AccessToken))
         {
             client.SetAccessToken(state.AccessToken);
         }
@@ -155,6 +174,16 @@ public sealed class GwmApiClientFactory
         return new HttpClientHandler
         {
             AutomaticDecompression = DecompressionMethods.All
+        };
+    }
+
+    internal static HttpClientHandler CreateChinaHandler()
+    {
+        // The mainland-China Android app advertises only gzip. Keep this isolated
+        // from the established regions, which continue to accept all formats.
+        return new HttpClientHandler
+        {
+            AutomaticDecompression = DecompressionMethods.GZip
         };
     }
 
@@ -197,5 +226,13 @@ public sealed class GwmApiClientFactory
         return normalized.Length >= 16
             ? normalized[..16]
             : normalized.PadRight(16, '0');
+    }
+
+    internal static string ChinaDeviceId(string deviceId)
+    {
+        var normalized = (deviceId ?? String.Empty).Replace("-", String.Empty);
+        return normalized.Length >= 32
+            ? normalized[..32]
+            : normalized.PadRight(32, '0');
     }
 }

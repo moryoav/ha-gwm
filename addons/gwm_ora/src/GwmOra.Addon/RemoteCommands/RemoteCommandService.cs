@@ -50,6 +50,10 @@ public sealed class RemoteCommandService
         EnsureRemoteCommandsAvailable();
         ValidateClimateRequest(request);
         var mode = request.Mode?.Trim().ToLowerInvariant();
+        if (mode == "heat" && !IsChinaRegion)
+        {
+            throw new ArgumentException("Climate heating is currently available only for the experimental China region.", nameof(request));
+        }
 
         var commandName = mode is null && !request.Temperature.HasValue ? "A/C run time" : "A/C";
         var command = _store.Create(vin, commandName);
@@ -60,9 +64,9 @@ public sealed class RemoteCommandService
     public static void ValidateClimateRequest(ClimateCommandRequest request)
     {
         var mode = request.Mode?.Trim().ToLowerInvariant();
-        if (mode is not null and not ("cool" or "off"))
+        if (mode is not null and not ("cool" or "heat" or "off"))
         {
-            throw new ArgumentException("Climate command mode must be 'cool' or 'off'.", nameof(request));
+            throw new ArgumentException("Climate command mode must be 'cool', 'heat', or 'off'.", nameof(request));
         }
 
         if (request.OperationTimeMinutes is int operationTime
@@ -105,6 +109,50 @@ public sealed class RemoteCommandService
         return command;
     }
 
+    public RemoteCommandSnapshot EnqueueVehicleControl(string vin, VehicleControlCommandRequest request)
+    {
+        EnsureRemoteCommandsAvailable();
+        if (!IsChinaRegion)
+        {
+            throw new RemoteCommandUnavailableException(
+                "These experimental vehicle controls are currently available only for the China region.");
+        }
+
+        ValidateVin(vin);
+        var action = request.Action?.Trim().ToLowerInvariant() ?? String.Empty;
+        var commandName = action switch
+        {
+            "remote_start" => "Remote start",
+            "remote_stop" => "Remote stop",
+            "horn" => "Sound horn",
+            "flash_lights" => "Flash lights",
+            "horn_and_lights" => "Sound horn and flash lights",
+            "tailgate_open" => "Tailgate open",
+            "tailgate_close" => "Tailgate close",
+            "sunroof_close" => "Sunroof close",
+            "sunroof_tilt" => "Sunroof tilt",
+            "sunroof_half" => "Sunroof half open",
+            "sunroof_full" => "Sunroof fully open",
+            _ => throw new ArgumentException($"Unsupported China vehicle-control action '{request.Action}'.", nameof(request))
+        };
+
+        if (request.RunTimeMinutes is int runTime
+            && !VehicleSnapshotMapper.IsValidOperationTime(runTime))
+        {
+            throw new ArgumentException("Remote-start run time must be a whole number from 5 to 30 minutes.", nameof(request));
+        }
+
+        var command = _store.Create(vin, commandName);
+        _ = Task.Run(
+            () => ExecuteVehicleControlAsync(
+                command.Id,
+                action,
+                request.RunTimeMinutes,
+                _lifetime.ApplicationStopping),
+            CancellationToken.None);
+        return command;
+    }
+
     private async Task ExecuteClimateAsync(string id, ClimateCommandRequest request, CancellationToken cancellationToken)
     {
         var command = _store.Get(id)!;
@@ -116,7 +164,8 @@ public sealed class RemoteCommandService
             var mode = request.Mode?.Trim().ToLowerInvariant();
             var runTimeOnly = mode is null && !request.Temperature.HasValue;
             var basicsTask = client.GetVehicleBasicsInfoOrDefaultAsync(command.Vin, cancellationToken);
-            Task<VehicleStatus>? statusTask = mode is null && request.Temperature.HasValue
+            Task<VehicleStatus>? statusTask = IsChinaRegion
+                                              || (mode is null && request.Temperature.HasValue)
                 ? client.GetLastVehicleStatusAsync(command.Vin, cancellationToken)
                 : null;
             if (statusTask is null)
@@ -158,13 +207,13 @@ public sealed class RemoteCommandService
                                     basics.Config?.AirConditionerStatusTime,
                                     VehicleSnapshotMapper.DefaultOperationTimeMinutes);
 
-            if (mode is not null and not ("cool" or "off"))
+            if (mode is not null and not ("cool" or "heat" or "off"))
             {
                 _store.Update(id, "failed", $"{command.Name}: failed - unsupported mode '{request.Mode}'");
                 return;
             }
 
-            if (mode == "cool" || request.Temperature.HasValue || request.OperationTimeMinutes.HasValue)
+            if (mode is "cool" or "heat" || request.Temperature.HasValue || request.OperationTimeMinutes.HasValue)
             {
                 _store.Update(id, "in_progress", $"{command.Name}: updating vehicle defaults");
                 await client.ModifyVehicleRemoteCtlInfoAsync(
@@ -182,13 +231,21 @@ public sealed class RemoteCommandService
             }
 
             var switchOrder = mode == "off" ? "0" : "1";
-            var sendCommand = RemoteCommandFactory.CreateClimateCommand(
-                command.Vin,
-                SecurityPassword,
-                switchOrder,
-                temperature,
-                operationTime,
-                IsRussianRegion);
+            var effectiveMode = mode ?? "cool";
+            var sendCommand = IsChinaRegion
+                ? RemoteCommandFactory.CreateChinaClimateCommand(
+                    command.Vin,
+                    effectiveMode,
+                    temperature,
+                    operationTime,
+                    currentlyOn)
+                : RemoteCommandFactory.CreateClimateCommand(
+                    command.Vin,
+                    SecurityPassword,
+                    switchOrder,
+                    temperature,
+                    operationTime,
+                    IsRussianRegion);
             await SendAndPollAsync(client, id, sendCommand, cancellationToken);
         }
         catch (Exception ex)
@@ -226,6 +283,45 @@ public sealed class RemoteCommandService
                 command.Vin,
                 SecurityPassword,
                 IsRussianRegion);
+            await SendAndPollAsync(client, id, request, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            FailCommand(id, command.Name, ex);
+        }
+    }
+
+    private async Task ExecuteVehicleControlAsync(
+        string id,
+        string action,
+        int? runTimeMinutes,
+        CancellationToken cancellationToken)
+    {
+        var command = _store.Get(id)!;
+        try
+        {
+            var client = await AuthenticatedClientAsync(cancellationToken);
+            var request = action switch
+            {
+                "remote_start" => RemoteCommandFactory.CreateChinaCommand(
+                    command.Vin,
+                    ChinaRemoteCommandKind.EngineStart,
+                    15,
+                    runTimeMinutes ?? VehicleSnapshotMapper.DefaultOperationTimeMinutes),
+                "remote_stop" => RemoteCommandFactory.CreateChinaCommand(command.Vin, ChinaRemoteCommandKind.Common, 16),
+                "horn" => RemoteCommandFactory.CreateChinaCommand(command.Vin, ChinaRemoteCommandKind.Common, 19),
+                "flash_lights" => RemoteCommandFactory.CreateChinaCommand(command.Vin, ChinaRemoteCommandKind.Common, 20),
+                "horn_and_lights" => RemoteCommandFactory.CreateChinaCommand(command.Vin, ChinaRemoteCommandKind.Common, 5),
+                "tailgate_open" => RemoteCommandFactory.CreateChinaCommand(command.Vin, ChinaRemoteCommandKind.Common, 17),
+                "tailgate_close" => RemoteCommandFactory.CreateChinaCommand(command.Vin, ChinaRemoteCommandKind.Common, 18),
+                "sunroof_close" => RemoteCommandFactory.CreateChinaCommand(command.Vin, ChinaRemoteCommandKind.Common, 28),
+                // AutoAI reports closed as 0 and numbers the three opening positions from
+                // fully open toward the vent position.
+                "sunroof_full" => RemoteCommandFactory.CreateChinaCommand(command.Vin, ChinaRemoteCommandKind.SunroofOpen, 29, openAngle: 1),
+                "sunroof_half" => RemoteCommandFactory.CreateChinaCommand(command.Vin, ChinaRemoteCommandKind.SunroofOpen, 29, openAngle: 2),
+                "sunroof_tilt" => RemoteCommandFactory.CreateChinaCommand(command.Vin, ChinaRemoteCommandKind.SunroofOpen, 29, openAngle: 3),
+                _ => throw new ArgumentException($"Unsupported China vehicle-control action '{action}'.")
+            };
             await SendAndPollAsync(client, id, request, cancellationToken);
         }
         catch (Exception ex)
@@ -512,7 +608,7 @@ public sealed class RemoteCommandService
             throw new RemoteCommandUnavailableException("Remote commands are disabled in the add-on configuration.");
         }
 
-        if (String.IsNullOrWhiteSpace(_options.SecurityPin))
+        if (!IsChinaRegion && String.IsNullOrWhiteSpace(_options.SecurityPin))
         {
             throw new RemoteCommandUnavailableException("Remote commands require security_pin in the add-on configuration.");
         }
@@ -527,10 +623,15 @@ public sealed class RemoteCommandService
         }
     }
 
-    private string SecurityPassword => new CheckSecurityPassword(_options.SecurityPin!).Md5Hash;
+    private string SecurityPassword => IsChinaRegion
+        ? String.Empty
+        : new CheckSecurityPassword(_options.SecurityPin!).Md5Hash;
 
     private bool IsRussianRegion =>
         String.Equals(_options.Region, "rus", StringComparison.OrdinalIgnoreCase);
+
+    private bool IsChinaRegion =>
+        String.Equals(_options.Region, "cn", StringComparison.OrdinalIgnoreCase);
 
     private void FailCommand(string id, string commandName, Exception exception)
     {

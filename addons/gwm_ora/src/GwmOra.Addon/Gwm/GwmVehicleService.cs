@@ -44,6 +44,7 @@ public sealed class GwmVehicleService
         return new VehiclesResponse
         {
             GeneratedAt = DateTimeOffset.UtcNow,
+            Region = _options.Region.Trim().ToLowerInvariant(),
             RemoteCommandsEnabled = RemoteCommandsAvailable,
             SecurityPinConfigured = !String.IsNullOrWhiteSpace(_options.SecurityPin),
             ChargingControlEnabled = _options.EnableChargingControl,
@@ -120,5 +121,7 @@ public sealed class GwmVehicleService
     }
 
     private bool RemoteCommandsAvailable =>
-        _options.EnableRemoteCommands && !String.IsNullOrWhiteSpace(_options.SecurityPin);
+        _options.EnableRemoteCommands
+        && (String.Equals(_options.Region, "cn", StringComparison.OrdinalIgnoreCase)
+            || !String.IsNullOrWhiteSpace(_options.SecurityPin));
 }

@@ -46,6 +46,52 @@ public static class RemoteCommandFactory
         };
     }
 
+    public static SendCmd CreateChinaClimateCommand(
+        string vin,
+        string mode,
+        int temperature,
+        int operationTimeMinutes,
+        bool airAlreadyOn)
+    {
+        return CreateChinaCommand(
+            vin,
+            ChinaRemoteCommandKind.Climate,
+            mode == "off" ? 7 : 6,
+            operationTimeMinutes,
+            temperature,
+            climateMode: mode,
+            airAlreadyOn: airAlreadyOn);
+    }
+
+    public static SendCmd CreateChinaCommand(
+        string vin,
+        ChinaRemoteCommandKind kind,
+        int commandCode,
+        int? runTimeMinutes = null,
+        int? temperature = null,
+        int? openAngle = null,
+        string? climateMode = null,
+        bool airAlreadyOn = false)
+    {
+        return new SendCmd
+        {
+            ChinaCommand = new ChinaRemoteCommand
+            {
+                Kind = kind,
+                CommandCode = commandCode,
+                RunTimeMinutes = runTimeMinutes,
+                Temperature = temperature,
+                OpenAngle = openAngle,
+                ClimateMode = climateMode,
+                AirAlreadyOn = airAlreadyOn
+            },
+            RemoteType = "0",
+            SecurityPassword = String.Empty,
+            Type = 2,
+            Vin = vin
+        };
+    }
+
     public static SendCmd CreateLockCommand(
         string vin,
         string securityPassword,

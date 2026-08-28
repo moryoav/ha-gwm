@@ -91,6 +91,23 @@ class GwmOraApiClient:
             json={},
         )
 
+    async def async_vehicle_control(
+        self,
+        vin: str,
+        action: str,
+        *,
+        run_time_minutes: int | None = None,
+    ) -> dict[str, Any]:
+        """Queue an experimental China vehicle-control command."""
+        payload: dict[str, Any] = {"action": action}
+        if run_time_minutes is not None:
+            payload["run_time_minutes"] = run_time_minutes
+        return await self._request(
+            "POST",
+            f"/vehicles/{vin}/commands/control",
+            json=payload,
+        )
+
     async def async_get_charging_plan(self, vin: str) -> dict[str, Any]:
         """Return the vehicle's charging schedule."""
         return await self._request("GET", f"/vehicles/{vin}/charging/plan")

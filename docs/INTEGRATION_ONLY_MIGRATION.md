@@ -6,10 +6,10 @@ This document is the durable plan, behavior contract, decision log, and test led
 
 - Working branch: `feature/integration-only`
 - Branch point: `1184737` (`Update README GWM logo to SVG`)
-- Current checkpoint: Task 6 complete; the 2026-08-27 `main` drift and China scope review is recorded; Gate A remains passed
-- Next checkpoint: Task 7 — synchronize released `main`/`v0.12.0` behavior into this branch (not yet approved)
-- Reviewed local `main`: `9daff32` (`v0.12.0`); the integration-only branch has not merged or ported that runtime behavior yet
-- Released add-on and integration runtime behavior changed so far on this branch: none
+- Current checkpoint: Task 7 complete; the branch is synchronized with reviewed `main`/`v0.12.0`; Gate A remains passed
+- Next checkpoint: Task 8 — China crypto, transport, and reuse-only read POC (not yet approved)
+- Synchronized local `main`: `9daff32` (`v0.12.0`) through a two-parent merge without rebasing or selective cherry-picks
+- Task 7 changed no `gwm_ora_client` or direct-cloud runtime behavior; the existing add-on/proxy path now includes all released China behavior
 
 Work proceeds one explicitly approved task at a time. At the end of every task, update this document, run the checks appropriate to that checkpoint, create one focused local commit, report the result, and stop. Do not begin the next task without a new user green light.
 
@@ -259,7 +259,7 @@ After Task 22, packaging, installation migration, documentation, complete tests,
 - [x] Task 4 — Harden the POC into an async, typed, HA-independent client foundation.
 - [x] Task 5 — Implement EU production authentication and read parity.
 - [x] Task 6 — Implement ANZ production authentication and read parity.
-- [ ] Task 7 — Merge the reviewed released `main` series into this branch and re-establish the full baseline.
+- [x] Task 7 — Merge the reviewed released `main` series into this branch and re-establish the full baseline.
 - [ ] Task 8 — Prove the isolated China crypto, transport, and reuse-only read path.
 - [ ] Task 9 — Implement China production SMS authentication, multi-service sessions, and read parity.
 - [ ] Task 10 — Implement Russia production authentication and read parity.
@@ -278,7 +278,7 @@ After Task 22, packaging, installation migration, documentation, complete tests,
 
 The changed checkpoints stay intentionally narrow:
 
-- Task 7 is synchronization only. Merge the complete released mainline series, semantically review auto-merged documentation/translations, run the full Python and .NET baselines, and make no direct-cloud Python behavior change.
+- Task 7 was synchronization only. It merged the complete released mainline series, semantically reviewed auto-merged documentation/translations, re-established the full Python and .NET baselines, and made no direct-cloud Python behavior change.
 - Task 8 is the early China stop/go POC. Port deterministic crypto/time vectors, exact app-like request bytes, 32-character device identity, bounded gzip handling, and the three-service transport boundary; prove only discovery and status with synthetic services and, if separately approved and available, a reused live session. Do not request or submit an SMS code.
 - Task 9 turns that proof into immutable production authentication/read behavior: SMS continuation and throttling, exact error/risk-control handling, G-App refresh, bounded BeanTech/AutoAI initialization, partial-session publication, corrected discovery routing, NavInfo-only enforcement, sanitized China fixtures, and typed reads. It remains HA-independent, non-persistent, and command-free.
 - Task 10 retains the previously planned Russia authentication/read checkpoint. Moving it after the China feasibility work prevents the current overseas-only client shape from hiding a transport or strategy blocker introduced by the newly released region.
@@ -320,7 +320,7 @@ The changed checkpoints stay intentionally narrow:
 
 ## Post-Branch Main Drift Review
 
-Review captured on 2026-08-27 without merging or rebasing. The merge base remains `1184737`; local `main` is `9daff32` (`v0.12.0`) and this branch is `ec80c4b` before this ledger-only commit.
+Review captured on 2026-08-27 without merging or rebasing. The merge base was `1184737`; local `main` was `9daff32` (`v0.12.0`), the completed client tip was `ec80c4b`, and planning commit `5f74459` recorded the revised roadmap before synchronization.
 
 Main contains twelve commits after the branch point. Two are patch-equivalent to changes already carried here: `cd8ffa7` corresponds to `cba0873` (regional reverse-engineering guide), and `10d6761` corresponds to `030199e` (new-region issue chooser). The ten unreconciled commits are:
 
@@ -344,7 +344,7 @@ Technical conclusions from the review:
 - Initial live evidence exists for SMS-backed access, NavInfo discovery, VV6 status, cooling, lock/unlock, and closing windows. Heating, extended controls, charging writes, other models/platforms, and broader status encodings remain experimental.
 - A dry-run merge against `9daff32` predicts no textual conflicts. `README.md`, `CONTRIBUTING.md`, the issue chooser, and `custom_components/gwm_ora/translations/en.json` still require semantic review so both the released China material and the integration-only development guidance survive the auto-merge.
 
-Task 7 will synchronize this released series as a whole and re-run both language baselines. No part of the series was merged, cherry-picked, or ported during this review.
+Task 7 synchronized this released series as a whole on 2026-08-28 and re-ran both language baselines. No part of the series was merged, cherry-picked, or ported during the earlier review, and no China protocol code was ported into Python during synchronization.
 
 ## Baseline Evidence
 
@@ -622,6 +622,47 @@ dotnet test --no-restore --configuration Release
 
 Ruff, mypy, compile, and the 487-test client gate also passed under WSL/Linux. The Python warning and .NET nullable-annotation warnings are the unchanged baseline warnings. Current live ANZ authentication, exact token-expiry codes, `110641`, verification delivery/expiry, `607099`, AU-versus-NZ response differences, and concurrent phone-session effects remain deliberately unverified; the implementation fails closed around those gaps.
 
+## Task 7 Main Synchronization Evidence
+
+Evidence captured on 2026-08-28 from `feature/integration-only`. Task 7 performed no GWM, Home Assistant, add-on, account, phone-app, vehicle, command, charging, or release network operation.
+
+Delivered:
+
+- Merged the complete local `main` release history through `9daff32` (`v0.12.0`) as a two-parent merge. No rebase, selective China cherry-pick, duplicate patch, or history rewrite was used.
+- Brought the existing add-on/proxy path forward with the released China foundation and follow-up fixes for Alpine time handling, transport fidelity, corrected discovery routing, VV6 status mapping, account-context invalidation, heating, extended controls, and charging/reference behavior.
+- Preserved main's idempotent release workflow and documentation updates while retaining the integration-only branch's standalone-client CI, strict typing, synthetic-fixture guidance, and synthetic VIN examples.
+- Verified that all main-only source/configuration/test paths match `main`, all feature-only paths remain intact, the patch-equivalent regional-guide/issue-link changes are not duplicated, and no `gwm_ora_client` implementation or client fixture changed. Only the documented Task 7 semantic wording corrections differ from the auto-merged documentation/translation result.
+- Semantically reviewed the auto-merged documentation and translations. Clarified that China is partially live-validated rather than wholly untested, and made the remote-command error describe a security PIN only where the selected region requires one.
+- Kept Task 8 entirely deferred: no China crypto, transport, session, signing, read, authentication, persistence, or Home Assistant direct-cloud behavior was implemented in Python.
+
+Validation:
+
+```text
+git diff --cached --check
+# no output; exit 0
+
+# Dependency-minimal HA-independent client suite (Windows, CPython 3.13.13)
+python -m pytest tests/python/client
+487 passed
+
+python -m mypy gwm_ora_client
+Success: no issues found in 15 source files
+
+python -m ruff check gwm_ora_client custom_components tests/python
+All checks passed!
+
+python -m compileall -q gwm_ora_client custom_components tests/python
+# no output; exit 0
+
+python -m pytest tests/python
+525 passed, 1 warning
+
+dotnet test --configuration Release
+149 passed, 0 failed, 0 skipped
+```
+
+The Python warning and .NET nullable-annotation warnings are the unchanged baseline warnings. Integration JSON and add-on YAML parsed successfully; configuration, manifest, and quality assertions agree on version `0.12.0`. The existing untracked analysis artifacts remained outside the merge.
+
 ## Checkpoint Log
 
 ### Task 1 — Branch, baseline, and migration ledger
@@ -705,9 +746,21 @@ Delivered:
 - Kept `607099` as a typed raw-client optional-endpoint outcome; the future coordinator remains responsible for the add-on polling path's empty-basics fallback.
 - Made no live request and no add-on or integration runtime-path change.
 
+### Task 7 — Main synchronization and baseline re-establishment
+
+Status: complete on 2026-08-28.
+
+Delivered:
+
+- Merged local `main` through `9daff32` (`v0.12.0`) as the complete released history and retained a genuine two-parent merge.
+- Preserved both the released China add-on/proxy behavior and all Task 1–6 standalone-client code, tests, CI, documentation, and synthetic evidence.
+- Semantically reviewed the auto-merged documentation/translations and corrected two region-sensitive descriptions.
+- Re-established the unchanged 487-test client gate, expanded 525-test Python baseline, and expanded 149-test .NET baseline.
+- Made no live request and no China direct-cloud Python behavior change.
+
 ### Next checkpoint (requires explicit approval)
 
-Task 7 will merge the complete local `main` release series through `9daff32` (`v0.12.0`) into `feature/integration-only`, semantically verify the auto-merged documentation/translations, and re-run the full Python and .NET baselines. It will not port China into `gwm_ora_client`, alter the direct-cloud architecture, perform network I/O, publish or push anything, or begin Task 8. If `main` advances again before approval, its new drift must be reviewed before the Task 7 merge.
+Task 8 will build the isolated, reuse-only China feasibility POC. It will port deterministic crypto/time vectors, exact request serialization and app-profile headers, 32-character device identity, bounded gzip handling, and the G-App/BeanTech/AutoAI transport boundary needed for synthetic vehicle discovery and status reads. It will not request or submit an SMS code, refresh or persist a live session, send a command, change a charging plan, wire Home Assistant to China direct cloud, publish or push anything, or begin Task 9. Any reuse-only live China read requires separate explicit approval and an agreed sanitized-state procedure.
 
 ## Open Risks and Questions
 

@@ -130,6 +130,22 @@ api.MapPost("/vehicles/{vin}/commands/windows/close", (string vin, RemoteCommand
     }
 });
 
+api.MapPost("/vehicles/{vin}/commands/control", (string vin, VehicleControlCommandRequest request, RemoteCommandService commands) =>
+{
+    try
+    {
+        return Results.Accepted(value: commands.EnqueueVehicleControl(vin, request));
+    }
+    catch (RemoteCommandUnavailableException ex)
+    {
+        return Results.Problem(ex.Message, statusCode: StatusCodes.Status403Forbidden);
+    }
+    catch (ArgumentException ex)
+    {
+        return Results.Problem(ex.Message, statusCode: StatusCodes.Status400BadRequest);
+    }
+});
+
 api.MapGet("/vehicles/{vin}/charging/plan", async (string vin, RemoteCommandService commands, CancellationToken cancellationToken) =>
 {
     try

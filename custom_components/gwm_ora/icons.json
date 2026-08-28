@@ -29,6 +29,39 @@
     "button": {
       "close_windows": {
         "default": "mdi:window-closed-variant"
+      },
+      "remote_start": {
+        "default": "mdi:engine"
+      },
+      "remote_stop": {
+        "default": "mdi:engine-off"
+      },
+      "sound_horn": {
+        "default": "mdi:bullhorn"
+      },
+      "flash_lights": {
+        "default": "mdi:car-light-high"
+      },
+      "horn_and_lights": {
+        "default": "mdi:car-emergency"
+      },
+      "open_tailgate": {
+        "default": "mdi:car-back"
+      },
+      "close_tailgate": {
+        "default": "mdi:car-back"
+      },
+      "close_sunroof": {
+        "default": "mdi:car-select"
+      },
+      "tilt_sunroof": {
+        "default": "mdi:car-select"
+      },
+      "half_open_sunroof": {
+        "default": "mdi:car-select"
+      },
+      "fully_open_sunroof": {
+        "default": "mdi:car-select"
       }
     },
     "climate": {

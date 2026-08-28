@@ -6,6 +6,76 @@ This project follows semantic versioning. HACS uses the latest GitHub release ta
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-08-27
+
+### Added
+
+- Added experimental China-only controls for remote engine start/stop, horn, flashing lights, combined vehicle search, tailgate open/close, and sunroof close/tilt/half/full positions.
+- Added experimental heating mode to the China climate entity using the mainland app's separate cooling and heating switches.
+
+### Fixed
+
+- Use the China app's dedicated A/C parameter-update command when changing temperature or mode while climate control is already running, instead of repeating the start command.
+
+## [0.11.6] - 2026-08-27
+
+### Fixed
+
+- Bound stored authentication sessions to the configured region, country, username, and password. Changing accounts now clears the previous account's tokens, identity, certificate, verification throttle, and add-on-owned charging-plan tracking before starting the new login flow.
+- Detect a changed mainland-China phone number when upgrading from an earlier version, discard the mismatched China session, and request a fresh SMS code for the newly configured account.
+
+## [0.11.5] - 2026-08-27
+
+### Fixed
+
+- Corrected mainland-China WEY VV6 status mapping against the official app: read battery SoC from `carStatus.soc` when `battSts.battSoc` is absent, treat `remainFuel` as liters, expose the displayed remaining range as fuel range, and recognize its locked-state encoding.
+
+## [0.11.4] - 2026-08-27
+
+### Fixed
+
+- Routed experimental mainland-China vehicle discovery through the live G-App gateway. Controlled read-only testing showed that `gapp-api.gwmapp-h.com` returns the vehicle list while the previously used `car-api.gwmapp-h.com` route returns an empty HTTP 404 for the same authenticated request.
+
+## [0.11.3] - 2026-08-27
+
+### Fixed
+
+- Matched the official mainland-China Android app's request profile more closely by using gzip-only response encoding, the exact JSON content type and length, and app-style header placement for China cloud requests.
+
+### Added
+
+- Added privacy-safe China gateway diagnostics for request header shape, credential lengths and session relationships, response metadata, and DNS candidates. Credential values, phone numbers, VINs, and request bodies remain omitted.
+
+## [0.11.2] - 2026-08-27
+
+### Fixed
+
+- Aligned experimental China cloud requests with the official Android app's `okhttp/4.2.2` user agent and HTTP/2 preference to address the vehicle-list endpoint returning HTTP 404 to the add-on while succeeding in the app.
+
+### Added
+
+- Added privacy-safe diagnostics for unsuccessful China cloud responses, including the service, method, route, status, negotiated HTTP version, content type, header names, and sanitized error fields without logging request bodies, header values, tokens, phone numbers, or VINs.
+
+## [0.11.1] - 2026-08-26
+
+### Fixed
+
+- Fixed experimental China vehicle-service login in the Alpine add-on image by generating mainland-China timestamps with a fixed UTC+08:00 offset instead of depending on operating-system time-zone data.
+- Preserved rotated China account tokens when later BeanTech or AutoAI initialization fails, so a recoverable vehicle-service error does not leave an obsolete refresh token on disk.
+- Prevented the add-on from submitting the same one-time China SMS verification code again on a later polling cycle after it has already been accepted or rejected.
+
+## [0.11.0] - 2026-08-25
+
+### Added
+
+- Added experimental, untested mainland-China cloud support with `region: cn` and `country: CN`, using the account's registered phone number and SMS login.
+- Added isolated China G-App, BeanTech, and AutoAI authentication, signing, token persistence, vehicle discovery, and NavInfo/AutoAI status polling based on the mainland-China GWM Android app.
+- Translated China vehicle status into the existing Home Assistant battery, range, odometer, charging, tire, lock, window, door, trunk, A/C, comfort, and location entities where the vehicle supplies those fields.
+- Added experimental China A/C, lock, unlock, close-window, command-result, and charging-schedule support behind the existing command opt-ins. The China app protocol does not send the vehicle security PIN.
+- Added offline signing vectors and an end-to-end fake-service test covering China login, discovery, status mapping, controls, and charging without contacting a GWM account or vehicle.
+
+China support currently accepts only vehicles reported as using the `navinfo` platform. It must be validated by a mainland-China user before it can be considered supported. Europe, Australia/New Zealand, and the already verified Russia implementation remain unchanged.
+
 ## [0.10.0] - 2026-08-22
 
 ### Added

@@ -2,6 +2,8 @@
 using System.Security.Cryptography.X509Certificates;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using libgwmapi.China;
+using libgwmapi.DTO.China;
 using Microsoft.Extensions.Logging;
 
 namespace libgwmapi;
@@ -18,6 +20,7 @@ public partial class GwmApiClient
     private readonly Action<X509Certificate2>? _setVehicleClientCertificate;
     private readonly ILogger<GwmApiClient> _logger;
     private readonly string _region;
+    private readonly ChinaProtocolClient _chinaClient;
     private string _deviceId = String.Empty;
 
     // The AU gateway may return numbers as JSON strings (for example,
@@ -154,6 +157,17 @@ public partial class GwmApiClient
         }
     }
 
+    public GwmApiClient(ChinaProtocolClient chinaClient, ILoggerFactory loggerFactory)
+    {
+        _region = "cn";
+        _logger = loggerFactory.CreateLogger<GwmApiClient>();
+        _chinaClient = chinaClient;
+        _h5Client = new HttpClient();
+        _authClient = _h5Client;
+        _appClient = _h5Client;
+        _certificateClient = _h5Client;
+    }
+
     public string Language
     {
         get => _h5Client.DefaultRequestHeaders.TryGetValues(
@@ -195,6 +209,10 @@ public partial class GwmApiClient
         set
         {
             _deviceId = value ?? String.Empty;
+            if (_chinaClient is not null)
+            {
+                _chinaClient.DeviceId = _deviceId;
+            }
             foreach (var client in UniqueClients())
             {
                 ConfigureHeader(client, "deviceId", _deviceId);
@@ -213,11 +231,17 @@ public partial class GwmApiClient
     }
 
     public bool HasAccessToken =>
+        _chinaClient?.Session.IsComplete == true ||
         _h5Client.DefaultRequestHeaders.TryGetValues("accessToken", out var token) &&
         token.Any(value => !String.IsNullOrEmpty(value));
 
     public void SetAccessToken(string accessToken)
     {
+        if (_chinaClient is not null)
+        {
+            return;
+        }
+
         foreach (var client in UniqueClients())
         {
             client.DefaultRequestHeaders.Remove("accessToken");
@@ -229,6 +253,35 @@ public partial class GwmApiClient
             }
         }
     }
+
+    public ChinaSession GetChinaSession() =>
+        _chinaClient?.Session.Clone()
+        ?? throw new InvalidOperationException("This is not a China-region GWM client.");
+
+    public void SetChinaSession(ChinaSession session)
+    {
+        (_chinaClient ?? throw new InvalidOperationException("This is not a China-region GWM client."))
+            .SetSession(session);
+    }
+
+    public Task RequestChinaSmsCodeAsync(string phone, CancellationToken cancellationToken) =>
+        (_chinaClient ?? throw new InvalidOperationException("This is not a China-region GWM client."))
+        .RequestSmsCodeAsync(phone, cancellationToken);
+
+    public Task<ChinaSession> LoginChinaWithSmsAsync(
+        string phone,
+        string verificationCode,
+        CancellationToken cancellationToken) =>
+        (_chinaClient ?? throw new InvalidOperationException("This is not a China-region GWM client."))
+        .LoginWithSmsAsync(phone, verificationCode, cancellationToken);
+
+    public Task<ChinaSession> RefreshChinaSessionAsync(CancellationToken cancellationToken) =>
+        (_chinaClient ?? throw new InvalidOperationException("This is not a China-region GWM client."))
+        .RefreshSessionAsync(cancellationToken);
+
+    public Task ValidateChinaSessionAsync(CancellationToken cancellationToken) =>
+        (_chinaClient ?? throw new InvalidOperationException("This is not a China-region GWM client."))
+        .ValidateSessionAsync(cancellationToken);
 
     public void SetVehicleClientCertificate(X509Certificate2 certificate)
     {
