@@ -6,12 +6,12 @@ This document is the durable plan, behavior contract, decision log, and test led
 
 - Working branch: `feature/integration-only`
 - Branch point: `1184737` (`Update README GWM logo to SVG`)
-- Current checkpoint: Task 8 complete; Gate A-CN's offline synthetic portion is passed, while its live China activation prerequisite remains pending
-- Next checkpoint: Task 9 — China production SMS authentication, multi-service sessions, and read parity (not yet approved)
+- Current checkpoint: Task 9 complete; China production authentication/read parity is proven offline, while Gate A-CN's live activation prerequisite remains pending
+- Next checkpoint: Task 10 — Russia production authentication and read parity (not yet approved)
 - Synchronized local `main`: `9daff32` (`v0.12.0`) through a two-parent merge without rebasing or selective cherry-picks
-- Task 8 added an isolated reuse-only China POC without changing `GwmClient`, `Region`, Home Assistant, the add-on/proxy runtime, authentication, persistence, commands, or charging
+- Task 9 added an isolated public China authentication/read client without changing `GwmClient`, `Region`, Home Assistant, the add-on/proxy runtime, persistence, commands, or charging
 
-Work proceeds one explicitly approved task at a time. At the end of every task, update this document, run the checks appropriate to that checkpoint, create one focused local commit, report the result, and stop. Do not begin the next task without a new user green light.
+Work proceeds one explicitly approved task at a time. At the end of every task, update this document, run the checks appropriate to that checkpoint, create one focused commit, push it to `feature/integration-only`, report the result, and stop. Do not begin the next task without a new user green light.
 
 ## Working Agreement
 
@@ -20,7 +20,7 @@ Work proceeds one explicitly approved task at a time. At the end of every task, 
 - Never commit account credentials, verification codes, tokens, certificates issued to a user, private keys, VINs, locations, or unsanitized cloud responses.
 - Live read-only tests require explicit approval for the corresponding task.
 - Live climate, lock, unlock, window, and charging-plan operations require an additional explicit confirmation immediately before testing them.
-- Do not publish packages, push the branch, open a pull request, merge, or release without separate approval.
+- Push each completed task's focused commit to `feature/integration-only`. Do not publish packages, open a pull request, merge, or release without separate approval.
 - If `main` moves materially during this long-lived effort, review and record the drift before synchronizing it. Because this published feature branch is long-lived, prefer an explicit merge checkpoint over rebasing or selective cherry-picking of a dependent release series.
 
 ## Architecture
@@ -235,9 +235,9 @@ Task 8 is a second, China-specific feasibility checkpoint. It will remain reuse-
 
 After Task 3, Python must reproduce the offline signing/certificate vectors and retrieve a sanitized live vehicle snapshot directly from at least one GWM region using scoped TLS. Failure pauses the migration for reassessment.
 
-### Gate A-CN — China transport feasibility (offline portion passed 2026-08-28; live activation prerequisite pending)
+### Gate A-CN — China transport and production-read feasibility (offline portions passed 2026-08-28; live activation prerequisite pending)
 
-After Task 8, Python must reproduce all three China crypto/signing families and complete a bounded end-to-end synthetic-service discovery/status round trip using the selected transport. Before `cn` can be enabled in a direct Home Assistant flow or the add-on can be retired for a China user, a sanitized live read-only validation must also pass using either an existing session or an explicitly approved Task 9 SMS login. Lack of suitable China access does not block work for the other regions, but it does block claiming China cutover readiness.
+After Task 8, Python must reproduce all three China crypto/signing families and complete a bounded end-to-end synthetic-service discovery/status round trip using the selected transport. Before `cn` can be enabled in a direct Home Assistant flow or the add-on can be retired for a China user, a sanitized live read-only validation must also pass using either an existing session or a separately approved SMS-login procedure. Lack of suitable China access does not block work for the other regions, but it does block claiming China cutover readiness.
 
 ### Gate B — Read-only integration
 
@@ -261,7 +261,7 @@ After Task 22, packaging, installation migration, documentation, complete tests,
 - [x] Task 6 — Implement ANZ production authentication and read parity.
 - [x] Task 7 — Merge the reviewed released `main` series into this branch and re-establish the full baseline.
 - [x] Task 8 — Prove the isolated China crypto, transport, and reuse-only read path.
-- [ ] Task 9 — Implement China production SMS authentication, multi-service sessions, and read parity.
+- [x] Task 9 — Implement China production SMS authentication, multi-service sessions, and read parity.
 - [ ] Task 10 — Implement Russia production authentication and read parity.
 - [ ] Task 11 — Port and fixture-test four-region normalized snapshot/model mapping.
 - [ ] Task 12 — Add direct-cloud config, verification, reauth, reconfigure, and options flows.
@@ -320,6 +320,10 @@ The changed checkpoints stay intentionally narrow:
 | D-030 | 2026-08-28 | Keep the Task 8 China proof reuse-only, read-only, and separate from the production overseas client. | Discovery needs existing G-App and BeanTech state while status needs existing AutoAI state; a dedicated minimal snapshot and closed two-read client prove that boundary without adding China to `Region`, importing durable state, requesting SMS, refreshing tokens, or exposing mutations. |
 | D-031 | 2026-08-28 | Select an isolated bounded-gzip `aiohttp` adapter for the offline China proof without claiming HTTP/2 or live compatibility. | The C# app profile prefers HTTP/2 but permits a lower version. Python's HTTP/1.1 adapter proves exact bytes, ordinary verified TLS, ambient-state isolation, and bounded synthetic gzip; only a separately approved live read can establish whether the service accepts that fallback or an HTTP/2-capable dependency is required. |
 | D-032 | 2026-08-28 | Treat BeanTech as a distinct modeled/signing boundary, but defer BeanTech HTTP traffic to production China authentication. | Reused-session discovery transmits the BeanTech access token to G-App and its signing algorithm has a golden vector; discovery/status themselves call only G-App and direct AutoAI, so inventing a BeanTech POC request would exceed the two-read feasibility scope. |
+| D-033 | 2026-08-28 | Implement production China access as a separate public `ChinaClient`, not as another overseas `RegionProtocol`. | G-App, BeanTech, and AutoAI have a multi-service session, gzip transport, routes, crypto, continuations, and status translation that cannot fit the overseas single-token client without weakening regional isolation. Task 12 can select the strategy without making Task 9 depend on Home Assistant or persistence. |
+| D-034 | 2026-08-28 | Treat only HTTP 401/403 as evidence that China authentication was rejected; preserve state for unknown application failures. | No sanitized evidence identifies G-App, BeanTech, or AutoAI token-expiry application codes. Code `1013` is instead an explicit risk-control stop, `429` remains rate limiting, and unknown codes must neither retire state nor trigger refresh, SMS delivery, login, or retries. |
+| D-035 | 2026-08-28 | Publish a valid G-App-only partial revision after downstream initialization fails, and install a read session only after both platform logins and forced discovery succeed. | Rotated G-App tokens must not be lost or mixed with stale or one-sided BeanTech/AutoAI state. Only the two idempotent platform initializers may retry, limited to network and HTTP 502/503/504 failures, three attempts under the same deadline; all other operations remain single-attempt. |
+| D-036 | 2026-08-28 | Push every completed checkpoint commit to `feature/integration-only` before stopping. | The user granted standing approval so each weekly checkpoint is backed up and visible without granting permission to publish, merge, or release. |
 
 ## Post-Branch Main Drift Review
 
@@ -719,6 +723,59 @@ All checks passed!
 
 The Python warning and .NET nullable-annotation warnings remain the unchanged baseline warnings. The live portion of Gate A-CN is deliberately not passed: a separately approved sanitized read must still establish service acceptance and the HTTP-version decision before direct China setup or China-inclusive add-on retirement.
 
+## Task 9 China Production Authentication and Read Evidence
+
+Evidence captured on 2026-08-28 from `feature/integration-only`. Task 9 used only versioned synthetic contracts and local fake transports. It made no live SMS, authentication, refresh, discovery, status, Home Assistant, add-on, account, phone-app, vehicle, command, charging, publish, merge, or release request and used no live credential or session state.
+
+Delivered:
+
+- Added the public HA-independent `ChinaClient` and immutable, secret-safe account/device-bound credentials, complete or G-App-only state, and finite authentication/verification/initialization/risk-control outcomes.
+- Implemented exact G-App SMS request/login/refresh, concurrent BeanTech and AutoAI initialization, corrected G-App discovery, and direct AutoAI status through a closed seven-operation adapter. Exact routes, canonical bodies, encrypted envelopes, headers, signatures, UTC+08:00 timestamps, gzip limits, and service-specific tokens are fixed-contract tested.
+- Preserved the prior BeanTech token solely for signing/sending a refresh request, then discarded all downstream state before publishing rotated G-App tokens. Canonical and C# alias refresh response names are covered, and no one-sided downstream state can be constructed or published.
+- Added ten-minute SMS request throttling, per-account in-memory one-shot code submission, definite HTTP 401/403 rejected-code continuation, exact `1013` risk-control handling, and conservative unknown-code/`429` behavior without automatic SMS, refresh, retry, or state retirement.
+- Limited retries to BeanTech/AutoAI initialization network failures and HTTP 502/503/504, three attempts with one-second delays under one deadline; sibling results are atomic and forced discovery must pass before a complete session is installed.
+- Ported the full C# China status signal matrix into immutable shared cloud DTOs, required a recognized status shape, tolerated malformed optional tank metadata, retained no raw response, and enforced prior corrected-route discovery plus NavInfo-only status routing.
+- Strengthened synthetic-fixture guards for encrypted/embedded phones, codes, tokens, device identifiers, vehicle identifiers, and coordinates; added timestamp correlation, signature recomputation, explicit eighth-operation rejection, malformed-schema classification, cancellation/session-preservation, and hostile transport coverage.
+- Kept Home Assistant, persistence, commands, charging, packaging, released add-on/proxy behavior, and the overseas `GwmClient`/`Region` strategy unchanged.
+
+Validation:
+
+```text
+# Task 9 production China client/status/transport/boundary tests (Windows, CPython 3.13.13)
+py -3.13 -m pytest -q tests/python/client/test_china_client.py tests/python/client/test_china_status.py tests/python/client/test_china_transport.py tests/python/client/test_boundaries.py
+222 passed
+
+py -3.13 -m pytest -q tests/python/client
+794 passed
+
+py -3.13 -m pytest -q tests/python
+832 passed, 1 warning
+
+py -3.13 -m mypy gwm_ora_client
+Success: no issues found in 20 source files
+
+py -3.13 -m ruff check gwm_ora_client custom_components tests/python
+All checks passed!
+
+py -3.13 -m compileall -q gwm_ora_client custom_components tests/python
+# no output; exit 0
+
+dotnet test --configuration Release --nologo --verbosity quiet
+149 passed, 0 failed, 0 skipped
+
+# Dependency-minimal WSL/Linux, CPython 3.13
+python -m pytest -q tests/python/client
+794 passed
+
+python -m mypy gwm_ora_client
+Success: no issues found in 20 source files
+
+ruff check gwm_ora_client tests/python/client
+All checks passed!
+```
+
+The Python warning and .NET nullable-annotation warnings remain the unchanged baseline warnings. Gate A-CN remains deliberately incomplete: Task 9 proves production-shaped authentication and reads offline, but only a separately approved sanitized live procedure can establish gateway acceptance, account behavior, and whether the HTTP/1.1 fallback is sufficient before China can be exposed in a direct Home Assistant flow.
+
 ## Checkpoint Log
 
 ### Task 1 — Branch, baseline, and migration ledger
@@ -828,9 +885,24 @@ Delivered:
 - Kept `GwmClient`, `Region`, Home Assistant, add-on/proxy runtime behavior, durable state, SMS, refresh, commands, charging, live access, publishing, and pushing unchanged.
 - Selected bounded HTTP/1.1 `aiohttp` for the offline proof only. No live China request was authorized, so HTTP/2 necessity and live compatibility remain unresolved Gate A-CN activation conditions.
 
+### Task 9 — China production authentication, multi-service sessions, and read parity
+
+Status: complete on 2026-08-28; offline production parity passed, Gate A-CN live activation prerequisite pending.
+
+Delivered:
+
+- Added a separate public, HA-independent `ChinaClient` with immutable phone/device-bound authentication state and finite authenticated, verification, initialization, and risk-control results.
+- Implemented exact SMS delivery/login, G-App refresh, BeanTech SSO initialization, AutoAI proxy login, corrected G-App discovery, and direct AutoAI status as a closed seven-operation protocol surface.
+- Added ten-minute SMS throttling and in-memory one-shot code consumption without retaining a submitted code; only HTTP 401/403 is treated as definite authentication rejection, while unknown application codes, `429`, and risk-control `1013` stop without hidden retries or side effects.
+- Kept refreshed or newly logged-in G-App state separate from downstream services, initialized BeanTech and AutoAI atomically, and published a G-App-only partial continuation when downstream initialization or forced discovery failed.
+- Limited retries to BeanTech/AutoAI initialization network failures and HTTP 502/503/504, at most three attempts with one-second delays under the original monotonic deadline. SMS, refresh, discovery, status, schema, TLS, redirect, risk, throttling, and unknown failures remain single-attempt.
+- Required forced corrected-route discovery before installing a complete read session, retained only typed vehicle metadata, enforced discovered NavInfo membership, and ported the complete C# China read-status signal matrix into the shared immutable cloud-status shape without retaining raw responses.
+- Added a versioned fully synthetic authentication/read contract, exact request bytes and signatures for all seven operations, hostile response/route/session/privacy tests, and stronger cross-fixture guards for account, code, token, device, vehicle, and coordinate material.
+- Kept `GwmClient`, `Region`, Home Assistant flows/coordinator/entities, persistence, commands, charging, packaging, add-on/proxy behavior, and live China access unchanged.
+
 ### Next checkpoint (requires explicit approval)
 
-Task 9 will turn the isolated proof into production China authentication, multi-service session lifecycle, and read parity without Home Assistant wiring or persistence. It must add the explicit SMS continuation/throttle, exact risk-control and error handling, G-App refresh, bounded BeanTech/AutoAI initialization, partial-session publication, production typed discovery/status behavior, and sanitized fixtures while preserving the corrected G-App route and NavInfo-only boundary. Task 9 must not begin without a new user green light; any SMS delivery/login or live China read needs a separately agreed procedure and approval before execution.
+Task 10 will implement production Russia authentication and read parity in the existing HA-independent overseas client boundary, with versioned synthetic contracts and no Home Assistant wiring or persistence. Task 10 must not begin without a new user green light; any live Russia authentication or read requires separate explicit approval.
 
 ## Open Risks and Questions
 
@@ -839,11 +911,11 @@ Task 9 will turn the isolated proof into production China authentication, multi-
 - Modern `cryptography` rejects invalid PrintableString characters in the legacy OEM CA subjects; the POC validates their envelopes and lets OpenSSL consume the original signed bytes instead.
 - EU authentication is implemented and exhaustively fixture-tested offline, but its undocumented application-level token-expiry and wrong-verification-code values remain unverified. Until sanitized evidence establishes those codes, only HTTP 401/403 retires token state and unknown application errors propagate without fallback side effects.
 - Exact live parity of undocumented authentication and response behavior in ANZ and Russia remains unverified; EU read transport is proven live, while Task 5 EU auth and Task 6 ANZ auth/read semantics were deliberately not exercised live.
-- The overseas Python transport still deliberately rejects compressed responses. Task 8's separate China adapter now proves independently bounded gzip over HTTP/1.1 against synthetic services, but `aiohttp` cannot prefer HTTP/2 and no live China read was approved; a sanitized live validation must decide whether the service accepts the permitted fallback or an isolated HTTP/2-capable dependency is required before Gate A-CN activation.
-- China authentication crosses three services. Unknown G-App, BeanTech, or AutoAI application codes must not be treated as token rejection, trigger SMS delivery/login, or discard a still-recoverable partial session without sanitized evidence. Risk-control `1013` remains an explicit stop that directs the user to the official app.
-- Main retries BeanTech and AutoAI initialization three times. The Python port must decide from fixtures/evidence whether narrowly bounded retries of those idempotent initialization calls are safe under one deadline; it must not introduce general retries for SMS delivery, SMS login, reads, or commands.
+- The overseas Python transport still deliberately rejects compressed responses. The separate China adapter, expanded through Task 9, proves independently bounded gzip over HTTP/1.1 against synthetic services, but `aiohttp` cannot prefer HTTP/2 and no live China read was approved; a sanitized live validation must decide whether the service accepts the permitted fallback or an isolated HTTP/2-capable dependency is required before Gate A-CN activation.
+- China authentication now crosses three services in the standalone client, but its exact live error-code behavior remains unverified. Unknown G-App, BeanTech, or AutoAI application codes therefore do not retire authentication, trigger SMS delivery/login, or discard a recoverable G-App-only partial; risk-control `1013` remains an explicit stop directing the user to the official app.
+- BeanTech and AutoAI initialization now use the narrowly bounded three-attempt policy selected in D-035. It is fixture-proven only; live validation must confirm gateway behavior, while SMS delivery/login, refresh, reads, schema/TLS/risk failures, and commands retain no automatic retry.
 - China live evidence is currently limited to a contributed NavInfo WEY VV6 and selected reads/controls. Gate A-CN needs suitable sanitized access before direct China setup can be exposed, while heating, extended controls, charging, other platforms/models, and broader response encodings need their own later evidence.
-- The cloud DTOs intentionally retain only the fields required to establish the overseas protocol boundary. EU and ANZ now have sanitized regional response fixtures; China production fixtures, Russia response parity, and Task 11's complete four-region normalized-snapshot mapping remain outstanding.
+- The cloud DTOs intentionally retain only the fields required to establish the protocol boundary. EU, ANZ, and China now have sanitized regional response fixtures; Russia response parity and Task 11's complete four-region normalized-snapshot mapping remain outstanding.
 - ANZ's exact basics `607099` response is now a typed raw-client optional-endpoint failure. The Task 13 coordinator must deliberately map it to empty basics to preserve the add-on polling service's nonfatal behavior.
 - Whether Task 12 should use one dedicated cookie-free client session per config entry or a policy-validated HA-owned session while preserving scoped TLS and unload ownership.
 - Availability of safe test accounts/vehicles for every regional read and write matrix.

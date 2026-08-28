@@ -23,6 +23,8 @@ _SAFE_OPERATION_ALIASES: Final = frozenset(
         "get_last_status",
         "get_user_info",
         "get_vehicle_basics",
+        "initialize_auto_ai",
+        "initialize_bean_tech",
         "last_status",
         "login",
         "modify_remote_control",

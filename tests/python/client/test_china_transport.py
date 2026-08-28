@@ -15,8 +15,17 @@ import pytest
 from multidict import CIMultiDict
 from yarl import URL
 
+from gwm_ora_client._dotnet_json import encode_dotnet_json
 from gwm_ora_client._protocol import _Deadline
-from gwm_ora_client.china_crypto import AUTO_AI_CKEY, auto_ai_sign
+from gwm_ora_client.china_crypto import (
+    AUTO_AI_CKEY,
+    BEAN_TECH_APP_KEY,
+    DEFAULT_NOTE_ID,
+    auto_ai_sign,
+    bean_tech_sign,
+    default_sign,
+    encrypt_g_app,
+)
 from gwm_ora_client.china_transport import (
     ChinaAiohttpTransport,
     ChinaTransportCapabilities,
@@ -35,6 +44,8 @@ from gwm_ora_client.errors import (
 SENSITIVE = "SENSITIVE-china-transport-material-019fea1b"
 DEVICE_ID = "0123456789abcdef0123456789abcdef"
 VIN = "LGWTEST0000000001"
+PHONE = "13800138000"
+SALT = b"12345678"
 
 
 class _FakeContent:
@@ -128,6 +139,189 @@ def _deadline() -> _Deadline:
     return _Deadline(asyncio.get_running_loop().time() + 10)
 
 
+def _g_app_headers(
+    url: str,
+    raw_body: str,
+    *,
+    authorization: str = "",
+    optional: Mapping[str, str] | None = None,
+) -> dict[str, str]:
+    headers = {
+        "Authorization": authorization,
+        "SourceApp": "GWM",
+        "SourceType": "ANDROID",
+        "SourceAppVer": "2.1.5",
+        "SourceAppCode": "2150",
+        "Timestamp": "1723456789000",
+        "DeviceId": DEVICE_ID,
+        "AppId": "GWM-APP-ANDROID-1100018",
+        "NoteId": DEFAULT_NOTE_ID,
+        "Sign": "pending",
+        "Accept-Encoding": "gzip",
+        "User-Agent": "okhttp/4.2.2",
+        "Content-Type": "application/json; charset=UTF-8",
+    }
+    if optional is not None:
+        headers.update(optional)
+    headers["Sign"] = default_sign("POST", url, raw_body, headers)
+    return headers
+
+
+def _g_app_auth_request(
+    operation: str,
+    *,
+    logical_body: Mapping[str, object] | None = None,
+    headers: Mapping[str, str] | None = None,
+    **changes: object,
+) -> _ChinaTransportRequest:
+    routes: dict[str, tuple[str, Mapping[str, object]]] = {
+        "request_verification": (
+            "https://gapp-api.gwmapp-h.com/api-guser/v5/user/login-sms/send",
+            {"phone": PHONE, "flag": "LOGIN"},
+        ),
+        "login": (
+            "https://gapp-api.gwmapp-h.com/api-guser/v5/user/sms-login",
+            {"code": "SYNTHETIC-246810", "phone": PHONE, "deviceToken": ""},
+        ),
+        "refresh_token": (
+            "https://gapp-api.gwmapp-h.com/api-guser/v5/token/refresh",
+            {"token": "SYNTHETIC-G-TOKEN", "refreshToken": "SYNTHETIC-G-REFRESH"},
+        ),
+    }
+    url, default_logical_body = routes[operation]
+    raw_body = encrypt_g_app(
+        encode_dotnet_json(logical_body or default_logical_body),
+        salt=SALT,
+    )
+    optional = (
+        {
+            "G-TOKEN": "SYNTHETIC-G-TOKEN",
+            "ssoId": "SYNTHETIC-USER",
+            "beanId": "SYNTHETIC-BEAN",
+        }
+        if operation == "refresh_token"
+        else None
+    )
+    values: dict[str, object] = {
+        "operation": operation,
+        "service": "g_app",
+        "method": "POST",
+        "url": url,
+        "body": raw_body.encode("ascii"),
+        "headers": headers
+        or _g_app_headers(
+            url,
+            raw_body,
+            authorization="SYNTHETIC-BEAN-ACCESS" if operation == "refresh_token" else "",
+            optional=optional,
+        ),
+    }
+    values.update(changes)
+    return _ChinaTransportRequest(**values)  # type: ignore[arg-type]
+
+
+def _bean_login_request(**changes: object) -> _ChinaTransportRequest:
+    body = encode_dotnet_json(
+        {
+            "appType": 0,
+            "deviceId": DEVICE_ID,
+            "phone": PHONE,
+            "ssoId": "SYNTHETIC-USER",
+            "ssoToken": "SYNTHETIC-SSO",
+        }
+    )
+    nonce = "0123456789abcdef"
+    timestamp = "1723456789123"
+    path = "/app-api/api/v1.0/userAuth/loginSSOAccount"
+    headers = {
+        "bt-auth-appkey": BEAN_TECH_APP_KEY,
+        "bt-auth-nonce": nonce,
+        "bt-auth-timestamp": timestamp,
+        "bt-auth-sign": bean_tech_sign("POST", path, nonce, timestamp, "json=" + body),
+        "rs": "2",
+        "appId": "097a7099af30d960",
+        "brand": "10",
+        "terminal": "GW_APP_GWM",
+        "enterPriseId": "CC01",
+        "beanId": "SYNTHETIC-BEAN",
+        "cVer": "2.1.5",
+        "tenantId": "1",
+        "operatorRole": "0",
+        "Accept-Encoding": "gzip",
+        "User-Agent": "okhttp/4.2.2",
+        "Content-Type": "application/json; charset=UTF-8",
+    }
+    values: dict[str, object] = {
+        "operation": "initialize_bean_tech",
+        "service": "bean_tech",
+        "method": "POST",
+        "url": (
+            "https://gw-app-gateway.gwmapp-h.com/"
+            "app-api/api/v1.0/userAuth/loginSSOAccount"
+        ),
+        "body": body.encode(),
+        "headers": headers,
+    }
+    values.update(changes)
+    return _ChinaTransportRequest(**values)  # type: ignore[arg-type]
+
+
+def _auto_login_request(
+    *,
+    wrapper: Mapping[str, object] | None = None,
+    **changes: object,
+) -> _ChinaTransportRequest:
+    timestamp = "1723456789123"
+    default_wrapper = {
+        "body": {
+            "appType": 0,
+            "phone": PHONE,
+            "pushId": "0",
+            "pushKey": "0",
+            "ssoid": "SYNTHETIC-USER",
+            "ssoTk": "SYNTHETIC-SSO",
+        },
+        "header": {
+            "brandType": "gwm",
+            "cVer": "2.1.5",
+            "fn": "GW.M.APP_LOGIN",
+            "fv": "0202",
+            "mobileId": DEVICE_ID,
+            "osType": "Android",
+            "osVer": "",
+            "rs": "2",
+            "ts": "20240812175949123",
+            "tk": "",
+            "v": "1.0",
+        },
+    }
+    payload = encode_dotnet_json(wrapper or default_wrapper)
+    values: dict[str, object] = {
+        "operation": "initialize_auto_ai",
+        "service": "auto_ai",
+        "method": "GET",
+        "url": (
+            "https://gapp-api.gwmapp-h.com/tsp/v1/proxy/navinfo/GW.M.APP_LOGIN?p="
+            + quote(payload, safe="")
+        ),
+        "body": None,
+        "headers": {
+            "v": "1.0",
+            "cid": DEVICE_ID,
+            "client": "phone",
+            "sign": auto_ai_sign(timestamp),
+            "time": timestamp,
+            "ckey": AUTO_AI_CKEY,
+            "protocolVer": "2.1.2",
+            "brandType": "GWM",
+            "Accept-Encoding": "gzip",
+            "User-Agent": "okhttp/4.2.2",
+        },
+    }
+    values.update(changes)
+    return _ChinaTransportRequest(**values)  # type: ignore[arg-type]
+
+
 def _discovery_request(**changes: object) -> _ChinaTransportRequest:
     values: dict[str, object] = {
         "operation": "acquire_vehicles",
@@ -147,13 +341,20 @@ def _discovery_request(**changes: object) -> _ChinaTransportRequest:
             "DeviceId": DEVICE_ID,
             "AppId": "GWM-APP-ANDROID-1100018",
             "beanId": "synthetic-bean",
-            "NoteId": "145765423214576567716671",
-            "Sign": "a" * 64,
+            "NoteId": DEFAULT_NOTE_ID,
+            "Sign": "pending",
             "Accept-Encoding": "gzip",
             "User-Agent": "okhttp/4.2.2",
             "Content-Type": "application/json; charset=UTF-8",
         },
     }
+    discovery_headers = cast(dict[str, str], values["headers"])
+    discovery_headers["Sign"] = default_sign(
+        "POST",
+        cast(str, values["url"]),
+        cast(bytes, values["body"]).decode("ascii"),
+        discovery_headers,
+    )
     values.update(changes)
     return _ChinaTransportRequest(**values)  # type: ignore[arg-type]
 
@@ -171,7 +372,7 @@ def _status_request(**changes: object) -> _ChinaTransportRequest:
             "osType": "Android",
             "osVer": "",
             "rs": "2",
-            "ts": "20240812205949123",
+            "ts": "20240812175949123",
             "tk": "synthetic-auto-token",
             "v": "1.0",
         },
@@ -234,11 +435,309 @@ def test_capabilities_name_all_three_services_without_claiming_http2() -> None:
         "g_app",
         "auto_ai",
     )
-    assert ChinaAiohttpTransport.capabilities.bean_tech_http_deferred
+    assert ChinaAiohttpTransport.capabilities.enabled_auth_service_aliases == (
+        "g_app",
+        "bean_tech",
+        "auto_ai",
+    )
+    assert not ChinaAiohttpTransport.capabilities.bean_tech_http_deferred
     assert ChinaAiohttpTransport.capabilities.bounded_gzip
     assert ChinaAiohttpTransport.capabilities.http2_preferred_by_app
     assert not ChinaAiohttpTransport.capabilities.http2_available_in_adapter
     assert ChinaAiohttpTransport.capabilities.live_http_version_validation_required
+
+
+@pytest.mark.parametrize(
+    "factory",
+    [
+        lambda: _g_app_auth_request("request_verification"),
+        lambda: _g_app_auth_request("login"),
+        lambda: _g_app_auth_request("refresh_token"),
+        _bean_login_request,
+        _auto_login_request,
+        _discovery_request,
+        _status_request,
+    ],
+)
+def test_closed_registry_accepts_exactly_the_seven_task9_operations(factory: Any) -> None:
+    request = factory()
+    assert request.operation in {
+        "request_verification",
+        "login",
+        "refresh_token",
+        "initialize_bean_tech",
+        "initialize_auto_ai",
+        "acquire_vehicles",
+        "get_last_status",
+    }
+    assert request.service in {"g_app", "bean_tech", "auto_ai"}
+
+
+@pytest.mark.parametrize(
+    ("changes", "error"),
+    [
+        ({"operation": "eighth_operation"}, "operation_invalid"),
+        ({"service": "unknown_service"}, "route_invalid"),
+        (
+            {"operation": "get_last_status", "service": "auto_ai"},
+            "route_invalid",
+        ),
+    ],
+)
+def test_closed_registry_rejects_eighth_operation_unknown_service_and_cross_route_reuse(
+    changes: Mapping[str, object],
+    error: str,
+) -> None:
+    request = _discovery_request()
+    values: dict[str, object] = {
+        "operation": request.operation,
+        "service": request.service,
+        "method": request.method,
+        "url": request.url,
+        "headers": request.headers,
+        "body": request.body,
+    }
+    values.update(changes)
+    with pytest.raises(ValueError, match=f"^{error}$"):
+        _ChinaTransportRequest(**values)  # type: ignore[arg-type]
+
+
+@pytest.mark.parametrize(
+    "operation",
+    ["request_verification", "login", "refresh_token"],
+)
+def test_g_app_auth_posts_have_exact_encrypted_body_headers_and_signature(operation: str) -> None:
+    request = _g_app_auth_request(operation)
+    assert request.body is not None and request.body.startswith(b"G_A(")
+    assert request.headers["Sign"] == default_sign(
+        "POST",
+        request.url,
+        request.body.decode("ascii"),
+        request.headers,
+    )
+    assert request.headers["Authorization"] == (
+        "" if operation != "refresh_token" else "SYNTHETIC-BEAN-ACCESS"
+    )
+    contextual = {"G-TOKEN", "ssoId", "beanId"} & set(request.headers)
+    assert contextual == (
+        set() if operation != "refresh_token" else {"G-TOKEN", "ssoId", "beanId"}
+    )
+
+
+def test_phone_is_bounded_wire_text_without_inventing_number_normalization() -> None:
+    for phone in ("SYNTHETIC-PHONE", "合成号码"):
+        request = _g_app_auth_request(
+            "request_verification",
+            logical_body={"phone": phone, "flag": "LOGIN"},
+        )
+        assert request.operation == "request_verification"
+    for phone in (
+        "",
+        "contains space",
+        "contains\N{NO-BREAK SPACE}space",
+        "x" * 65,
+        "bad\nvalue",
+        "bad\x7fvalue",
+    ):
+        with pytest.raises(ValueError, match="^route_invalid$"):
+            _g_app_auth_request(
+                "request_verification",
+                logical_body={"phone": phone, "flag": "LOGIN"},
+            )
+
+
+def test_refresh_requires_g_token_and_sso_id_while_bean_id_is_optional() -> None:
+    original = _g_app_auth_request("refresh_token")
+    stripped = {
+        name: value
+        for name, value in original.headers.items()
+        if name != "beanId"
+    }
+    raw = cast(bytes, original.body).decode("ascii")
+    stripped["Sign"] = default_sign("POST", original.url, raw, stripped)
+    request = _g_app_auth_request("refresh_token", headers=stripped)
+    assert {"G-TOKEN", "ssoId"} <= set(request.headers)
+    assert "beanId" not in request.headers
+
+    for required in ("G-TOKEN", "ssoId"):
+        missing = dict(original.headers)
+        missing.pop(required)
+        missing["Sign"] = default_sign("POST", original.url, raw, missing)
+        with pytest.raises(ValueError, match="^route_invalid$"):
+            _g_app_auth_request("refresh_token", headers=missing)
+
+    with pytest.raises(ValueError, match="^route_invalid$"):
+        _g_app_auth_request(
+            "refresh_token",
+            logical_body={
+                "token": "SYNTHETIC-DIFFERENT-G-TOKEN",
+                "refreshToken": "SYNTHETIC-G-REFRESH",
+            },
+        )
+
+    forbidden = dict(_g_app_auth_request("login").headers)
+    forbidden["G-TOKEN"] = "SYNTHETIC-G-TOKEN"
+    with pytest.raises(ValueError, match="^route_invalid$"):
+        _g_app_auth_request("login", headers=forbidden)
+
+
+@pytest.mark.parametrize(
+    ("operation", "logical_body"),
+    [
+        ("request_verification", {"flag": "LOGIN", "phone": PHONE}),
+        ("request_verification", {"phone": PHONE, "flag": "OTHER"}),
+        ("login", {"phone": PHONE, "code": "SYNTHETIC-246810", "deviceToken": ""}),
+        ("login", {"code": "", "phone": PHONE, "deviceToken": ""}),
+        ("refresh_token", {"refreshToken": "SYNTHETIC-G-REFRESH", "token": "SYNTHETIC-G-TOKEN"}),
+        ("refresh_token", {"token": "SYNTHETIC-G-TOKEN", "refreshToken": ""}),
+    ],
+)
+def test_g_app_auth_rejects_reordered_or_invalid_logical_bodies(
+    operation: str,
+    logical_body: Mapping[str, object],
+) -> None:
+    with pytest.raises(ValueError, match="^route_invalid$"):
+        _g_app_auth_request(operation, logical_body=logical_body)
+
+
+def test_g_app_auth_rejects_bad_route_envelope_signature_and_headers() -> None:
+    valid = _g_app_auth_request("login")
+    cases = [
+        {"service": "bean_tech"},
+        {"method": "GET"},
+        {"url": valid.url + "/other"},
+        {"body": b"{}"},
+        {"body": b"G_A(not-base64,1)"},
+        {"body": b"x" * (256 * 1024 + 1)},
+    ]
+    for changes in cases:
+        with pytest.raises(ValueError, match="^route_invalid$"):
+            _g_app_auth_request("login", **changes)
+
+    for name, value in (("Authorization", "SYNTHETIC-UNEXPECTED"), ("Sign", "0" * 64)):
+        headers = dict(valid.headers)
+        headers[name] = value
+        with pytest.raises(ValueError, match="^route_invalid$"):
+            _g_app_auth_request("login", headers=headers)
+
+
+def test_auth_route_parsers_reject_duplicate_casefolded_keys_and_nonfinite_json() -> None:
+    url = "https://gapp-api.gwmapp-h.com/api-guser/v5/user/login-sms/send"
+    for plaintext in (
+        f'{{"phone":"{PHONE}","PHONE":"{PHONE}","flag":"LOGIN"}}',
+        f'{{"phone":"{PHONE}","flag":NaN}}',
+    ):
+        raw = encrypt_g_app(plaintext, salt=SALT)
+        headers = _g_app_headers(url, raw)
+        with pytest.raises(ValueError, match="^route_invalid$"):
+            _g_app_auth_request(
+                "request_verification",
+                body=raw.encode("ascii"),
+                headers=headers,
+            )
+
+
+def test_bean_tech_init_exact_body_headers_and_signature() -> None:
+    request = _bean_login_request()
+    assert request.body is not None
+    body = request.body.decode()
+    assert list(json.loads(body)) == ["appType", "deviceId", "phone", "ssoId", "ssoToken"]
+    assert not ({"accessToken", "tokenId", "vin"} & set(request.headers))
+    assert request.headers["bt-auth-sign"] == bean_tech_sign(
+        "POST",
+        "/app-api/api/v1.0/userAuth/loginSSOAccount",
+        request.headers["bt-auth-nonce"],
+        request.headers["bt-auth-timestamp"],
+        "json=" + body,
+    )
+
+    without_bean_id = dict(request.headers)
+    without_bean_id.pop("beanId")
+    assert "beanId" not in _bean_login_request(headers=without_bean_id).headers
+
+
+def test_bean_tech_init_rejects_route_body_header_and_signature_mutations() -> None:
+    valid = _bean_login_request()
+    reordered = encode_dotnet_json(
+        {
+            "deviceId": DEVICE_ID,
+            "appType": 0,
+            "phone": PHONE,
+            "ssoId": "SYNTHETIC-USER",
+            "ssoToken": "SYNTHETIC-SSO",
+        }
+    ).encode()
+    for changes in (
+        {"service": "g_app"},
+        {"method": "GET"},
+        {"url": "https://gw-app-gateway.gwmapp-h.com/other"},
+        {"body": reordered},
+        {"body": b"{}"},
+    ):
+        with pytest.raises(ValueError, match="^route_invalid$"):
+            _bean_login_request(**changes)
+
+    for name, value in (
+        ("accessToken", "SYNTHETIC-ACCESS"),
+        ("tokenId", "SYNTHETIC-TOKEN"),
+        ("vin", VIN),
+        ("bt-auth-sign", "0" * 64),
+        ("bt-auth-nonce", "A" * 16),
+    ):
+        headers = dict(valid.headers)
+        headers[name] = value
+        with pytest.raises(ValueError, match="^route_invalid$"):
+            _bean_login_request(headers=headers)
+
+
+def test_auto_ai_init_exact_proxy_wrapper_and_omits_token_header() -> None:
+    request = _auto_login_request()
+    payload = unquote(urlsplit(request.url).query[2:])
+    wrapper = json.loads(payload)
+    assert list(wrapper) == ["body", "header"]
+    assert list(wrapper["body"]) == ["appType", "phone", "pushId", "pushKey", "ssoid", "ssoTk"]
+    assert wrapper["header"]["fn"] == "GW.M.APP_LOGIN"
+    assert wrapper["header"]["tk"] == ""
+    assert "token" not in request.headers
+
+
+def test_auto_ai_init_rejects_route_token_and_wrapper_mutations() -> None:
+    valid = _auto_login_request()
+    for changes in (
+        {"service": "g_app"},
+        {"method": "POST"},
+        {"body": b"{}"},
+        {"url": valid.url.replace("gapp-api.gwmapp-h.com", "ti.gwm.com.cn:8443")},
+        {"url": valid.url + "&other=x"},
+    ):
+        with pytest.raises(ValueError, match="^route_invalid$"):
+            _auto_login_request(**changes)
+
+    headers = dict(valid.headers)
+    headers["token"] = "SYNTHETIC-AUTO-TOKEN"
+    with pytest.raises(ValueError, match="^route_invalid$"):
+        _auto_login_request(headers=headers)
+
+    payload = json.loads(unquote(urlsplit(valid.url).query[2:]))
+    payload["header"]["tk"] = "SYNTHETIC-AUTO-TOKEN"
+    with pytest.raises(ValueError, match="^route_invalid$"):
+        _auto_login_request(wrapper=payload)
+
+
+@pytest.mark.parametrize("factory", [_auto_login_request, _status_request])
+def test_auto_ai_inner_timestamp_must_match_signed_outer_epoch(factory: Any) -> None:
+    request = factory()
+    payload = json.loads(unquote(urlsplit(request.url).query[2:]))
+    payload["header"]["ts"] = "20240812175949124"
+    base_url = request.url.partition("?p=")[0] + "?p="
+    with pytest.raises(ValueError, match="^route_invalid$"):
+        factory(url=base_url + quote(encode_dotnet_json(payload), safe=""))
+
+    headers = dict(request.headers)
+    headers["time"] = "1723456789124"
+    headers["sign"] = auto_ai_sign(headers["time"])
+    with pytest.raises(ValueError, match="^route_invalid$"):
+        factory(headers=headers)
 
 
 @pytest.mark.parametrize(
@@ -359,6 +858,36 @@ async def test_transport_sends_exact_post_bytes_with_no_ambient_features() -> No
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "factory",
+    [
+        lambda: _g_app_auth_request("request_verification"),
+        lambda: _g_app_auth_request("login"),
+        lambda: _g_app_auth_request("refresh_token"),
+        _bean_login_request,
+        _auto_login_request,
+    ],
+)
+async def test_every_auth_route_uses_exact_bytes_and_no_ambient_http_state(factory: Any) -> None:
+    request = factory()
+    _body, session = await _execute(_FakeResponse(chunks=[b"{}"]), request=request)
+    args, options = session.calls[0]
+    assert args == (request.method, URL(request.url, encoded=True))
+    assert options["data"] == request.body
+    assert options["headers"] == request.headers
+    assert options["allow_redirects"] is False
+    assert options["auto_decompress"] is False
+    assert options["auth"] is None
+    assert options["cookies"] == {}
+    assert options["middlewares"] == ()
+    assert options["params"] is None
+    assert options["proxy"] is None
+    assert options["proxy_auth"] is None
+    assert options["raise_for_status"] is False
+    assert options["skip_auto_headers"] == frozenset({"Accept", "Accept-Encoding", "User-Agent"})
+
+
+@pytest.mark.asyncio
 async def test_transport_sends_exact_fixed_port_status_get_without_body() -> None:
     request = _status_request()
     body, session = await _execute(_FakeResponse(chunks=[b"{}"]), request=request)
@@ -391,9 +920,19 @@ async def test_unknown_or_multiple_content_encoding_is_rejected(encoding: str) -
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("name", ["Content-Encoding", "Content-Length"])
+@pytest.mark.parametrize(
+    "name",
+    ["Content-Encoding", "Content-Length", "Content-Type", "Retry-After"],
+)
 async def test_duplicate_security_relevant_response_headers_are_rejected(name: str) -> None:
-    values = ("gzip", "identity") if name == "Content-Encoding" else ("2", "2")
+    if name == "Content-Encoding":
+        values = ("gzip", "identity")
+    elif name == "Content-Length":
+        values = ("2", "2")
+    elif name == "Content-Type":
+        values = ("application/json", "text/plain")
+    else:
+        values = ("1", "2")
     headers: CIMultiDict[str] = CIMultiDict([(name, values[0]), (name, values[1])])
     with pytest.raises(GwmProtocolError):
         await _execute(_FakeResponse(headers=headers, chunks=[b"{}"]))

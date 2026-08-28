@@ -8,6 +8,19 @@ from .anz_auth import (
     AnzSessionReclaimRequired,
     AnzVerificationRequired,
 )
+from .china_client import (
+    ChinaAuthenticated,
+    ChinaAuthenticationResult,
+    ChinaAuthState,
+    ChinaClient,
+    ChinaClientConfig,
+    ChinaCredentials,
+    ChinaInitializationRequired,
+    ChinaRiskControlRequired,
+    ChinaVehicle,
+    ChinaVehicleStatus,
+    ChinaVerificationRequired,
+)
 from .client import GwmClient
 from .config import GwmClientConfig, RequestTimeouts
 from .crypto import (
@@ -84,6 +97,17 @@ __all__ = [
     "CloudVehicle",
     "CloudVehicleBasics",
     "CloudVehicleStatus",
+    "ChinaAuthenticated",
+    "ChinaAuthenticationResult",
+    "ChinaAuthState",
+    "ChinaClient",
+    "ChinaClientConfig",
+    "ChinaCredentials",
+    "ChinaInitializationRequired",
+    "ChinaRiskControlRequired",
+    "ChinaVehicle",
+    "ChinaVehicleStatus",
+    "ChinaVerificationRequired",
     "EU_BT_AUTH",
     "EU_GWM_AUTH",
     "EuAuthenticated",

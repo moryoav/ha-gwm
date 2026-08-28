@@ -1,0 +1,268 @@
+{
+  "schema_version": 1,
+  "provenance": "fully synthetic Task 9 contract; contains no captured account, vehicle, session, or location data",
+  "clock": "2024-08-12T09:59:49.123+00:00",
+  "salt_hex": "0001020304050607",
+  "nonce": "0123456789abcdef",
+  "credentials": {
+    "phone": "SYNTHETIC-13800138000",
+    "device_id": "0123456789abcdef0123456789abcdef",
+    "verification_code": "SYNTHETIC-246810"
+  },
+  "g_app_state": {
+    "g_token": "SYNTHETIC-G-TOKEN",
+    "g_refresh_token": "SYNTHETIC-G-REFRESH",
+    "sso_token": "SYNTHETIC-SSO-TOKEN",
+    "pt_token": "SYNTHETIC-PT-TOKEN",
+    "user_id": "SYNTHETIC-USER",
+    "bean_id": "SYNTHETIC-BEAN"
+  },
+  "complete_state": {
+    "bean_tech_access_token": "SYNTHETIC-BEAN-ACCESS",
+    "bean_tech_refresh_token": "SYNTHETIC-BEAN-REFRESH",
+    "bean_tech_sso_token": "SYNTHETIC-BEAN-SSO",
+    "bean_tech_bean_id": "SYNTHETIC-BEAN-PLATFORM",
+    "auto_ai_token_id": "SYNTHETIC-AUTO-TOKEN",
+    "auto_ai_user_id": "SYNTHETIC-AUTO-USER",
+    "auto_ai_gw_id": "SYNTHETIC-AUTO-GW"
+  },
+  "requests": {
+    "request_verification": {
+      "method": "POST",
+      "service": "g_app",
+      "url": "https://gapp-api.gwmapp-h.com/api-guser/v5/user/login-sms/send",
+      "body": "G_A(U2FsdGVkX18AAQIDBAUGByHpSAuajhBxWSr38DpADscYHWn7cGkxHdgteyQ09hqzdFT75k/s9Wj9lf/fVS9Zv+gON0o5haen7dgkKhB2qZY=,1)",
+      "headers": {
+        "Authorization": "",
+        "SourceApp": "GWM",
+        "SourceType": "ANDROID",
+        "SourceAppVer": "2.1.5",
+        "SourceAppCode": "2150",
+        "Timestamp": "1723456789000",
+        "DeviceId": "0123456789abcdef0123456789abcdef",
+        "AppId": "GWM-APP-ANDROID-1100018",
+        "NoteId": "145765423214576567716671",
+        "Sign": "a78249f454f9bfe97c285c227e69e06069c48770d2e6b3dbd3793d0962d49372",
+        "Accept-Encoding": "gzip",
+        "User-Agent": "okhttp/4.2.2",
+        "Content-Type": "application/json; charset=UTF-8"
+      }
+    },
+    "login": {
+      "method": "POST",
+      "service": "g_app",
+      "url": "https://gapp-api.gwmapp-h.com/api-guser/v5/user/sms-login",
+      "body": "G_A(U2FsdGVkX18AAQIDBAUGB8N5bpdAVREQh4gyVqJNla6O0rseZniJDw3H6CtPGzMhie9GMonSpIUNEAPvPdFdBFGjCzNdlSWJIIExn2P69PsFkNGQZoi9FHtzk0AJ3by3,1)",
+      "headers": {
+        "Authorization": "",
+        "SourceApp": "GWM",
+        "SourceType": "ANDROID",
+        "SourceAppVer": "2.1.5",
+        "SourceAppCode": "2150",
+        "Timestamp": "1723456789000",
+        "DeviceId": "0123456789abcdef0123456789abcdef",
+        "AppId": "GWM-APP-ANDROID-1100018",
+        "NoteId": "145765423214576567716671",
+        "Sign": "ea33867c93bc71fe73c58621746fe600f1e39e00e5528de6c279561d42d857d5",
+        "Accept-Encoding": "gzip",
+        "User-Agent": "okhttp/4.2.2",
+        "Content-Type": "application/json; charset=UTF-8"
+      }
+    },
+    "refresh_request": {
+      "method": "POST",
+      "service": "g_app",
+      "url": "https://gapp-api.gwmapp-h.com/api-guser/v5/token/refresh",
+      "body": "G_A(U2FsdGVkX18AAQIDBAUGB6jCr3ulumoJNBWskcKxpF1J2fP4M2so8886Fm9iYtfn44kRiC/ASow97IEAxn7EVXgkSJstHAPasmFCzJl5t10ps0RgNd+2wOPENb43uEcv,1)",
+      "headers": {
+        "G-TOKEN": "SYNTHETIC-G-TOKEN",
+        "Authorization": "SYNTHETIC-BEAN-ACCESS",
+        "ssoId": "SYNTHETIC-USER",
+        "SourceApp": "GWM",
+        "SourceType": "ANDROID",
+        "SourceAppVer": "2.1.5",
+        "SourceAppCode": "2150",
+        "Timestamp": "1723456789000",
+        "DeviceId": "0123456789abcdef0123456789abcdef",
+        "AppId": "GWM-APP-ANDROID-1100018",
+        "beanId": "SYNTHETIC-BEAN",
+        "NoteId": "145765423214576567716671",
+        "Sign": "5ba3a89c7b3039cf90604b80ac852a96aa01ad1ec3018f6523385c1c9cf3475b",
+        "Accept-Encoding": "gzip",
+        "User-Agent": "okhttp/4.2.2",
+        "Content-Type": "application/json; charset=UTF-8"
+      }
+    },
+    "initialize_bean_tech": {
+      "method": "POST",
+      "service": "bean_tech",
+      "url": "https://gw-app-gateway.gwmapp-h.com/app-api/api/v1.0/userAuth/loginSSOAccount",
+      "body": "{\"appType\":0,\"deviceId\":\"0123456789abcdef0123456789abcdef\",\"phone\":\"SYNTHETIC-13800138000\",\"ssoId\":\"SYNTHETIC-USER\",\"ssoToken\":\"SYNTHETIC-SSO-TOKEN\"}",
+      "headers": {
+        "bt-auth-appkey": "7863128529",
+        "bt-auth-nonce": "0123456789abcdef",
+        "bt-auth-timestamp": "1723456789123",
+        "bt-auth-sign": "ce904508e7f670fedcae143334004759f192d1c73f4df94c4be2a1c8e1645026",
+        "rs": "2",
+        "appId": "097a7099af30d960",
+        "brand": "10",
+        "terminal": "GW_APP_GWM",
+        "enterPriseId": "CC01",
+        "beanId": "SYNTHETIC-BEAN",
+        "cVer": "2.1.5",
+        "tenantId": "1",
+        "operatorRole": "0",
+        "Accept-Encoding": "gzip",
+        "User-Agent": "okhttp/4.2.2",
+        "Content-Type": "application/json; charset=UTF-8"
+      }
+    },
+    "initialize_auto_ai": {
+      "method": "GET",
+      "service": "auto_ai",
+      "url": "https://gapp-api.gwmapp-h.com/tsp/v1/proxy/navinfo/GW.M.APP_LOGIN?p=%7B%22body%22%3A%7B%22appType%22%3A0%2C%22phone%22%3A%22SYNTHETIC-13800138000%22%2C%22pushId%22%3A%220%22%2C%22pushKey%22%3A%220%22%2C%22ssoid%22%3A%22SYNTHETIC-USER%22%2C%22ssoTk%22%3A%22SYNTHETIC-SSO-TOKEN%22%7D%2C%22header%22%3A%7B%22brandType%22%3A%22gwm%22%2C%22cVer%22%3A%222.1.5%22%2C%22fn%22%3A%22GW.M.APP_LOGIN%22%2C%22fv%22%3A%220202%22%2C%22mobileId%22%3A%220123456789abcdef0123456789abcdef%22%2C%22osType%22%3A%22Android%22%2C%22osVer%22%3A%22%22%2C%22rs%22%3A%222%22%2C%22ts%22%3A%2220240812175949123%22%2C%22tk%22%3A%22%22%2C%22v%22%3A%221.0%22%7D%7D",
+      "body": null,
+      "headers": {
+        "v": "1.0",
+        "cid": "0123456789abcdef0123456789abcdef",
+        "client": "phone",
+        "sign": "bI5QLYve+aQBeu2pyb0yLUf3GuU=",
+        "time": "1723456789123",
+        "ckey": "ea49a50f914b8d38af1c84809d302683",
+        "protocolVer": "2.1.2",
+        "brandType": "GWM",
+        "Accept-Encoding": "gzip",
+        "User-Agent": "okhttp/4.2.2"
+      }
+    },
+    "acquire_vehicles": {
+      "method": "POST",
+      "service": "g_app",
+      "url": "https://gapp-api.gwmapp-h.com/gcar/v1/app/android/vehicle/query-vehicle-list",
+      "body": "{\"vehicleVersion\":13}",
+      "headers": {
+        "G-TOKEN": "SYNTHETIC-G-TOKEN",
+        "Authorization": "SYNTHETIC-BEAN-ACCESS",
+        "ssoId": "SYNTHETIC-USER",
+        "SourceApp": "GWM",
+        "SourceType": "ANDROID",
+        "SourceAppVer": "2.1.5",
+        "SourceAppCode": "2150",
+        "Timestamp": "1723456789000",
+        "DeviceId": "0123456789abcdef0123456789abcdef",
+        "AppId": "GWM-APP-ANDROID-1100018",
+        "beanId": "SYNTHETIC-BEAN",
+        "NoteId": "145765423214576567716671",
+        "Sign": "01fad524296563af05cf30b705d7b894338fb80b43b49909235df5175c5c98d2",
+        "Accept-Encoding": "gzip",
+        "User-Agent": "okhttp/4.2.2",
+        "Content-Type": "application/json; charset=UTF-8"
+      }
+    },
+    "get_last_status": {
+      "method": "GET",
+      "service": "auto_ai",
+      "url": "https://ti.gwm.com.cn:8443/tsp/ead?p=%7B%22body%22%3A%7B%22vin%22%3A%22LGWTEST0000000001%22%7D%2C%22header%22%3A%7B%22brandType%22%3A%22gwm%22%2C%22cVer%22%3A%222.1.5%22%2C%22fn%22%3A%22GW.M.GET_VEHICLE_STATE%22%2C%22fv%22%3A%220202%22%2C%22mobileId%22%3A%220123456789abcdef0123456789abcdef%22%2C%22osType%22%3A%22Android%22%2C%22osVer%22%3A%22%22%2C%22rs%22%3A%222%22%2C%22ts%22%3A%2220240812175949123%22%2C%22tk%22%3A%22SYNTHETIC-AUTO-TOKEN%22%2C%22v%22%3A%221.0%22%7D%7D",
+      "body": null,
+      "headers": {
+        "v": "1.0",
+        "cid": "0123456789abcdef0123456789abcdef",
+        "client": "phone",
+        "sign": "bI5QLYve+aQBeu2pyb0yLUf3GuU=",
+        "time": "1723456789123",
+        "ckey": "ea49a50f914b8d38af1c84809d302683",
+        "protocolVer": "2.1.2",
+        "token": "SYNTHETIC-AUTO-TOKEN",
+        "brandType": "GWM",
+        "Accept-Encoding": "gzip",
+        "User-Agent": "okhttp/4.2.2"
+      }
+    }
+  },
+  "responses": {
+    "login": {
+      "code": "000000",
+      "data": {
+        "gToken": "SYNTHETIC-G-TOKEN",
+        "gRefreshToken": "SYNTHETIC-G-REFRESH",
+        "ssoToken": "SYNTHETIC-SSO-TOKEN",
+        "ptToken": "SYNTHETIC-PT-TOKEN",
+        "userId": "SYNTHETIC-USER",
+        "beanId": "SYNTHETIC-BEAN",
+        "phone": "SYNTHETIC-13800138000"
+      }
+    },
+    "bean_tech": {
+      "code": "000000",
+      "data": {
+        "accessToken": "SYNTHETIC-BEAN-ACCESS",
+        "refreshToken": "SYNTHETIC-BEAN-REFRESH",
+        "ssoToken": "SYNTHETIC-BEAN-SSO",
+        "beanId": "SYNTHETIC-BEAN-PLATFORM"
+      }
+    },
+    "auto_ai": {
+      "code": "000000",
+      "data": {
+        "header": {"c": 0},
+        "body": {
+          "tokenId": "SYNTHETIC-AUTO-TOKEN",
+          "userId": "SYNTHETIC-AUTO-USER",
+          "gwid": "SYNTHETIC-AUTO-GW"
+        }
+      }
+    },
+    "discovery": {
+      "code": "000000",
+      "data": {
+        "acquireVehiclesList": [
+          {
+            "vin": "LGWTEST0000000001",
+            "vehicleId": "synthetic-vehicle-1",
+            "belongPlatform": "navinfo",
+            "vehicleNetworkType": "2",
+            "tankCapacity": "56",
+            "appShowSeriesName": "Synthetic Series",
+            "brandName": "Synthetic Brand",
+            "vtype": "SYNTHETIC"
+          },
+          {
+            "vin": "LGWTEST0000000002",
+            "vehicleId": "synthetic-vehicle-2",
+            "belongPlatform": "unsupported-synthetic-platform",
+            "vehicleNetworkType": 3
+          }
+        ]
+      }
+    },
+    "status": {
+      "header": {"c": 0},
+      "body": {
+        "vehicleSts": {
+          "lastUpdate": "1723456789000",
+          "battSts": {
+            "battSoc": "78",
+            "battSoh": "95",
+            "bmsDCChrgConnect": 1,
+            "bmsChrgsts": 2,
+            "chgTime": "45"
+          },
+          "carStatus": {
+            "drvDoorLockSts": 0,
+            "drvTirePress": "266",
+            "passTirePress": "266",
+            "rlTirePress": "279",
+            "rrTirePress": "248",
+            "hcuEvcontnsdistance": "204",
+            "remainFuel": "24",
+            "remainFuelSts": 1,
+            "soc": "46",
+            "vehTotDistance": "56040",
+            "lat": "0",
+            "lon": "0"
+          }
+        }
+      }
+    }
+  }
+}

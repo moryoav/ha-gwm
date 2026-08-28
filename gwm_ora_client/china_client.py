@@ -1,0 +1,1678 @@
+"""Production-structured, HA-independent mainland-China authentication and reads.
+
+The China app protocol spans three independently authenticated services.  This
+module deliberately does not extend the overseas ``Region``/``GwmClient``
+abstractions: its immutable state, bounded initialization, gzip transport, and
+NavInfo read policy remain isolated until the later Home Assistant tasks.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import hashlib
+import json
+import math
+import re
+import secrets
+from collections.abc import Awaitable, Callable, Mapping
+from dataclasses import dataclass, field, replace
+from datetime import UTC, datetime, timedelta
+from typing import Literal, Self, cast
+from urllib.parse import quote
+
+from ._dotnet_json import encode_dotnet_json
+from ._protocol import _Deadline
+from .china_crypto import (
+    AUTO_AI_CKEY,
+    BEAN_TECH_APP_KEY,
+    DEFAULT_NOTE_ID,
+    auto_ai_sign,
+    bean_tech_sign,
+    decrypt_g_app,
+    default_sign,
+    encrypt_g_app,
+    format_china_timestamp,
+    sha256_hex,
+)
+from .china_status import map_china_status
+from .china_transport import (
+    ChinaAiohttpTransport,
+    _ChinaAsyncTransport,
+    _ChinaTransportRequest,
+    _ChinaTransportResponse,
+)
+from .config import RequestTimeouts
+from .errors import (
+    GwmApiError,
+    GwmAuthenticationError,
+    GwmClientError,
+    GwmClosedError,
+    GwmConfigurationError,
+    GwmDeadlineExceededError,
+    GwmHttpError,
+    GwmNetworkError,
+    GwmProtocolError,
+    GwmRateLimitError,
+    GwmRedirectError,
+    GwmResponseTooLargeError,
+    GwmRoutePolicyError,
+    GwmSchemaError,
+    GwmTlsError,
+)
+from .models import CloudVehicle, CloudVehicleStatus, VehicleIdentifier
+
+__all__ = [
+    "ChinaAuthenticated",
+    "ChinaAuthenticationResult",
+    "ChinaAuthState",
+    "ChinaClient",
+    "ChinaClientConfig",
+    "ChinaCredentials",
+    "ChinaInitializationRequired",
+    "ChinaRiskControlRequired",
+    "ChinaVehicle",
+    "ChinaVehicleStatus",
+    "ChinaVerificationRequired",
+]
+
+type _ChinaService = Literal["bean_tech", "auto_ai"]
+
+_G_APP_BASE = "https://gapp-api.gwmapp-h.com/"
+_BEAN_TECH_BASE = "https://gw-app-gateway.gwmapp-h.com/"
+_AUTO_AI_DIRECT = "https://ti.gwm.com.cn:8443/tsp/ead"
+_SMS_REQUEST_URL = _G_APP_BASE + "api-guser/v5/user/login-sms/send"
+_SMS_LOGIN_URL = _G_APP_BASE + "api-guser/v5/user/sms-login"
+_REFRESH_URL = _G_APP_BASE + "api-guser/v5/token/refresh"
+_BEAN_TECH_LOGIN_URL = _BEAN_TECH_BASE + "app-api/api/v1.0/userAuth/loginSSOAccount"
+_AUTO_AI_LOGIN_URL = _G_APP_BASE + "tsp/v1/proxy/navinfo/GW.M.APP_LOGIN"
+_DISCOVERY_URL = _G_APP_BASE + "gcar/v1/app/android/vehicle/query-vehicle-list"
+_SOURCE_APP_VERSION = "2.1.5"
+_SOURCE_APP_CODE = "2150"
+_OFFICIAL_USER_AGENT = "okhttp/4.2.2"
+_DISCOVERY_BODY = b'{"vehicleVersion":13}'
+_VERIFICATION_INTERVAL = timedelta(minutes=10)
+_TRANSIENT_INIT_HTTP_STATUSES = frozenset({502, 503, 504})
+_MAX_INIT_ATTEMPTS = 3
+_INIT_RETRY_SECONDS = 1.0
+_MAX_JSON_DEPTH = 64
+_MAX_ALLOWED_RESPONSE_BYTES = 16 * 1024 * 1024
+_MAX_SECRET_LENGTH = 16 * 1024
+_MAX_ACCOUNT_BYTES = 64
+_MAX_DEVICE_SOURCE_LENGTH = 128
+_MAX_OPERATION_TIMEOUT = 24 * 60 * 60
+_MAX_VERIFICATION_CODE_LENGTH = 64
+_ACCOUNT_BINDING = re.compile(r"[0-9a-f]{64}")
+_DEVICE_SOURCE = re.compile(r"[0-9A-Fa-f-]+")
+_DEVICE_ID = re.compile(r"[0-9A-Fa-f]{32}")
+_VIN = re.compile(r"[A-HJ-NPR-Z0-9]{17}", re.IGNORECASE)
+_NONCE = re.compile(r"[0-9a-f]{16}")
+
+
+@dataclass(frozen=True, slots=True)
+class ChinaClientConfig:
+    """Stable non-secret limits for one isolated China client."""
+
+    timeouts: RequestTimeouts = field(default_factory=RequestTimeouts)
+    max_compressed_bytes: int = 4 * 1024 * 1024
+    max_response_bytes: int = 4 * 1024 * 1024
+
+    def __post_init__(self) -> None:
+        if type(self.timeouts) is not RequestTimeouts:
+            raise ValueError("timeouts_invalid")
+        for value in (self.max_compressed_bytes, self.max_response_bytes):
+            if (
+                isinstance(value, bool)
+                or not isinstance(value, int)
+                or not 0 < value <= _MAX_ALLOWED_RESPONSE_BYTES
+            ):
+                raise ValueError("response_limit_invalid")
+
+
+@dataclass(frozen=True, slots=True)
+class ChinaCredentials:
+    """A registered China phone and stable per-installation device identity."""
+
+    phone: str = field(repr=False)
+    device_id: str = field(repr=False)
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.phone, str) or not isinstance(self.device_id, str):
+            raise ValueError("credentials_invalid")
+        phone = self.phone.strip()
+        try:
+            encoded = phone.encode("utf-8", errors="strict")
+        except UnicodeEncodeError:
+            raise ValueError("credentials_invalid") from None
+        if (
+            not phone
+            or len(encoded) > _MAX_ACCOUNT_BYTES
+            or any(not character.isprintable() or character.isspace() for character in phone)
+        ):
+            raise ValueError("credentials_invalid")
+        try:
+            device_id = _normalize_device_id(self.device_id)
+        except (TypeError, ValueError):
+            raise ValueError("credentials_invalid") from None
+        object.__setattr__(self, "phone", phone)
+        object.__setattr__(self, "device_id", device_id)
+
+    @property
+    def account_binding(self) -> str:
+        digest = hashlib.sha256()
+        digest.update(b"gwm-ora-china-account-v1\0")
+        digest.update(self.phone.encode("utf-8"))
+        return digest.hexdigest()
+
+
+@dataclass(frozen=True, slots=True)
+class ChinaAuthState:
+    """Immutable complete-or-partial state candidate; persistence is a later task."""
+
+    account_binding: str = field(repr=False)
+    device_id: str = field(repr=False)
+    g_token: str | None = field(default=None, repr=False)
+    g_refresh_token: str | None = field(default=None, repr=False)
+    sso_token: str | None = field(default=None, repr=False)
+    pt_token: str | None = field(default=None, repr=False)
+    user_id: str | None = field(default=None, repr=False)
+    bean_id: str | None = field(default=None, repr=False)
+    bean_tech_access_token: str | None = field(default=None, repr=False)
+    bean_tech_refresh_token: str | None = field(default=None, repr=False)
+    bean_tech_sso_token: str | None = field(default=None, repr=False)
+    bean_tech_bean_id: str | None = field(default=None, repr=False)
+    auto_ai_token_id: str | None = field(default=None, repr=False)
+    auto_ai_user_id: str | None = field(default=None, repr=False)
+    auto_ai_gw_id: str | None = field(default=None, repr=False)
+    verification_requested_at: datetime | None = field(default=None, repr=False)
+
+    def __post_init__(self) -> None:
+        if (
+            not isinstance(self.account_binding, str)
+            or _ACCOUNT_BINDING.fullmatch(self.account_binding) is None
+            or not isinstance(self.device_id, str)
+            or _DEVICE_ID.fullmatch(self.device_id) is None
+        ):
+            raise ValueError("auth_state_invalid")
+        token_values = (
+            self.g_token,
+            self.g_refresh_token,
+            self.sso_token,
+            self.pt_token,
+            self.user_id,
+            self.bean_id,
+            self.bean_tech_access_token,
+            self.bean_tech_refresh_token,
+            self.bean_tech_sso_token,
+            self.bean_tech_bean_id,
+            self.auto_ai_token_id,
+            self.auto_ai_user_id,
+            self.auto_ai_gw_id,
+        )
+        if not all(_valid_optional_secret(value) for value in token_values):
+            raise ValueError("auth_state_invalid")
+        if self.verification_requested_at is not None and (
+            not isinstance(self.verification_requested_at, datetime)
+            or self.verification_requested_at.tzinfo is None
+            or self.verification_requested_at.utcoffset() is None
+        ):
+            raise ValueError("auth_state_invalid")
+        downstream = token_values[6:]
+        if any(value is not None for value in downstream) and not self.complete:
+            raise ValueError("auth_state_invalid")
+        if self.bean_tech_access_token is None and any(
+            value is not None
+            for value in (
+                self.bean_tech_refresh_token,
+                self.bean_tech_sso_token,
+                self.bean_tech_bean_id,
+            )
+        ):
+            raise ValueError("auth_state_invalid")
+        auto_pair = (self.auto_ai_token_id, self.auto_ai_user_id)
+        if (auto_pair[0] is None) != (auto_pair[1] is None):
+            raise ValueError("auth_state_invalid")
+        if self.auto_ai_gw_id is not None and auto_pair[0] is None:
+            raise ValueError("auth_state_invalid")
+
+    @classmethod
+    def for_credentials(cls, credentials: ChinaCredentials) -> ChinaAuthState:
+        if type(credentials) is not ChinaCredentials:
+            raise ValueError("credentials_invalid")
+        return cls(
+            account_binding=credentials.account_binding,
+            device_id=credentials.device_id,
+        )
+
+    @property
+    def has_g_app(self) -> bool:
+        return self.g_token is not None and self.g_refresh_token is not None and self.user_id is not None
+
+    @property
+    def complete(self) -> bool:
+        return (
+            self.has_g_app
+            and self.bean_id is not None
+            and self.bean_tech_access_token is not None
+            and self.auto_ai_token_id is not None
+            and self.auto_ai_user_id is not None
+        )
+
+    def matches(self, credentials: ChinaCredentials) -> bool:
+        return type(credentials) is ChinaCredentials and (
+            self.account_binding == credentials.account_binding
+            and self.device_id == credentials.device_id
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class ChinaAuthenticated:
+    """A complete state that passed an actual discovery validation."""
+
+    state: ChinaAuthState = field(repr=False)
+
+    def __post_init__(self) -> None:
+        if type(self.state) is not ChinaAuthState or not self.state.complete:
+            raise ValueError("authentication_result_invalid")
+
+
+@dataclass(frozen=True, slots=True)
+class ChinaVerificationRequired:
+    """A finite SMS continuation that never retains the submitted code."""
+
+    state: ChinaAuthState = field(repr=False)
+    code_requested: bool
+    code_rejected: bool = False
+
+    def __post_init__(self) -> None:
+        if (
+            type(self.state) is not ChinaAuthState
+            or type(self.code_requested) is not bool
+            or type(self.code_rejected) is not bool
+            or (self.code_requested and self.code_rejected)
+        ):
+            raise ValueError("authentication_result_invalid")
+
+
+@dataclass(frozen=True, slots=True)
+class ChinaInitializationRequired:
+    """A retryable partial continuation with only secret-safe failure labels."""
+
+    state: ChinaAuthState = field(repr=False)
+    failures: tuple[str, ...]
+
+    def __post_init__(self) -> None:
+        if (
+            type(self.state) is not ChinaAuthState
+            or not self.state.has_g_app
+            or self.state.complete
+            or not isinstance(self.failures, tuple)
+            or not self.failures
+            or any(
+                not isinstance(value, str)
+                or not 0 < len(value) <= 80
+                or re.fullmatch(r"[a-z0-9_:]+", value) is None
+                for value in self.failures
+            )
+        ):
+            raise ValueError("authentication_result_invalid")
+
+
+@dataclass(frozen=True, slots=True)
+class ChinaRiskControlRequired:
+    """The official app must complete G-App risk-control challenge 1013."""
+
+    state: ChinaAuthState = field(repr=False)
+    api_code: str = "1013"
+
+    def __post_init__(self) -> None:
+        if type(self.state) is not ChinaAuthState or self.api_code != "1013":
+            raise ValueError("authentication_result_invalid")
+
+
+type ChinaAuthenticationResult = (
+    ChinaAuthenticated
+    | ChinaVerificationRequired
+    | ChinaInitializationRequired
+    | ChinaRiskControlRequired
+)
+
+
+@dataclass(frozen=True, slots=True)
+class ChinaVehicle(CloudVehicle):
+    """Safe China discovery fields plus the mapping/route metadata later tasks need."""
+
+    platform: str | None = field(default=None, repr=False)
+    network_type: int | None = field(default=None, repr=False)
+    tank_capacity: float | None = field(default=None, repr=False)
+
+
+@dataclass(frozen=True, slots=True)
+class ChinaVehicleStatus(CloudVehicleStatus):
+    """China translation in the shared pre-normalization status shape."""
+
+
+class _ChinaRiskControlError(GwmApiError):
+    pass
+
+
+class ChinaClient:
+    """Lifecycle-managed China SMS authentication and NavInfo read client."""
+
+    def __init__(
+        self,
+        config: ChinaClientConfig,
+        *,
+        transport: _ChinaAsyncTransport | None = None,
+        clock: Callable[[], datetime] | None = None,
+        salt_source: Callable[[], bytes] | None = None,
+        nonce_source: Callable[[], str] | None = None,
+        sleeper: Callable[[float], Awaitable[None]] | None = None,
+    ) -> None:
+        if type(config) is not ChinaClientConfig:
+            raise GwmConfigurationError()
+        for callback in (clock, salt_source, nonce_source, sleeper):
+            if callback is not None and not callable(callback):
+                raise GwmConfigurationError()
+        self._config = config
+        self._clock = clock or _utc_now
+        self._salt_source = salt_source or (lambda: secrets.token_bytes(8))
+        self._nonce_source = nonce_source or _random_nonce
+        self._sleeper = sleeper or asyncio.sleep
+        self._transport: _ChinaAsyncTransport
+        if transport is None:
+            self._transport = ChinaAiohttpTransport.create_owned(
+                max_compressed_bytes=config.max_compressed_bytes,
+                max_response_bytes=config.max_response_bytes,
+            )
+            self._owns_transport = True
+        else:
+            self._transport = transport
+            self._owns_transport = False
+        self._session: ChinaAuthState | None = None
+        self._session_revision = 0
+        self._vehicles: dict[str, ChinaVehicle] = {}
+        self._consumed_verification_bindings: set[str] = set()
+        self._closed = False
+        self._closing = False
+        self._close_lock = asyncio.Lock()
+        self._request_lock = asyncio.Lock()
+
+    @property
+    def closed(self) -> bool:
+        return self._closed
+
+    @property
+    def authenticated(self) -> bool:
+        return self._session is not None
+
+    async def __aenter__(self) -> Self:
+        if self._closed or self._closing:
+            raise GwmClosedError()
+        return self
+
+    async def __aexit__(self, *_exc_info: object) -> None:
+        await self.aclose()
+
+    async def aclose(self) -> None:
+        async with self._close_lock:
+            if self._closed:
+                return
+            self._closing = True
+            try:
+                async with self._request_lock:
+                    if self._owns_transport:
+                        await self._transport.aclose()
+                    self._session = None
+                    self._vehicles = {}
+                    self._consumed_verification_bindings.clear()
+                    self._session_revision += 1
+            except BaseException:
+                self._closing = False
+                raise
+            self._closed = True
+            self._closing = False
+
+    async def authenticate(
+        self,
+        credentials: ChinaCredentials,
+        *,
+        state: ChinaAuthState | None = None,
+        verification_code: str | None = None,
+        timeout: float | None = None,
+    ) -> ChinaAuthenticationResult:
+        """Run one serialized finite China authentication continuation."""
+
+        operation = "login"
+        if type(credentials) is not ChinaCredentials or (
+            state is not None and type(state) is not ChinaAuthState
+        ):
+            raise GwmConfigurationError(operation=operation)
+        code = _normalize_verification_code(verification_code)
+        if self._closed or self._closing:
+            raise GwmClosedError(operation=operation)
+        total = self._validated_timeout(timeout, operation=operation)
+        loop = asyncio.get_running_loop()
+        deadline = _Deadline(loop.time() + total)
+        try:
+            async with asyncio.timeout_at(deadline.expires_at):
+                async with self._request_lock:
+                    if self._closed or self._closing:
+                        raise GwmClosedError(operation=operation)
+                    candidate = (
+                        state
+                        if state is not None and state.matches(credentials)
+                        else ChinaAuthState.for_credentials(credentials)
+                    )
+                    reusable = self._session is not None and self._session == candidate
+                    attempt_revision = self._session_revision
+                    if not reusable:
+                        self._revoke_session()
+                        attempt_revision = self._session_revision
+                    result, vehicles = await self._authenticate_locked(
+                        credentials,
+                        candidate,
+                        verification_code=code,
+                        deadline=deadline,
+                    )
+                    if deadline.remaining(loop.time()) <= 0:
+                        raise GwmDeadlineExceededError(operation=operation)
+                    if type(result) is ChinaAuthenticated:
+                        if vehicles is None:
+                            raise GwmProtocolError(operation=operation)
+                        self._install_if_revision(
+                            expected_revision=attempt_revision,
+                            state=result.state,
+                            vehicles=vehicles,
+                        )
+                    else:
+                        self._clear_if_revision(expected_revision=attempt_revision)
+                    return result
+        except asyncio.CancelledError:
+            raise
+        except TimeoutError:
+            raise GwmDeadlineExceededError(operation=operation) from None
+        except GwmClientError as error:
+            raise _sanitized_error(error) from None
+        except Exception:
+            raise GwmNetworkError(operation=operation) from None
+
+    async def acquire_vehicles(
+        self,
+        *,
+        timeout: float | None = None,
+    ) -> tuple[ChinaVehicle, ...]:
+        """Force a fresh corrected-route G-App discovery read."""
+
+        operation = "acquire_vehicles"
+        return await self._run_read(
+            operation,
+            timeout=timeout,
+            action=self._acquire_current_vehicles_locked,
+            commit=self._commit_vehicles,
+        )
+
+    async def get_last_status(
+        self,
+        identifier: VehicleIdentifier,
+        *,
+        timeout: float | None = None,
+    ) -> ChinaVehicleStatus:
+        """Read and translate one previously discovered NavInfo vehicle status."""
+
+        operation = "get_last_status"
+        if type(identifier) is not VehicleIdentifier:
+            raise GwmRoutePolicyError(operation=operation)
+        return await self._run_read(
+            operation,
+            timeout=timeout,
+            action=lambda deadline: self._get_last_status_locked(identifier, deadline=deadline),
+        )
+
+    async def _authenticate_locked(
+        self,
+        credentials: ChinaCredentials,
+        candidate: ChinaAuthState,
+        *,
+        verification_code: str | None,
+        deadline: _Deadline,
+    ) -> tuple[ChinaAuthenticationResult, tuple[ChinaVehicle, ...] | None]:
+        if candidate.complete:
+            try:
+                vehicles = await self._acquire_vehicles_for_state(candidate, deadline=deadline)
+            except _ChinaRiskControlError:
+                return ChinaRiskControlRequired(state=candidate), None
+            except GwmAuthenticationError:
+                self._session = None
+                self._vehicles = {}
+                return await self._refresh_or_sms(
+                    credentials,
+                    candidate,
+                    verification_code=verification_code,
+                    deadline=deadline,
+                )
+            return ChinaAuthenticated(state=candidate), vehicles
+
+        if candidate.has_g_app:
+            return await self._initialize_and_validate(credentials, _without_downstream(candidate), deadline=deadline)
+
+        return await self._sms_continuation(
+            credentials,
+            candidate,
+            verification_code=verification_code,
+            deadline=deadline,
+        )
+
+    async def _refresh_or_sms(
+        self,
+        credentials: ChinaCredentials,
+        candidate: ChinaAuthState,
+        *,
+        verification_code: str | None,
+        deadline: _Deadline,
+    ) -> tuple[ChinaAuthenticationResult, tuple[ChinaVehicle, ...] | None]:
+        partial_candidate = _without_downstream(candidate)
+        try:
+            response = await self._send_locked(
+                self._build_g_app_request(
+                    operation="refresh_token",
+                    url=_REFRESH_URL,
+                    logical_body={
+                        "token": candidate.g_token,
+                        "refreshToken": candidate.g_refresh_token,
+                    },
+                    state=candidate,
+                    encrypt_body=True,
+                ),
+                deadline=deadline,
+            )
+            data = _decode_g_app_envelope(response, operation="refresh_token")
+            refreshed = _parse_g_app_state(
+                data,
+                base=candidate,
+                credentials=credentials,
+                allow_fallback=True,
+                operation="refresh_token",
+            )
+        except _ChinaRiskControlError:
+            return ChinaRiskControlRequired(state=partial_candidate), None
+        except GwmAuthenticationError:
+            empty = ChinaAuthState.for_credentials(credentials)
+            return await self._sms_continuation(
+                credentials,
+                empty,
+                verification_code=verification_code,
+                deadline=deadline,
+            )
+        return await self._initialize_and_validate(credentials, refreshed, deadline=deadline)
+
+    async def _sms_continuation(
+        self,
+        credentials: ChinaCredentials,
+        candidate: ChinaAuthState,
+        *,
+        verification_code: str | None,
+        deadline: _Deadline,
+    ) -> tuple[ChinaAuthenticationResult, tuple[ChinaVehicle, ...] | None]:
+        if verification_code is None:
+            now = self._read_clock(operation="request_verification")
+            requested_at = candidate.verification_requested_at
+            throttled = (
+                requested_at is not None
+                and timedelta(0) <= now - requested_at < _VERIFICATION_INTERVAL
+            )
+            if throttled:
+                return ChinaVerificationRequired(
+                    state=candidate,
+                    code_requested=False,
+                ), None
+            try:
+                response = await self._send_locked(
+                    self._build_g_app_request(
+                        operation="request_verification",
+                        url=_SMS_REQUEST_URL,
+                        logical_body={"phone": credentials.phone, "flag": "LOGIN"},
+                        state=candidate,
+                        encrypt_body=True,
+                    ),
+                    deadline=deadline,
+                )
+                _decode_g_app_envelope(response, operation="request_verification")
+            except _ChinaRiskControlError:
+                return ChinaRiskControlRequired(state=candidate), None
+            self._consumed_verification_bindings.discard(credentials.account_binding)
+            return ChinaVerificationRequired(
+                state=replace(candidate, verification_requested_at=now),
+                code_requested=True,
+            ), None
+
+        if credentials.account_binding in self._consumed_verification_bindings:
+            return ChinaVerificationRequired(
+                state=candidate,
+                code_requested=False,
+            ), None
+        request = self._build_g_app_request(
+            operation="login",
+            url=_SMS_LOGIN_URL,
+            logical_body={
+                "code": verification_code,
+                "phone": credentials.phone,
+                "deviceToken": "",
+            },
+            state=candidate,
+            encrypt_body=True,
+        )
+        self._consumed_verification_bindings.add(credentials.account_binding)
+        try:
+            response = await self._send_locked(
+                request,
+                deadline=deadline,
+            )
+            data = _decode_g_app_envelope(response, operation="login")
+            partial = _parse_g_app_state(
+                data,
+                base=ChinaAuthState.for_credentials(credentials),
+                credentials=credentials,
+                allow_fallback=False,
+                operation="login",
+            )
+        except _ChinaRiskControlError:
+            return ChinaRiskControlRequired(state=candidate), None
+        except GwmAuthenticationError:
+            return ChinaVerificationRequired(
+                state=replace(candidate, verification_requested_at=None),
+                code_requested=False,
+                code_rejected=True,
+            ), None
+        return await self._initialize_and_validate(credentials, partial, deadline=deadline)
+
+    async def _initialize_and_validate(
+        self,
+        credentials: ChinaCredentials,
+        partial: ChinaAuthState,
+        *,
+        deadline: _Deadline,
+    ) -> tuple[ChinaAuthenticationResult, tuple[ChinaVehicle, ...] | None]:
+        partial = _without_downstream(partial)
+        if not partial.has_g_app:
+            raise GwmSchemaError(operation="login")
+        missing: list[str] = []
+        if partial.sso_token is None and partial.pt_token is None:
+            missing.append("bean_tech:configuration_error")
+        if partial.sso_token is None:
+            missing.append("auto_ai:configuration_error")
+        if missing:
+            return ChinaInitializationRequired(state=partial, failures=tuple(missing)), None
+
+        bean_result: Mapping[str, object] | None = None
+        auto_result: Mapping[str, object] | None = None
+        failures: list[str] = []
+        risk_control = False
+        try:
+            async with asyncio.TaskGroup() as group:
+                bean_task = group.create_task(
+                    self._initialize_service(
+                        "bean_tech",
+                        credentials=credentials,
+                        partial=partial,
+                        deadline=deadline,
+                    )
+                )
+                auto_task = group.create_task(
+                    self._initialize_service(
+                        "auto_ai",
+                        credentials=credentials,
+                        partial=partial,
+                        deadline=deadline,
+                    )
+                )
+        except* _ChinaRiskControlError:
+            risk_control = True
+        except* GwmClientError as group_error:
+            failures.extend(_initialization_failure_labels(group_error))
+        except* Exception:
+            failures.append("initialization:network_error")
+        if risk_control:
+            return ChinaRiskControlRequired(state=partial), None
+        if failures:
+            return ChinaInitializationRequired(
+                state=partial,
+                failures=tuple(sorted(set(failures))),
+            ), None
+        bean_result = bean_task.result()
+        auto_result = auto_task.result()
+        try:
+            complete = _apply_platform_results(
+                partial,
+                bean_result=bean_result,
+                auto_result=auto_result,
+            )
+        except GwmClientError as error:
+            return ChinaInitializationRequired(
+                state=partial,
+                failures=(_initialization_failure_label(error),),
+            ), None
+        try:
+            vehicles = await self._acquire_vehicles_for_state(complete, deadline=deadline)
+        except _ChinaRiskControlError:
+            return ChinaRiskControlRequired(state=partial), None
+        except asyncio.CancelledError:
+            raise
+        except GwmClientError as error:
+            return ChinaInitializationRequired(
+                state=partial,
+                failures=(_discovery_failure_label(error),),
+            ), None
+        except Exception:
+            return ChinaInitializationRequired(
+                state=partial,
+                failures=("discovery:network_error",),
+            ), None
+        return ChinaAuthenticated(state=complete), vehicles
+
+    async def _initialize_service(
+        self,
+        service: _ChinaService,
+        *,
+        credentials: ChinaCredentials,
+        partial: ChinaAuthState,
+        deadline: _Deadline,
+    ) -> Mapping[str, object]:
+        operation = "initialize_bean_tech" if service == "bean_tech" else "initialize_auto_ai"
+        for attempt in range(1, _MAX_INIT_ATTEMPTS + 1):
+            request = (
+                self._build_bean_tech_login_request(credentials, partial)
+                if service == "bean_tech"
+                else self._build_auto_ai_login_request(credentials, partial)
+            )
+            try:
+                response = await self._send_locked(request, deadline=deadline)
+                data = (
+                    _decode_g_app_envelope(response, operation=operation)
+                    if service == "bean_tech"
+                    else _decode_auto_ai_envelope(response, operation=operation)
+                )
+                if not isinstance(data, Mapping):
+                    raise GwmSchemaError(operation=operation)
+                return data
+            except GwmClientError as error:
+                if attempt >= _MAX_INIT_ATTEMPTS or not _retryable_initialization_error(error):
+                    raise
+                await self._sleep_before_retry(deadline, operation=operation)
+        raise GwmProtocolError(operation=operation)  # pragma: no cover
+
+    async def _sleep_before_retry(self, deadline: _Deadline, *, operation: str) -> None:
+        loop = asyncio.get_running_loop()
+        if deadline.remaining(loop.time()) <= _INIT_RETRY_SECONDS:
+            raise GwmDeadlineExceededError(operation=operation)
+        try:
+            await self._sleeper(_INIT_RETRY_SECONDS)
+        except asyncio.CancelledError:
+            raise
+        except GwmClientError:
+            raise
+        except Exception:
+            raise GwmNetworkError(operation=operation) from None
+        if deadline.remaining(loop.time()) <= 0:
+            raise GwmDeadlineExceededError(operation=operation)
+
+    async def _run_read[T](
+        self,
+        operation: str,
+        *,
+        timeout: float | None,
+        action: Callable[[_Deadline], Awaitable[T]],
+        commit: Callable[[T], None] | None = None,
+    ) -> T:
+        if self._closed or self._closing:
+            raise GwmClosedError(operation=operation)
+        total = self._validated_timeout(timeout, operation=operation)
+        loop = asyncio.get_running_loop()
+        deadline = _Deadline(loop.time() + total)
+        try:
+            async with asyncio.timeout_at(deadline.expires_at):
+                async with self._request_lock:
+                    if self._closed or self._closing:
+                        raise GwmClosedError(operation=operation)
+                    result = await action(deadline)
+                    if deadline.remaining(loop.time()) <= 0:
+                        raise GwmDeadlineExceededError(operation=operation)
+                    if commit is not None:
+                        commit(result)
+                    return result
+        except asyncio.CancelledError:
+            raise
+        except TimeoutError:
+            raise GwmDeadlineExceededError(operation=operation) from None
+        except GwmAuthenticationError as error:
+            self._revoke_session()
+            raise _sanitized_error(error) from None
+        except GwmClientError as error:
+            raise _sanitized_error(error) from None
+        except Exception:
+            raise GwmNetworkError(operation=operation) from None
+
+    async def _acquire_current_vehicles_locked(
+        self,
+        deadline: _Deadline,
+    ) -> tuple[ChinaVehicle, ...]:
+        state = self._required_session(operation="acquire_vehicles")
+        self._vehicles = {}
+        return await self._acquire_vehicles_for_state(state, deadline=deadline)
+
+    async def _acquire_vehicles_for_state(
+        self,
+        state: ChinaAuthState,
+        *,
+        deadline: _Deadline,
+    ) -> tuple[ChinaVehicle, ...]:
+        response = await self._send_locked(
+            self._build_g_app_request(
+                operation="acquire_vehicles",
+                url=_DISCOVERY_URL,
+                logical_body={"vehicleVersion": 13},
+                state=state,
+                encrypt_body=False,
+            ),
+            deadline=deadline,
+        )
+        try:
+            data = _decode_g_app_envelope(response, operation="acquire_vehicles")
+            value = _property(data, "acquireVehiclesList") if isinstance(data, Mapping) else None
+            if value is None:
+                value = data
+            return _parse_vehicles(value)
+        except GwmClientError:
+            raise
+        except (RecursionError, OverflowError, TypeError, ValueError):
+            raise GwmSchemaError(operation="acquire_vehicles") from None
+
+    async def _get_last_status_locked(
+        self,
+        identifier: VehicleIdentifier,
+        *,
+        deadline: _Deadline,
+    ) -> ChinaVehicleStatus:
+        state = self._required_session(operation="get_last_status")
+        vehicle = self._vehicles.get(identifier.value.casefold())
+        if vehicle is None or vehicle.platform is None or vehicle.platform.casefold() != "navinfo":
+            raise GwmRoutePolicyError(operation="get_last_status")
+        response = await self._send_locked(
+            self._build_auto_ai_request(
+                operation="get_last_status",
+                state=state,
+                function="GW.M.GET_VEHICLE_STATE",
+                body={"vin": vehicle.identifier.value},
+                url=_AUTO_AI_DIRECT,
+                include_token=True,
+            ),
+            deadline=deadline,
+        )
+        try:
+            body = _decode_auto_ai_envelope(response, operation="get_last_status")
+            mapped = map_china_status(
+                body,
+                identifier=vehicle.identifier,
+                vehicle_id=vehicle.vehicle_id,
+                network_type=vehicle.network_type,
+                tank_capacity=vehicle.tank_capacity,
+            )
+            return ChinaVehicleStatus(
+                device_id=mapped.device_id,
+                acquisition_time_ms=mapped.acquisition_time_ms,
+                update_time_ms=mapped.update_time_ms,
+                latitude=mapped.latitude,
+                longitude=mapped.longitude,
+                items=mapped.items,
+            )
+        except GwmClientError:
+            raise
+        except (RecursionError, OverflowError, TypeError, ValueError):
+            raise GwmSchemaError(operation="get_last_status") from None
+
+    async def _send_locked(
+        self,
+        request: _ChinaTransportRequest,
+        *,
+        deadline: _Deadline,
+    ) -> _ChinaTransportResponse:
+        response = await self._transport.execute(
+            request,
+            deadline=deadline,
+            connect_timeout=self._config.timeouts.connect,
+            read_timeout=self._config.timeouts.read,
+        )
+        if type(response) is not _ChinaTransportResponse:
+            raise GwmProtocolError(operation=request.operation)
+        return response
+
+    def _build_g_app_request(
+        self,
+        *,
+        operation: Literal["request_verification", "login", "refresh_token", "acquire_vehicles"],
+        url: str,
+        logical_body: Mapping[str, object],
+        state: ChinaAuthState,
+        encrypt_body: bool,
+    ) -> _ChinaTransportRequest:
+        logical_json = encode_dotnet_json(dict(logical_body))
+        if encrypt_body:
+            try:
+                salt = self._salt_source()
+                raw_body = encrypt_g_app(logical_json, salt=salt)
+            except (TypeError, ValueError):
+                raise GwmConfigurationError(operation=operation) from None
+        else:
+            raw_body = logical_json
+        instant = self._read_clock(operation=operation)
+        timestamp = str(_epoch_milliseconds(instant) // 1000 * 1000)
+        authorization = state.bean_tech_access_token or ""
+        signing_headers = {
+            "Authorization": authorization,
+            "SourceApp": "GWM",
+            "SourceType": "ANDROID",
+            "SourceAppVer": _SOURCE_APP_VERSION,
+            "Timestamp": timestamp,
+            "DeviceId": state.device_id,
+            "AppId": "GWM-APP-ANDROID-1100018",
+            "NoteId": DEFAULT_NOTE_ID,
+        }
+        headers: dict[str, str] = {}
+        if state.g_token is not None:
+            headers["G-TOKEN"] = state.g_token
+        headers["Authorization"] = authorization
+        if state.user_id is not None:
+            headers["ssoId"] = state.user_id
+        headers.update(
+            {
+                "SourceApp": "GWM",
+                "SourceType": "ANDROID",
+                "SourceAppVer": _SOURCE_APP_VERSION,
+                "SourceAppCode": _SOURCE_APP_CODE,
+                "Timestamp": timestamp,
+                "DeviceId": state.device_id,
+                "AppId": "GWM-APP-ANDROID-1100018",
+            }
+        )
+        if state.bean_id is not None:
+            headers["beanId"] = state.bean_id
+        headers.update(
+            {
+                "NoteId": DEFAULT_NOTE_ID,
+                "Sign": default_sign("POST", url, raw_body, signing_headers),
+                "Accept-Encoding": "gzip",
+                "User-Agent": _OFFICIAL_USER_AGENT,
+                "Content-Type": "application/json; charset=UTF-8",
+            }
+        )
+        return _ChinaTransportRequest(
+            operation=operation,
+            service="g_app",
+            method="POST",
+            url=url,
+            headers=headers,
+            body=raw_body.encode("utf-8"),
+        )
+
+    def _build_bean_tech_login_request(
+        self,
+        credentials: ChinaCredentials,
+        state: ChinaAuthState,
+    ) -> _ChinaTransportRequest:
+        operation: Literal["initialize_bean_tech"] = "initialize_bean_tech"
+        raw_body = encode_dotnet_json(
+            {
+                "appType": 0,
+                "deviceId": state.device_id,
+                "phone": credentials.phone,
+                "ssoId": state.user_id,
+                "ssoToken": state.sso_token or state.pt_token,
+            }
+        )
+        instant = self._read_clock(operation=operation)
+        timestamp = str(_epoch_milliseconds(instant))
+        try:
+            nonce = self._nonce_source()
+        except Exception:
+            raise GwmConfigurationError(operation=operation) from None
+        if not isinstance(nonce, str) or _NONCE.fullmatch(nonce) is None:
+            raise GwmConfigurationError(operation=operation)
+        path = "/app-api/api/v1.0/userAuth/loginSSOAccount"
+        headers: dict[str, str] = {
+            "bt-auth-appkey": BEAN_TECH_APP_KEY,
+            "bt-auth-nonce": nonce,
+            "bt-auth-timestamp": timestamp,
+            "bt-auth-sign": bean_tech_sign(
+                "POST",
+                path,
+                nonce,
+                timestamp,
+                "json=" + raw_body,
+            ),
+            "rs": "2",
+            "appId": "097a7099af30d960",
+            "brand": "10",
+            "terminal": "GW_APP_GWM",
+            "enterPriseId": "CC01",
+        }
+        if state.bean_id is not None:
+            headers["beanId"] = state.bean_id
+        headers.update(
+            {
+                "cVer": _SOURCE_APP_VERSION,
+                "tenantId": "1",
+                "operatorRole": "0",
+                "Accept-Encoding": "gzip",
+                "User-Agent": _OFFICIAL_USER_AGENT,
+                "Content-Type": "application/json; charset=UTF-8",
+            }
+        )
+        return _ChinaTransportRequest(
+            operation=operation,
+            service="bean_tech",
+            method="POST",
+            url=_BEAN_TECH_LOGIN_URL,
+            headers=headers,
+            body=raw_body.encode("utf-8"),
+        )
+
+    def _build_auto_ai_login_request(
+        self,
+        credentials: ChinaCredentials,
+        state: ChinaAuthState,
+    ) -> _ChinaTransportRequest:
+        return self._build_auto_ai_request(
+            operation="initialize_auto_ai",
+            state=state,
+            function="GW.M.APP_LOGIN",
+            body={
+                "appType": 0,
+                "phone": credentials.phone,
+                "pushId": "0",
+                "pushKey": "0",
+                "ssoid": state.user_id,
+                "ssoTk": state.sso_token,
+            },
+            url=_AUTO_AI_LOGIN_URL,
+            include_token=False,
+        )
+
+    def _build_auto_ai_request(
+        self,
+        *,
+        operation: Literal["initialize_auto_ai", "get_last_status"],
+        state: ChinaAuthState,
+        function: str,
+        body: Mapping[str, object],
+        url: str,
+        include_token: bool,
+    ) -> _ChinaTransportRequest:
+        instant = self._read_clock(operation=operation)
+        timestamp = str(_epoch_milliseconds(instant))
+        token = state.auto_ai_token_id or ""
+        wrapper = {
+            "body": dict(body),
+            "header": {
+                "brandType": "gwm",
+                "cVer": _SOURCE_APP_VERSION,
+                "fn": function,
+                "fv": "0202",
+                "mobileId": state.device_id,
+                "osType": "Android",
+                "osVer": "",
+                "rs": "2",
+                "ts": format_china_timestamp(instant),
+                "tk": token,
+                "v": "1.0",
+            },
+        }
+        payload = encode_dotnet_json(wrapper)
+        full_url = url + "?p=" + quote(payload, safe="", encoding="utf-8", errors="strict")
+        headers = {
+            "v": "1.0",
+            "cid": state.device_id,
+            "client": "phone",
+            "sign": auto_ai_sign(timestamp),
+            "time": timestamp,
+            "ckey": AUTO_AI_CKEY,
+            "protocolVer": "2.1.2",
+        }
+        if include_token:
+            headers["token"] = token
+        headers.update(
+            {
+                "brandType": "GWM",
+                "Accept-Encoding": "gzip",
+                "User-Agent": _OFFICIAL_USER_AGENT,
+            }
+        )
+        return _ChinaTransportRequest(
+            operation=operation,
+            service="auto_ai",
+            method="GET",
+            url=full_url,
+            headers=headers,
+            body=None,
+        )
+
+    def _required_session(self, *, operation: str) -> ChinaAuthState:
+        state = self._session
+        if state is None or not state.complete:
+            raise GwmAuthenticationError(operation=operation)
+        return state
+
+    def _read_clock(self, *, operation: str) -> datetime:
+        try:
+            instant = self._clock()
+        except Exception:
+            raise GwmConfigurationError(operation=operation) from None
+        if not isinstance(instant, datetime) or instant.tzinfo is None or instant.utcoffset() is None:
+            raise GwmConfigurationError(operation=operation)
+        if _epoch_milliseconds(instant) < 0:
+            raise GwmConfigurationError(operation=operation)
+        return instant
+
+    def _validated_timeout(self, timeout: float | None, *, operation: str) -> float:
+        value = self._config.timeouts.total if timeout is None else timeout
+        if (
+            isinstance(value, bool)
+            or not isinstance(value, int | float)
+            or not math.isfinite(value)
+            or value <= 0
+            or value > self._config.timeouts.total
+            or value > _MAX_OPERATION_TIMEOUT
+        ):
+            raise GwmConfigurationError(operation=operation)
+        return float(value)
+
+    def _install_if_revision(
+        self,
+        *,
+        expected_revision: int,
+        state: ChinaAuthState,
+        vehicles: tuple[ChinaVehicle, ...],
+    ) -> None:
+        if self._session_revision == expected_revision:
+            self._session = state
+            self._vehicles = {vehicle.identifier.value.casefold(): vehicle for vehicle in vehicles}
+            self._session_revision += 1
+
+    def _clear_if_revision(self, *, expected_revision: int) -> None:
+        if self._session_revision == expected_revision:
+            self._revoke_session()
+
+    def _revoke_session(self) -> None:
+        self._session = None
+        self._vehicles = {}
+        self._session_revision += 1
+
+    def _commit_vehicles(self, vehicles: tuple[ChinaVehicle, ...]) -> None:
+        self._vehicles = {vehicle.identifier.value.casefold(): vehicle for vehicle in vehicles}
+
+
+def _normalize_device_id(value: str) -> str:
+    if (
+        not isinstance(value, str)
+        or not value
+        or len(value) > _MAX_DEVICE_SOURCE_LENGTH
+        or _DEVICE_SOURCE.fullmatch(value) is None
+    ):
+        raise ValueError("china_device_id_invalid")
+    normalized = value.replace("-", "")
+    if not normalized:
+        raise ValueError("china_device_id_invalid")
+    return normalized[:32].ljust(32, "0")
+
+
+def _valid_optional_secret(value: object) -> bool:
+    return value is None or (
+        isinstance(value, str)
+        and 0 < len(value) <= _MAX_SECRET_LENGTH
+        and all(0x21 <= ord(character) <= 0x7E for character in value)
+    )
+
+
+def _normalize_verification_code(value: str | None) -> str | None:
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise GwmConfigurationError(operation="login")
+    normalized = value.strip()
+    if (
+        not normalized
+        or len(normalized) > _MAX_VERIFICATION_CODE_LENGTH
+        or any(ord(character) < 0x21 or ord(character) > 0x7E for character in normalized)
+    ):
+        raise GwmConfigurationError(operation="login")
+    return normalized
+
+
+def _without_downstream(state: ChinaAuthState) -> ChinaAuthState:
+    return replace(
+        state,
+        bean_tech_access_token=None,
+        bean_tech_refresh_token=None,
+        bean_tech_sso_token=None,
+        bean_tech_bean_id=None,
+        auto_ai_token_id=None,
+        auto_ai_user_id=None,
+        auto_ai_gw_id=None,
+    )
+
+
+def _parse_g_app_state(
+    data: object,
+    *,
+    base: ChinaAuthState,
+    credentials: ChinaCredentials,
+    allow_fallback: bool,
+    operation: str,
+) -> ChinaAuthState:
+    if not isinstance(data, Mapping):
+        raise GwmSchemaError(operation=operation)
+
+    def selected(name: str, fallback: str | None, *refresh_aliases: str) -> str | None:
+        value = _optional_session_text(_property(data, name))
+        if value is None and allow_fallback:
+            for alias in refresh_aliases:
+                value = _optional_session_text(_property(data, alias))
+                if value is not None:
+                    break
+        return fallback if value is None and allow_fallback else value
+
+    try:
+        result = replace(
+            _without_downstream(base),
+            account_binding=credentials.account_binding,
+            device_id=credentials.device_id,
+            g_token=selected("gToken", base.g_token, "token"),
+            g_refresh_token=selected("gRefreshToken", base.g_refresh_token, "refreshToken"),
+            sso_token=selected("ssoToken", base.sso_token),
+            pt_token=selected("ptToken", base.pt_token),
+            user_id=selected("userId", base.user_id),
+            bean_id=selected("beanId", base.bean_id),
+            verification_requested_at=None,
+        )
+    except (TypeError, ValueError):
+        raise GwmSchemaError(operation=operation) from None
+    if not result.has_g_app or result.sso_token is None or result.bean_id is None:
+        raise GwmSchemaError(operation=operation)
+    return result
+
+
+def _apply_platform_results(
+    partial: ChinaAuthState,
+    *,
+    bean_result: Mapping[str, object],
+    auto_result: Mapping[str, object],
+) -> ChinaAuthState:
+    try:
+        bean_tech_access_token = _required_session_text(
+            bean_result,
+            "accessToken",
+            "initialize_bean_tech",
+        )
+        bean_tech_refresh_token = _optional_session_text(_property(bean_result, "refreshToken"))
+        bean_tech_sso_token = _optional_session_text(_property(bean_result, "ssoToken"))
+        bean_tech_bean_id = (
+            _optional_session_text(_property(bean_result, "beanId")) or partial.bean_id
+        )
+    except (TypeError, ValueError):
+        raise GwmSchemaError(operation="initialize_bean_tech") from None
+    try:
+        auto_ai_token_id = _required_session_text(auto_result, "tokenId", "initialize_auto_ai")
+        auto_ai_user_id = _required_session_text(auto_result, "userId", "initialize_auto_ai")
+        auto_ai_gw_id = (
+            _optional_session_text(_property(auto_result, "gwid"))
+            or _optional_session_text(_property(auto_result, "gwId"))
+        )
+    except (TypeError, ValueError):
+        raise GwmSchemaError(operation="initialize_auto_ai") from None
+    state = replace(
+        partial,
+        bean_tech_access_token=bean_tech_access_token,
+        bean_tech_refresh_token=bean_tech_refresh_token,
+        bean_tech_sso_token=bean_tech_sso_token,
+        bean_tech_bean_id=bean_tech_bean_id,
+        auto_ai_token_id=auto_ai_token_id,
+        auto_ai_user_id=auto_ai_user_id,
+        auto_ai_gw_id=auto_ai_gw_id,
+    )
+    if not state.complete:
+        raise GwmSchemaError(operation="login")
+    return state
+
+
+def _required_session_text(data: object, name: str, operation: str) -> str:
+    value = _optional_session_text(_property(data, name))
+    if value is None:
+        raise GwmSchemaError(operation=operation)
+    return value
+
+
+def _optional_session_text(value: object) -> str | None:
+    if value is None:
+        return None
+    text = _scalar_text(value)
+    if text is None or not _valid_optional_secret(text):
+        raise ValueError("session_value_invalid")
+    return text
+
+
+def _parse_vehicles(value: object) -> tuple[ChinaVehicle, ...]:
+    if not isinstance(value, list):
+        raise ValueError("vehicle_schema_invalid")
+    vehicles: list[ChinaVehicle] = []
+    seen: set[str] = set()
+    for item in value:
+        if not isinstance(item, Mapping):
+            raise ValueError("vehicle_schema_invalid")
+        vin = _property(item, "vin")
+        if vin is None or vin == "":
+            continue
+        if not isinstance(vin, str) or _VIN.fullmatch(vin) is None:
+            raise ValueError("vehicle_schema_invalid")
+        folded = vin.casefold()
+        if folded in seen:
+            raise ValueError("vehicle_schema_invalid")
+        seen.add(folded)
+        vehicles.append(
+            ChinaVehicle(
+                identifier=VehicleIdentifier(vin),
+                default_vehicle=_optional_bool(_property(item, "defaultVehicle"), default=False),
+                app_show_series_name=_optional_vehicle_text(_property(item, "appShowSeriesName")),
+                vehicle_nickname=_optional_vehicle_text(_property(item, "vehicleNick")),
+                model_name=_optional_vehicle_text(_property(item, "modelName")),
+                brand_name=_optional_vehicle_text(_property(item, "brandName")),
+                other_brand_name=_optional_vehicle_text(_property(item, "otBrandName")),
+                vehicle_type=_optional_vehicle_text(_property(item, "vtype")),
+                vehicle_type_name=_optional_vehicle_text(_property(item, "vTypeName")),
+                vehicle_id=_optional_vehicle_text(_property(item, "vehicleId")),
+                platform=_optional_vehicle_text(_property(item, "belongPlatform")),
+                network_type=_optional_int32(_property(item, "vehicleNetworkType")),
+                tank_capacity=_optional_nonnegative_number(_property(item, "tankCapacity")),
+            )
+        )
+    return tuple(vehicles)
+
+
+def _optional_bool(value: object, *, default: bool) -> bool:
+    if value is None:
+        return default
+    if type(value) is not bool:
+        raise ValueError("vehicle_schema_invalid")
+    return value
+
+
+def _optional_vehicle_text(value: object) -> str | None:
+    if value is None:
+        return None
+    result = _scalar_text(value)
+    if result is None or not result or len(result) > 512:
+        raise ValueError("vehicle_schema_invalid")
+    return result
+
+
+def _optional_int32(value: object) -> int | None:
+    if value is None:
+        return None
+    if isinstance(value, str):
+        digits = value[1:] if value[:1] in {"+", "-"} else value
+        if not digits or not digits.isdecimal():
+            raise ValueError("vehicle_schema_invalid")
+        value = int(value)
+    if isinstance(value, bool) or not isinstance(value, int) or not -(1 << 31) <= value < 1 << 31:
+        raise ValueError("vehicle_schema_invalid")
+    return value
+
+
+def _optional_nonnegative_number(value: object) -> float | None:
+    if value is None:
+        return None
+    if isinstance(value, str):
+        try:
+            value = float(value)
+        except ValueError:
+            return None
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        return None
+    try:
+        result = float(value)
+    except OverflowError:
+        return None
+    if not math.isfinite(result) or result < 0:
+        return None
+    return result
+
+
+def _decode_g_app_envelope(response: _ChinaTransportResponse, *, operation: str) -> object:
+    root = _decode_json_response(response, operation=operation)
+    try:
+        code = _scalar_text(_property(root, "code"))
+    except (TypeError, ValueError):
+        raise GwmSchemaError(operation=operation) from None
+    if code is not None and code not in {"0", "000000", "200"}:
+        if code == "1013":
+            raise _ChinaRiskControlError(operation=operation, api_code=code)
+        raise GwmApiError(operation=operation, api_code=code)
+    data = _property(root, "data")
+    if data is None:
+        data = root
+    if isinstance(data, str) and data.startswith("G_A("):
+        try:
+            data = _decode_json_bytes(decrypt_g_app(data).encode("utf-8"))
+        except (RecursionError, OverflowError, UnicodeError, ValueError):
+            raise GwmSchemaError(operation=operation) from None
+    return data
+
+
+def _decode_auto_ai_envelope(response: _ChinaTransportResponse, *, operation: str) -> object:
+    root = _decode_json_response(response, operation=operation)
+    if _property(root, "header") is None:
+        unwrapped = _decode_g_app_envelope(response, operation=operation)
+        if not isinstance(unwrapped, Mapping):
+            raise GwmSchemaError(operation=operation)
+        root = unwrapped
+    header = _property(root, "header")
+    if header is not None and not isinstance(header, Mapping):
+        raise GwmSchemaError(operation=operation)
+    try:
+        code = _scalar_text(_property(header, "c")) if header is not None else None
+    except (TypeError, ValueError):
+        raise GwmSchemaError(operation=operation) from None
+    if code is not None and code != "0":
+        if code == "1013":
+            raise _ChinaRiskControlError(operation=operation, api_code=code)
+        raise GwmApiError(operation=operation, api_code=code)
+    body = _property(root, "body")
+    return root if body is None else body
+
+
+def _decode_json_response(
+    response: _ChinaTransportResponse,
+    *,
+    operation: str,
+) -> Mapping[str, object]:
+    if response.status in {401, 403}:
+        raise GwmAuthenticationError(operation=operation)
+    if response.status == 429:
+        retry_after = response.headers.get("retry-after")
+        retry_seconds = (
+            int(retry_after)
+            if retry_after and len(retry_after) <= 10 and retry_after.isdecimal()
+            else None
+        )
+        raise GwmRateLimitError(operation=operation, retry_after_seconds=retry_seconds)
+    if not 200 <= response.status <= 299:
+        raise GwmHttpError(operation=operation, status=response.status)
+    try:
+        value = _decode_json_bytes(response.body)
+    except (
+        UnicodeDecodeError,
+        json.JSONDecodeError,
+        RecursionError,
+        OverflowError,
+        ValueError,
+    ):
+        raise GwmSchemaError(operation=operation) from None
+    if not isinstance(value, Mapping):
+        raise GwmSchemaError(operation=operation)
+    return value
+
+
+def _decode_json_bytes(value: bytes) -> object:
+    result = json.loads(
+        value.decode("utf-8", errors="strict"),
+        object_pairs_hook=_unique_object,
+        parse_constant=_reject_json_constant,
+    )
+    _validate_json_depth(result)
+    return result
+
+
+def _unique_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
+    result: dict[str, object] = {}
+    normalized: set[str] = set()
+    for key, value in pairs:
+        folded = key.casefold()
+        if folded in normalized:
+            raise ValueError("duplicate_json_key")
+        normalized.add(folded)
+        result[key] = value
+    return result
+
+
+def _reject_json_constant(_value: str) -> object:
+    raise ValueError("invalid_json_number")
+
+
+def _validate_json_depth(value: object, *, depth: int = 0) -> None:
+    if depth > _MAX_JSON_DEPTH:
+        raise ValueError("json_too_deep")
+    if isinstance(value, float) and not math.isfinite(value):
+        raise ValueError("invalid_json_number")
+    if isinstance(value, Mapping):
+        for child in value.values():
+            _validate_json_depth(child, depth=depth + 1)
+    elif isinstance(value, list):
+        for child in value:
+            _validate_json_depth(child, depth=depth + 1)
+
+
+def _property(value: object, name: str) -> object:
+    if not isinstance(value, Mapping):
+        return None
+    for key, child in value.items():
+        if isinstance(key, str) and key.casefold() == name.casefold():
+            return child
+    return None
+
+
+def _scalar_text(value: object) -> str | None:
+    if value is None:
+        return None
+    if isinstance(value, str):
+        return value
+    if isinstance(value, int) and not isinstance(value, bool):
+        return str(value)
+    if isinstance(value, float) and math.isfinite(value):
+        return format(value, "g")
+    raise ValueError("scalar_invalid")
+
+
+def _epoch_milliseconds(instant: datetime) -> int:
+    utc = instant.astimezone(UTC)
+    delta = utc - datetime(1970, 1, 1, tzinfo=UTC)
+    return ((delta.days * 24 * 60 * 60) + delta.seconds) * 1000 + delta.microseconds // 1000
+
+
+def _utc_now() -> datetime:
+    return datetime.now(UTC)
+
+
+def _random_nonce() -> str:
+    return sha256_hex(secrets.token_bytes(16).hex().upper())[:16]
+
+
+def _retryable_initialization_error(error: GwmClientError) -> bool:
+    if type(error) is GwmNetworkError:
+        return True
+    if type(error) is not GwmHttpError:
+        return False
+    status = error.status
+    return status is not None and status in _TRANSIENT_INIT_HTTP_STATUSES
+
+
+def _initialization_failure_labels(group: BaseExceptionGroup[GwmClientError]) -> list[str]:
+    return [_initialization_failure_label(error) for error in _flatten_client_errors(group)]
+
+
+def _initialization_failure_label(error: GwmClientError) -> str:
+    service = "bean_tech" if error.operation == "initialize_bean_tech" else "auto_ai"
+    return _failure_label(service, error)
+
+
+def _discovery_failure_label(error: GwmClientError) -> str:
+    return _failure_label("discovery", error)
+
+
+def _failure_label(prefix: str, error: GwmClientError) -> str:
+    label = f"{prefix}:{error.category}"
+    if type(error) is GwmApiError and error.api_code is not None:
+        label += ":" + error.api_code
+    elif type(error) is GwmHttpError and error.status is not None:
+        label += ":" + str(error.status)
+    return label
+
+
+def _flatten_client_errors(group: BaseExceptionGroup[GwmClientError]) -> list[GwmClientError]:
+    result: list[GwmClientError] = []
+    for error in group.exceptions:
+        if isinstance(error, BaseExceptionGroup):
+            result.extend(_flatten_client_errors(error))
+        elif isinstance(error, GwmClientError):
+            result.append(error)
+    return result
+
+
+def _sanitized_error(error: GwmClientError) -> GwmClientError:
+    operation = error.operation
+    error_type = type(error)
+    if isinstance(error, _ChinaRiskControlError):
+        return GwmApiError(operation=operation, api_code="1013")
+    if error_type is GwmHttpError:
+        return GwmHttpError(operation=operation, status=cast(GwmHttpError, error).status)
+    if error_type is GwmRateLimitError:
+        rate = cast(GwmRateLimitError, error)
+        return GwmRateLimitError(
+            operation=operation,
+            api_code=rate.api_code,
+            retry_after_seconds=rate.retry_after_seconds,
+        )
+    if error_type is GwmAuthenticationError:
+        return GwmAuthenticationError(
+            operation=operation,
+            api_code=cast(GwmAuthenticationError, error).api_code,
+        )
+    if error_type is GwmApiError:
+        return GwmApiError(operation=operation, api_code=cast(GwmApiError, error).api_code)
+    if error_type is GwmClosedError:
+        return GwmClosedError(operation=operation)
+    if error_type is GwmConfigurationError:
+        return GwmConfigurationError(operation=operation)
+    if error_type is GwmDeadlineExceededError:
+        return GwmDeadlineExceededError(operation=operation)
+    if error_type is GwmNetworkError:
+        return GwmNetworkError(operation=operation)
+    if error_type is GwmTlsError:
+        return GwmTlsError(operation=operation)
+    if error_type is GwmRedirectError:
+        return GwmRedirectError(operation=operation)
+    if error_type is GwmResponseTooLargeError:
+        return GwmResponseTooLargeError(operation=operation)
+    if error_type is GwmRoutePolicyError:
+        return GwmRoutePolicyError(operation=operation)
+    if error_type is GwmSchemaError:
+        return GwmSchemaError(operation=operation)
+    if error_type is GwmProtocolError:
+        return GwmProtocolError(operation=operation)
+    return GwmClientError(operation=operation)

@@ -1,8 +1,8 @@
-"""Isolated bounded transport for the mainland-China feasibility POC.
+"""Isolated bounded transport for the mainland-China protocol.
 
 The overseas client intentionally rejects compressed responses and has a
-different route/header contract.  This module keeps China's gzip and fixed
-port requirements behind a separate, two-operation wire boundary.
+different route/header contract.  This module keeps China's authentication,
+gzip, and fixed-port requirements behind a separate closed wire boundary.
 """
 
 from __future__ import annotations
@@ -13,8 +13,9 @@ import math
 import re
 import ssl
 import zlib
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from types import MappingProxyType
 from typing import Any, Literal, Protocol, Self
 from urllib.parse import quote, unquote_to_bytes, urlsplit
@@ -24,6 +25,17 @@ from yarl import URL
 
 from ._dotnet_json import encode_dotnet_json
 from ._protocol import _Deadline
+from .china_crypto import (
+    AUTO_AI_CKEY,
+    BEAN_TECH_APP_KEY,
+    DEFAULT_NOTE_ID,
+    ChinaCryptoError,
+    auto_ai_sign,
+    bean_tech_sign,
+    decrypt_g_app,
+    default_sign,
+    format_china_timestamp,
+)
 from .errors import (
     GwmClientError,
     GwmClosedError,
@@ -38,7 +50,25 @@ from .errors import (
 )
 
 type _ChinaService = Literal["g_app", "bean_tech", "auto_ai"]
+type _ChinaOperation = Literal[
+    "request_verification",
+    "login",
+    "refresh_token",
+    "initialize_bean_tech",
+    "initialize_auto_ai",
+    "acquire_vehicles",
+    "get_last_status",
+]
 
+_G_APP_ORIGIN = "https://gapp-api.gwmapp-h.com"
+_SMS_REQUEST_URL = _G_APP_ORIGIN + "/api-guser/v5/user/login-sms/send"
+_SMS_LOGIN_URL = _G_APP_ORIGIN + "/api-guser/v5/user/sms-login"
+_REFRESH_URL = _G_APP_ORIGIN + "/api-guser/v5/token/refresh"
+_BEAN_TECH_LOGIN_URL = (
+    "https://gw-app-gateway.gwmapp-h.com/app-api/api/v1.0/userAuth/loginSSOAccount"
+)
+_AUTO_AI_LOGIN_ORIGIN = _G_APP_ORIGIN
+_AUTO_AI_LOGIN_PATH = "/tsp/v1/proxy/navinfo/GW.M.APP_LOGIN"
 _DISCOVERY_URL = "https://gapp-api.gwmapp-h.com/gcar/v1/app/android/vehicle/query-vehicle-list"
 _AUTO_AI_ORIGIN = "https://ti.gwm.com.cn:8443"
 _AUTO_AI_PATH = "/tsp/ead"
@@ -49,13 +79,69 @@ _MAX_DECIMAL_HEADER_LENGTH = 20
 _MAX_ALLOWED_RESPONSE_BYTES = 16 * 1024 * 1024
 _MAX_STATUS_URL_LENGTH = 256 * 1024
 _MAX_STATUS_PAYLOAD_LENGTH = 64 * 1024
+_MAX_REQUEST_BODY_LENGTH = 256 * 1024
 _MAX_WIRE_JSON_DEPTH = 16
 _SAFE_RESPONSE_HEADERS = frozenset({"content-type", "retry-after"})
 _SKIP_AUTO_HEADERS = frozenset({"Accept", "Accept-Encoding", "User-Agent"})
 _HEADER_NAME = re.compile(r"[-!#$%&'*+.^_`|~0-9A-Za-z]+")
 _DEVICE_ID = re.compile(r"[0-9A-Fa-f]{32}")
+_G_APP_ENVELOPE = re.compile(r"G_A\([A-Za-z0-9+/]+={0,2},1\)")
+_LOWER_HEX_16 = re.compile(r"[0-9a-f]{16}")
 _LOWER_HEX_64 = re.compile(r"[0-9a-f]{64}")
 _BASE64_SHA1 = re.compile(r"[A-Za-z0-9+/]{27}=")
+_G_APP_BASE_HEADERS = frozenset(
+    {
+        "Authorization",
+        "SourceApp",
+        "SourceType",
+        "SourceAppVer",
+        "SourceAppCode",
+        "Timestamp",
+        "DeviceId",
+        "AppId",
+        "NoteId",
+        "Sign",
+        "Accept-Encoding",
+        "User-Agent",
+        "Content-Type",
+    }
+)
+_G_APP_REFRESH_REQUIRED_HEADERS = frozenset({"G-TOKEN", "ssoId"})
+_G_APP_REFRESH_OPTIONAL_HEADERS = frozenset({"beanId"})
+_BEAN_TECH_LOGIN_HEADERS = frozenset(
+    {
+        "bt-auth-appkey",
+        "bt-auth-nonce",
+        "bt-auth-timestamp",
+        "bt-auth-sign",
+        "rs",
+        "appId",
+        "brand",
+        "terminal",
+        "enterPriseId",
+        "cVer",
+        "tenantId",
+        "operatorRole",
+        "Accept-Encoding",
+        "User-Agent",
+        "Content-Type",
+    }
+)
+_BEAN_TECH_LOGIN_OPTIONAL_HEADERS = frozenset({"beanId"})
+_AUTO_AI_LOGIN_HEADERS = frozenset(
+    {
+        "v",
+        "cid",
+        "client",
+        "sign",
+        "time",
+        "ckey",
+        "protocolVer",
+        "brandType",
+        "Accept-Encoding",
+        "User-Agent",
+    }
+)
 _DISCOVERY_HEADERS = frozenset(
     {
         "G-TOKEN",
@@ -95,11 +181,12 @@ _STATUS_HEADERS = frozenset(
 
 @dataclass(frozen=True, slots=True)
 class ChinaTransportCapabilities:
-    """Non-secret evidence about the deliberately selected POC adapter."""
+    """Non-secret evidence about the deliberately selected China adapter."""
 
     protocol_service_aliases: tuple[str, ...] = ("g_app", "bean_tech", "auto_ai")
     enabled_read_service_aliases: tuple[str, ...] = ("g_app", "auto_ai")
-    bean_tech_http_deferred: bool = True
+    enabled_auth_service_aliases: tuple[str, ...] = ("g_app", "bean_tech", "auto_ai")
+    bean_tech_http_deferred: bool = False
     bounded_gzip: bool = True
     http2_preferred_by_app: bool = True
     http2_available_in_adapter: bool = False
@@ -108,7 +195,7 @@ class ChinaTransportCapabilities:
 
 @dataclass(frozen=True, slots=True)
 class _ChinaTransportRequest:
-    operation: Literal["acquire_vehicles", "get_last_status"]
+    operation: _ChinaOperation
     service: _ChinaService
     method: Literal["GET", "POST"]
     url: str = field(repr=False)
@@ -117,7 +204,13 @@ class _ChinaTransportRequest:
 
     def __post_init__(self) -> None:
         copied = _validated_headers(self.headers)
-        if self.operation == "acquire_vehicles":
+        if self.operation in {"request_verification", "login", "refresh_token"}:
+            _validate_g_app_auth_request(self, copied)
+        elif self.operation == "initialize_bean_tech":
+            _validate_bean_tech_login_request(self, copied)
+        elif self.operation == "initialize_auto_ai":
+            _validate_auto_ai_login_request(self, copied)
+        elif self.operation == "acquire_vehicles":
             _validate_discovery_request(self, copied)
         elif self.operation == "get_last_status":
             _validate_status_request(self, copied)
@@ -164,7 +257,7 @@ class _ChinaAsyncTransport(Protocol):
 
 
 class ChinaAiohttpTransport:
-    """Execute the two allowed China reads without ambient HTTP state."""
+    """Execute the allowed China authentication and reads without ambient HTTP state."""
 
     capabilities = ChinaTransportCapabilities()
 
@@ -253,7 +346,7 @@ class ChinaAiohttpTransport:
         connect_timeout: float,
         read_timeout: float,
     ) -> _ChinaTransportResponse:
-        """Send one validated China POC request and decode at most one gzip stream."""
+        """Send one validated China request and decode at most one gzip stream."""
 
         if type(request) is not _ChinaTransportRequest:
             raise GwmRoutePolicyError()
@@ -358,7 +451,7 @@ class ChinaAiohttpTransport:
             raise GwmProtocolError(operation=operation)
         return _ChinaTransportResponse(
             status=response.status,
-            headers=_selected_headers(response.headers),
+            headers=_selected_headers(response.headers, operation=operation),
             body=body,
         )
 
@@ -462,7 +555,7 @@ def _validated_headers(headers: Mapping[str, str]) -> dict[str, str]:
             or _HEADER_NAME.fullmatch(name) is None
             or lower in normalized
             or not isinstance(value, str)
-            or not value
+            or (not value and name != "Authorization")
             or len(value) > 16 * 1024
             or any(ord(character) < 0x20 or ord(character) > 0x7E for character in value)
         ):
@@ -470,6 +563,248 @@ def _validated_headers(headers: Mapping[str, str]) -> dict[str, str]:
         normalized.add(lower)
         copied[name] = value
     return copied
+
+
+def _validate_g_app_auth_request(
+    request: _ChinaTransportRequest,
+    headers: Mapping[str, str],
+) -> None:
+    routes = {
+        "request_verification": (_SMS_REQUEST_URL, _validate_sms_request_body),
+        "login": (_SMS_LOGIN_URL, _validate_sms_login_body),
+        "refresh_token": (_REFRESH_URL, _validate_refresh_body),
+    }
+    try:
+        expected_url, body_validator = routes[request.operation]
+    except KeyError:
+        raise ValueError("route_invalid") from None
+
+    header_names = set(headers)
+    if request.operation == "refresh_token":
+        required_headers = _G_APP_BASE_HEADERS | _G_APP_REFRESH_REQUIRED_HEADERS
+        if (
+            not header_names >= required_headers
+            or not header_names <= required_headers | _G_APP_REFRESH_OPTIONAL_HEADERS
+        ):
+            raise ValueError("route_invalid")
+        if any(
+            not _safe_wire_text(headers.get(name), maximum=16 * 1024)
+            for name in header_names
+            & (_G_APP_REFRESH_REQUIRED_HEADERS | _G_APP_REFRESH_OPTIONAL_HEADERS)
+        ):
+            raise ValueError("route_invalid")
+    elif header_names != _G_APP_BASE_HEADERS or headers.get("Authorization") != "":
+        raise ValueError("route_invalid")
+
+    if (
+        request.service != "g_app"
+        or request.method != "POST"
+        or request.url != expected_url
+        or not _valid_g_app_static_headers(headers)
+        or not isinstance(request.body, bytes)
+        or len(request.body) > _MAX_REQUEST_BODY_LENGTH
+    ):
+        raise ValueError("route_invalid")
+    raw_body = _ascii_body(request.body)
+    if raw_body is None or _G_APP_ENVELOPE.fullmatch(raw_body) is None:
+        raise ValueError("route_invalid")
+    logical_body = _decode_wire_object_from_g_app(raw_body)
+    if logical_body is None or not body_validator(logical_body):
+        raise ValueError("route_invalid")
+    if request.operation == "refresh_token" and logical_body.get("token") != headers.get("G-TOKEN"):
+        raise ValueError("route_invalid")
+    if headers.get("Sign") != default_sign("POST", request.url, raw_body, headers):
+        raise ValueError("route_invalid")
+
+
+def _validate_sms_request_body(body: Mapping[str, object]) -> bool:
+    return (
+        list(body) == ["phone", "flag"]
+        and _valid_phone(body.get("phone"))
+        and body.get("flag") == "LOGIN"
+    )
+
+
+def _validate_sms_login_body(body: Mapping[str, object]) -> bool:
+    return (
+        list(body) == ["code", "phone", "deviceToken"]
+        and _safe_wire_text(body.get("code"), maximum=64)
+        and _valid_phone(body.get("phone"))
+        and body.get("deviceToken") == ""
+    )
+
+
+def _validate_refresh_body(body: Mapping[str, object]) -> bool:
+    return (
+        list(body) == ["token", "refreshToken"]
+        and _safe_wire_text(body.get("token"), maximum=16 * 1024)
+        and _safe_wire_text(body.get("refreshToken"), maximum=16 * 1024)
+    )
+
+
+def _validate_bean_tech_login_request(
+    request: _ChinaTransportRequest,
+    headers: Mapping[str, str],
+) -> None:
+    raw_body = _utf8_body(request.body)
+    body = _decode_wire_object(raw_body) if raw_body is not None else None
+    if (
+        request.service != "bean_tech"
+        or request.method != "POST"
+        or request.url != _BEAN_TECH_LOGIN_URL
+        or not set(headers) >= _BEAN_TECH_LOGIN_HEADERS
+        or not set(headers) <= _BEAN_TECH_LOGIN_HEADERS | _BEAN_TECH_LOGIN_OPTIONAL_HEADERS
+        or raw_body is None
+        or body is None
+        or list(body) != ["appType", "deviceId", "phone", "ssoId", "ssoToken"]
+        or body.get("appType") != 0
+        or _DEVICE_ID.fullmatch(_string(body.get("deviceId"))) is None
+        or not _valid_phone(body.get("phone"))
+        or not _safe_wire_text(body.get("ssoId"), maximum=16 * 1024)
+        or not _safe_wire_text(body.get("ssoToken"), maximum=16 * 1024)
+        or headers.get("bt-auth-appkey") != BEAN_TECH_APP_KEY
+        or _LOWER_HEX_16.fullmatch(headers.get("bt-auth-nonce", "")) is None
+        or not _epoch_milliseconds(headers.get("bt-auth-timestamp", ""))
+        or headers.get("rs") != "2"
+        or headers.get("appId") != "097a7099af30d960"
+        or headers.get("brand") != "10"
+        or headers.get("terminal") != "GW_APP_GWM"
+        or headers.get("enterPriseId") != "CC01"
+        or (
+            "beanId" in headers
+            and not _safe_wire_text(headers.get("beanId"), maximum=16 * 1024)
+        )
+        or headers.get("cVer") != "2.1.5"
+        or headers.get("tenantId") != "1"
+        or headers.get("operatorRole") != "0"
+        or headers.get("Accept-Encoding") != "gzip"
+        or headers.get("User-Agent") != _OFFICIAL_USER_AGENT
+        or headers.get("Content-Type") != "application/json; charset=UTF-8"
+        or encode_dotnet_json(body) != raw_body
+        or headers.get("bt-auth-sign")
+        != bean_tech_sign(
+            "POST",
+            "/app-api/api/v1.0/userAuth/loginSSOAccount",
+            headers["bt-auth-nonce"],
+            headers["bt-auth-timestamp"],
+            "json=" + raw_body,
+        )
+    ):
+        raise ValueError("route_invalid")
+
+
+def _validate_auto_ai_login_request(
+    request: _ChinaTransportRequest,
+    headers: Mapping[str, str],
+) -> None:
+    if (
+        request.service != "auto_ai"
+        or request.method != "GET"
+        or request.body is not None
+        or set(headers) != _AUTO_AI_LOGIN_HEADERS
+        or not _valid_auto_ai_headers(headers, token_required=False)
+        or not _valid_auto_ai_url(
+            request.url,
+            headers,
+            origin=_AUTO_AI_LOGIN_ORIGIN,
+            path=_AUTO_AI_LOGIN_PATH,
+            function="GW.M.APP_LOGIN",
+            body_validator=_valid_auto_ai_login_body,
+            token_required=False,
+        )
+    ):
+        raise ValueError("route_invalid")
+
+
+def _valid_auto_ai_login_body(body: Mapping[str, object]) -> bool:
+    return (
+        list(body) == ["appType", "phone", "pushId", "pushKey", "ssoid", "ssoTk"]
+        and body.get("appType") == 0
+        and _valid_phone(body.get("phone"))
+        and body.get("pushId") == "0"
+        and body.get("pushKey") == "0"
+        and _safe_wire_text(body.get("ssoid"), maximum=16 * 1024)
+        and _safe_wire_text(body.get("ssoTk"), maximum=16 * 1024)
+    )
+
+
+def _valid_g_app_static_headers(headers: Mapping[str, str]) -> bool:
+    return (
+        headers.get("SourceApp") == "GWM"
+        and headers.get("SourceType") == "ANDROID"
+        and headers.get("SourceAppVer") == "2.1.5"
+        and headers.get("SourceAppCode") == "2150"
+        and headers.get("AppId") == "GWM-APP-ANDROID-1100018"
+        and headers.get("NoteId") == DEFAULT_NOTE_ID
+        and headers.get("Accept-Encoding") == "gzip"
+        and headers.get("User-Agent") == _OFFICIAL_USER_AGENT
+        and headers.get("Content-Type") == "application/json; charset=UTF-8"
+        and _DEVICE_ID.fullmatch(headers.get("DeviceId", "")) is not None
+        and _LOWER_HEX_64.fullmatch(headers.get("Sign", "")) is not None
+        and _second_aligned_epoch(headers.get("Timestamp", ""))
+    )
+
+
+def _ascii_body(body: bytes) -> str | None:
+    try:
+        return body.decode("ascii", errors="strict")
+    except UnicodeDecodeError:
+        return None
+
+
+def _utf8_body(body: object) -> str | None:
+    if not isinstance(body, bytes) or not body or len(body) > _MAX_REQUEST_BODY_LENGTH:
+        return None
+    try:
+        return body.decode("utf-8", errors="strict")
+    except UnicodeDecodeError:
+        return None
+
+
+def _decode_wire_object_from_g_app(raw_body: str) -> Mapping[str, object] | None:
+    try:
+        plaintext = decrypt_g_app(raw_body)
+    except (ChinaCryptoError, TypeError, ValueError):
+        return None
+    return _decode_wire_object(plaintext)
+
+
+def _decode_wire_object(raw_body: str) -> Mapping[str, object] | None:
+    try:
+        value = json.loads(
+            raw_body,
+            object_pairs_hook=_unique_wire_object,
+            parse_constant=_reject_wire_constant,
+        )
+        _validate_wire_json_depth(value)
+        if not isinstance(value, dict) or encode_dotnet_json(value) != raw_body:
+            return None
+    except (
+        TypeError,
+        ValueError,
+        json.JSONDecodeError,
+        RecursionError,
+        OverflowError,
+    ):
+        return None
+    return value
+
+
+def _string(value: object) -> str:
+    return value if isinstance(value, str) else ""
+
+
+def _valid_phone(value: object) -> bool:
+    if not isinstance(value, str) or not value:
+        return False
+    try:
+        encoded = value.encode("utf-8", errors="strict")
+    except UnicodeEncodeError:
+        return False
+    return (
+        len(encoded) <= 64
+        and all(character.isprintable() and not character.isspace() for character in value)
+    )
 
 
 def _validate_discovery_request(request: _ChinaTransportRequest, headers: Mapping[str, str]) -> None:
@@ -489,7 +824,12 @@ def _validate_discovery_request(request: _ChinaTransportRequest, headers: Mappin
         or headers.get("User-Agent") != _OFFICIAL_USER_AGENT
         or headers.get("Content-Type") != "application/json; charset=UTF-8"
         or _DEVICE_ID.fullmatch(headers.get("DeviceId", "")) is None
-        or _LOWER_HEX_64.fullmatch(headers.get("Sign", "")) is None
+        or not _safe_wire_text(headers.get("G-TOKEN"), maximum=16 * 1024)
+        or not _safe_wire_text(headers.get("Authorization"), maximum=16 * 1024)
+        or not _safe_wire_text(headers.get("ssoId"), maximum=16 * 1024)
+        or not _safe_wire_text(headers.get("beanId"), maximum=16 * 1024)
+        or headers.get("Sign")
+        != default_sign("POST", request.url, _DISCOVERY_BODY.decode("ascii"), headers)
         or not _second_aligned_epoch(headers.get("Timestamp", ""))
     ):
         raise ValueError("route_invalid")
@@ -501,32 +841,69 @@ def _validate_status_request(request: _ChinaTransportRequest, headers: Mapping[s
         or request.method != "GET"
         or request.body is not None
         or set(headers) != _STATUS_HEADERS
-        or headers.get("v") != "1.0"
-        or headers.get("client") != "phone"
-        or headers.get("ckey") != "ea49a50f914b8d38af1c84809d302683"
-        or headers.get("protocolVer") != "2.1.2"
-        or headers.get("brandType") != "GWM"
-        or headers.get("Accept-Encoding") != "gzip"
-        or headers.get("User-Agent") != _OFFICIAL_USER_AGENT
-        or _DEVICE_ID.fullmatch(headers.get("cid", "")) is None
-        or _BASE64_SHA1.fullmatch(headers.get("sign", "")) is None
-        or not _epoch_milliseconds(headers.get("time", ""))
-        or not _valid_auto_ai_url(request.url, headers)
+        or not _valid_auto_ai_headers(headers, token_required=True)
+        or not _valid_auto_ai_url(
+            request.url,
+            headers,
+            origin=_AUTO_AI_ORIGIN,
+            path=_AUTO_AI_PATH,
+            function="GW.M.GET_VEHICLE_STATE",
+            body_validator=_valid_status_body,
+            token_required=True,
+        )
     ):
         raise ValueError("route_invalid")
 
 
-def _valid_auto_ai_url(url: str, headers: Mapping[str, str]) -> bool:
+def _valid_auto_ai_headers(headers: Mapping[str, str], *, token_required: bool) -> bool:
+    token = headers.get("token")
+    return (
+        headers.get("v") == "1.0"
+        and headers.get("client") == "phone"
+        and headers.get("ckey") == AUTO_AI_CKEY
+        and headers.get("protocolVer") == "2.1.2"
+        and headers.get("brandType") == "GWM"
+        and headers.get("Accept-Encoding") == "gzip"
+        and headers.get("User-Agent") == _OFFICIAL_USER_AGENT
+        and _DEVICE_ID.fullmatch(headers.get("cid", "")) is not None
+        and _BASE64_SHA1.fullmatch(headers.get("sign", "")) is not None
+        and _epoch_milliseconds(headers.get("time", ""))
+        and headers.get("sign") == auto_ai_sign(headers["time"])
+        and (
+            _safe_wire_text(token, maximum=16 * 1024)
+            if token_required
+            else token is None
+        )
+    )
+
+
+def _valid_status_body(body: Mapping[str, object]) -> bool:
+    return list(body) == ["vin"] and _safe_wire_text(body.get("vin"), maximum=512)
+
+
+def _valid_auto_ai_url(
+    url: str,
+    headers: Mapping[str, str],
+    *,
+    origin: str,
+    path: str,
+    function: str,
+    body_validator: Callable[[Mapping[str, object]], bool],
+    token_required: bool,
+) -> bool:
     try:
         url.encode("ascii")
+        if not url.startswith(origin + path + "?p="):
+            return False
         if len(url) > _MAX_STATUS_URL_LENGTH:
             return False
         parsed = urlsplit(url)
+        expected_origin = urlsplit(origin)
         if (
-            parsed.scheme != "https"
-            or parsed.hostname != "ti.gwm.com.cn"
-            or parsed.port != 8443
-            or parsed.path != _AUTO_AI_PATH
+            parsed.scheme != expected_origin.scheme
+            or parsed.hostname != expected_origin.hostname
+            or parsed.port != expected_origin.port
+            or parsed.path != path
             or not parsed.query.startswith("p=")
             or "&" in parsed.query
             or parsed.username is not None
@@ -563,7 +940,7 @@ def _valid_auto_ai_url(url: str, headers: Mapping[str, str]) -> bool:
         return False
     body = wrapper.get("body")
     header = wrapper.get("header")
-    if not isinstance(body, dict) or list(body) != ["vin"] or not _safe_wire_text(body.get("vin"), maximum=512):
+    if not isinstance(body, dict) or not body_validator(body):
         return False
     if not isinstance(header, dict) or list(header) != [
         "brandType",
@@ -582,16 +959,18 @@ def _valid_auto_ai_url(url: str, headers: Mapping[str, str]) -> bool:
     return (
         header.get("brandType") == "gwm"
         and header.get("cVer") == "2.1.5"
-        and header.get("fn") == "GW.M.GET_VEHICLE_STATE"
+        and header.get("fn") == function
         and header.get("fv") == "0202"
         and header.get("mobileId") == headers.get("cid")
         and header.get("osType") == "Android"
         and header.get("osVer") == ""
         and header.get("rs") == "2"
-        and isinstance(header.get("ts"), str)
-        and len(header["ts"]) == 17
-        and header["ts"].isdecimal()
-        and header.get("tk") == headers.get("token")
+        and _auto_ai_timestamp_matches(headers.get("time", ""), header.get("ts"))
+        and (
+            header.get("tk") == headers.get("token")
+            if token_required
+            else header.get("tk") == ""
+        )
         and header.get("v") == "1.0"
     )
 
@@ -635,6 +1014,19 @@ def _epoch_milliseconds(value: str) -> bool:
     return 10 <= len(value) <= 17 and value.isdecimal()
 
 
+def _auto_ai_timestamp_matches(epoch_milliseconds: str, local_timestamp: object) -> bool:
+    if not _epoch_milliseconds(epoch_milliseconds) or not isinstance(local_timestamp, str):
+        return False
+    seconds, milliseconds = divmod(int(epoch_milliseconds), 1000)
+    try:
+        instant = datetime.fromtimestamp(seconds, tz=UTC).replace(
+            microsecond=milliseconds * 1000
+        )
+    except (OSError, OverflowError, ValueError):
+        return False
+    return local_timestamp == format_china_timestamp(instant)
+
+
 def _second_aligned_epoch(value: str) -> bool:
     return _epoch_milliseconds(value) and value.endswith("000")
 
@@ -675,12 +1067,17 @@ def _single_response_header(
     return None if value is None else str(value)
 
 
-def _selected_headers(headers: Mapping[str, Any]) -> Mapping[str, str]:
-    return {
-        str(name).lower(): str(value)
-        for name, value in headers.items()
-        if str(name).lower() in _SAFE_RESPONSE_HEADERS
-    }
+def _selected_headers(
+    headers: Mapping[str, Any],
+    *,
+    operation: str,
+) -> Mapping[str, str]:
+    selected: dict[str, str] = {}
+    for name in _SAFE_RESPONSE_HEADERS:
+        value = _single_response_header(headers, name, operation=operation)
+        if value is not None:
+            selected[name] = value
+    return selected
 
 
 def _create_ssl_context() -> ssl.SSLContext:

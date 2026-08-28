@@ -1,0 +1,898 @@
+"""Offline production-contract tests for the isolated mainland-China client."""
+
+from __future__ import annotations
+
+import asyncio
+import json
+from collections import Counter, deque
+from collections.abc import Mapping
+from datetime import datetime
+from pathlib import Path
+from typing import Any
+
+import pytest
+
+from gwm_ora_client._protocol import _Deadline
+from gwm_ora_client.china_client import (
+    ChinaAuthenticated,
+    ChinaAuthState,
+    ChinaClient,
+    ChinaClientConfig,
+    ChinaCredentials,
+    ChinaInitializationRequired,
+    ChinaRiskControlRequired,
+    ChinaVehicle,
+    ChinaVehicleStatus,
+    ChinaVerificationRequired,
+)
+from gwm_ora_client.china_transport import (
+    _ChinaTransportRequest,
+    _ChinaTransportResponse,
+)
+from gwm_ora_client.config import RequestTimeouts
+from gwm_ora_client.errors import (
+    GwmApiError,
+    GwmAuthenticationError,
+    GwmClientError,
+    GwmConfigurationError,
+    GwmDeadlineExceededError,
+    GwmHttpError,
+    GwmNetworkError,
+    GwmRateLimitError,
+    GwmRoutePolicyError,
+    GwmSchemaError,
+    GwmTlsError,
+)
+from gwm_ora_client.models import CloudVehicle, CloudVehicleStatus, VehicleIdentifier
+
+FIXTURE = json.loads(
+    (Path(__file__).with_name("fixtures") / "china_auth_contracts_v1.json").read_text(
+        encoding="utf-8"
+    )
+)
+CLOCK = datetime.fromisoformat(FIXTURE["clock"])
+DEVICE_ID = FIXTURE["credentials"]["device_id"]
+PHONE = FIXTURE["credentials"]["phone"]
+CODE = FIXTURE["credentials"]["verification_code"]
+VIN = "LGWTEST0000000001"
+UNSUPPORTED_VIN = "LGWTEST0000000002"
+SENSITIVE = "SENSITIVE-PRIVATE-VALUE-MUST-NOT-LEAK"
+
+
+class _Wait:
+    pass
+
+
+class _FakeTransport:
+    def __init__(self, **plans: list[object]) -> None:
+        self.plans = {operation: deque(items) for operation, items in plans.items()}
+        self.calls: list[_ChinaTransportRequest] = []
+        self.close_calls = 0
+
+    async def execute(
+        self,
+        request: _ChinaTransportRequest,
+        *,
+        deadline: _Deadline,
+        connect_timeout: float,
+        read_timeout: float,
+    ) -> _ChinaTransportResponse:
+        del deadline, connect_timeout, read_timeout
+        self.calls.append(request)
+        queue = self.plans.get(request.operation)
+        if queue is None or not queue:
+            raise AssertionError(f"unexpected operation {request.operation}")
+        item = queue.popleft()
+        if isinstance(item, _Wait):
+            await asyncio.Event().wait()
+        if isinstance(item, BaseException):
+            raise item
+        if isinstance(item, _ChinaTransportResponse):
+            return item
+        return _response(item)
+
+    async def aclose(self) -> None:
+        self.close_calls += 1
+
+
+def _response(value: object, *, status: int = 200, headers: Mapping[str, str] | None = None) -> _ChinaTransportResponse:
+    return _ChinaTransportResponse(
+        status=status,
+        headers={} if headers is None else headers,
+        body=json.dumps(value, separators=(",", ":")).encode(),
+    )
+
+
+def _credentials(*, phone: str = PHONE, device_id: str = DEVICE_ID) -> ChinaCredentials:
+    return ChinaCredentials(phone=phone, device_id=device_id)
+
+
+def _empty_state(credentials: ChinaCredentials | None = None) -> ChinaAuthState:
+    return ChinaAuthState.for_credentials(credentials or _credentials())
+
+
+def _partial_state(credentials: ChinaCredentials | None = None, **changes: object) -> ChinaAuthState:
+    credentials = credentials or _credentials()
+    values: dict[str, object] = {
+        "account_binding": credentials.account_binding,
+        "device_id": credentials.device_id,
+        **FIXTURE["g_app_state"],
+    }
+    values.update(changes)
+    return ChinaAuthState(**values)  # type: ignore[arg-type]
+
+
+def _complete_state(credentials: ChinaCredentials | None = None, **changes: object) -> ChinaAuthState:
+    values: dict[str, object] = {
+        **{
+            name: getattr(_partial_state(credentials), name)
+            for name in ChinaAuthState.__dataclass_fields__
+        },
+        **FIXTURE["complete_state"],
+    }
+    values.update(changes)
+    return ChinaAuthState(**values)  # type: ignore[arg-type]
+
+
+def _success_plans(*, login: bool = True) -> dict[str, list[object]]:
+    plans: dict[str, list[object]] = {
+        "initialize_bean_tech": [FIXTURE["responses"]["bean_tech"]],
+        "initialize_auto_ai": [FIXTURE["responses"]["auto_ai"]],
+        "acquire_vehicles": [FIXTURE["responses"]["discovery"]],
+    }
+    if login:
+        plans["login"] = [FIXTURE["responses"]["login"]]
+    return plans
+
+
+def _client(
+    transport: _FakeTransport,
+    *,
+    clock: Any = lambda: CLOCK,
+    sleeper: Any = None,
+    config: ChinaClientConfig | None = None,
+) -> ChinaClient:
+    return ChinaClient(
+        config or ChinaClientConfig(),
+        transport=transport,
+        clock=clock,
+        salt_source=lambda: bytes.fromhex(FIXTURE["salt_hex"]),
+        nonce_source=lambda: FIXTURE["nonce"],
+        sleeper=sleeper,
+    )
+
+
+def _assert_request(request: _ChinaTransportRequest, expected_name: str) -> None:
+    expected = FIXTURE["requests"][expected_name]
+    assert request.method == expected["method"]
+    assert request.service == expected["service"]
+    assert request.url == expected["url"]
+    assert dict(request.headers) == expected["headers"]
+    assert (None if request.body is None else request.body.decode()) == expected["body"]
+
+
+def test_exact_fixed_contracts_cover_every_task9_route() -> None:
+    credentials = _credentials()
+    empty = _empty_state(credentials)
+    partial = _partial_state(credentials)
+    complete = _complete_state(credentials)
+    client = _client(_FakeTransport())
+
+    requests = {
+        "request_verification": client._build_g_app_request(
+            operation="request_verification",
+            url=FIXTURE["requests"]["request_verification"]["url"],
+            logical_body={"phone": credentials.phone, "flag": "LOGIN"},
+            state=empty,
+            encrypt_body=True,
+        ),
+        "login": client._build_g_app_request(
+            operation="login",
+            url=FIXTURE["requests"]["login"]["url"],
+            logical_body={"code": CODE, "phone": credentials.phone, "deviceToken": ""},
+            state=empty,
+            encrypt_body=True,
+        ),
+        "refresh_request": client._build_g_app_request(
+            operation="refresh_token",
+            url=FIXTURE["requests"]["refresh_request"]["url"],
+            logical_body={"token": complete.g_token, "refreshToken": complete.g_refresh_token},
+            state=complete,
+            encrypt_body=True,
+        ),
+        "initialize_bean_tech": client._build_bean_tech_login_request(credentials, partial),
+        "initialize_auto_ai": client._build_auto_ai_login_request(credentials, partial),
+        "acquire_vehicles": client._build_g_app_request(
+            operation="acquire_vehicles",
+            url=FIXTURE["requests"]["acquire_vehicles"]["url"],
+            logical_body={"vehicleVersion": 13},
+            state=complete,
+            encrypt_body=False,
+        ),
+        "get_last_status": client._build_auto_ai_request(
+            operation="get_last_status",
+            state=complete,
+            function="GW.M.GET_VEHICLE_STATE",
+            body={"vin": VIN},
+            url="https://ti.gwm.com.cn:8443/tsp/ead",
+            include_token=True,
+        ),
+    }
+    for name, request in requests.items():
+        _assert_request(request, name)
+
+
+def test_credentials_state_and_result_models_are_bound_immutable_and_repr_safe() -> None:
+    credentials = _credentials(device_id="01234567-89ab-cdef")
+    assert credentials.device_id == "0123456789abcdef0000000000000000"
+    assert len(credentials.account_binding) == 64
+    assert PHONE not in repr(credentials)
+    state = _partial_state(credentials)
+    assert state.matches(credentials)
+    assert state.has_g_app
+    assert not state.complete
+    assert FIXTURE["g_app_state"]["g_token"] not in repr(state)
+    result = ChinaInitializationRequired(state=state, failures=("auto_ai:network_error",))
+    assert FIXTURE["g_app_state"]["g_token"] not in repr(result)
+
+    with pytest.raises((AttributeError, TypeError)):
+        state.g_token = SENSITIVE  # type: ignore[misc]
+    with pytest.raises(ValueError, match="^auth_state_invalid$"):
+        ChinaAuthState(
+            account_binding=credentials.account_binding,
+            device_id=credentials.device_id,
+            bean_tech_access_token="SYNTHETIC-ORPHAN",
+        )
+    with pytest.raises(ValueError, match="^auth_state_invalid$"):
+        _partial_state(credentials, auto_ai_token_id="SYNTHETIC-ONLY-TOKEN")
+    with pytest.raises(ValueError, match="^auth_state_invalid$"):
+        _partial_state(credentials, bean_tech_access_token="SYNTHETIC-ONLY-BEAN")
+    with pytest.raises(ValueError, match="^auth_state_invalid$"):
+        _partial_state(
+            credentials,
+            auto_ai_token_id="SYNTHETIC-AUTO-TOKEN",
+            auto_ai_user_id="SYNTHETIC-AUTO-USER",
+        )
+
+
+@pytest.mark.parametrize(
+    "phone",
+    ["", "contains space", "contains\N{NO-BREAK SPACE}space", "bad\nphone", "X" * 65],
+)
+def test_phone_preflight_matches_transport_printable_no_space_boundary(phone: str) -> None:
+    with pytest.raises(ValueError, match="^credentials_invalid$"):
+        _credentials(phone=phone)
+
+
+def test_phone_preflight_accepts_bounded_printable_utf8() -> None:
+    assert _credentials(phone="合成号码").phone == "合成号码"
+
+
+@pytest.mark.asyncio
+async def test_sms_request_is_throttled_and_publishes_no_secret_code() -> None:
+    transport = _FakeTransport(request_verification=[{"code": "000000", "data": {}}])
+    client = _client(transport)
+    first = await client.authenticate(_credentials())
+    assert isinstance(first, ChinaVerificationRequired)
+    assert first.code_requested
+    assert first.state.verification_requested_at == CLOCK
+    assert CODE not in repr(first)
+
+    second = await client.authenticate(_credentials(), state=first.state)
+    assert isinstance(second, ChinaVerificationRequired)
+    assert not second.code_requested
+    assert [request.operation for request in transport.calls] == ["request_verification"]
+    _assert_request(transport.calls[0], "request_verification")
+
+
+@pytest.mark.asyncio
+async def test_sms_login_initializes_both_services_then_forces_discovery_before_install() -> None:
+    transport = _FakeTransport(**_success_plans())
+    client = _client(transport)
+    result = await client.authenticate(_credentials(), verification_code=CODE)
+    assert isinstance(result, ChinaAuthenticated)
+    assert result.state.complete
+    assert result.state.bean_tech_access_token == "SYNTHETIC-BEAN-ACCESS"
+    assert result.state.auto_ai_token_id == "SYNTHETIC-AUTO-TOKEN"
+    assert client.authenticated
+    operations = [request.operation for request in transport.calls]
+    assert operations[0] == "login"
+    assert set(operations[1:3]) == {"initialize_bean_tech", "initialize_auto_ai"}
+    assert operations[-1] == "acquire_vehicles"
+    assert result.state.verification_requested_at is None
+
+
+@pytest.mark.asyncio
+async def test_partial_state_retries_initialization_directly_without_refresh_or_sms() -> None:
+    transport = _FakeTransport(**_success_plans(login=False))
+    client = _client(transport)
+    result = await client.authenticate(_credentials(), state=_partial_state())
+    assert isinstance(result, ChinaAuthenticated)
+    operations = [request.operation for request in transport.calls]
+    assert set(operations[:2]) == {"initialize_bean_tech", "initialize_auto_ai"}
+    assert operations[-1] == "acquire_vehicles"
+    assert "refresh_token" not in operations
+    assert "request_verification" not in operations
+    assert "login" not in operations
+
+
+@pytest.mark.asyncio
+async def test_matching_complete_state_is_never_accepted_from_cache() -> None:
+    transport = _FakeTransport(acquire_vehicles=[FIXTURE["responses"]["discovery"]])
+    client = _client(transport)
+    result = await client.authenticate(_credentials(), state=_complete_state())
+    assert isinstance(result, ChinaAuthenticated)
+    assert [request.operation for request in transport.calls] == ["acquire_vehicles"]
+
+
+@pytest.mark.asyncio
+async def test_definitive_complete_session_rejection_refreshes_then_reinitializes() -> None:
+    refresh = {
+        "code": "000000",
+        "data": {
+            "token": "SYNTHETIC-G-TOKEN-ROTATED",
+            "refreshToken": "SYNTHETIC-G-REFRESH-ROTATED",
+            "ssoToken": "SYNTHETIC-SSO-TOKEN-ROTATED",
+        },
+    }
+    plans = _success_plans(login=False)
+    plans["acquire_vehicles"] = [
+        _response({}, status=401),
+        FIXTURE["responses"]["discovery"],
+    ]
+    plans["refresh_token"] = [refresh]
+    transport = _FakeTransport(**plans)
+    client = _client(transport)
+    result = await client.authenticate(_credentials(), state=_complete_state())
+    assert isinstance(result, ChinaAuthenticated)
+    assert result.state.g_token == "SYNTHETIC-G-TOKEN-ROTATED"
+    assert result.state.g_refresh_token == "SYNTHETIC-G-REFRESH-ROTATED"
+    assert result.state.bean_tech_access_token == "SYNTHETIC-BEAN-ACCESS"
+    operations = [request.operation for request in transport.calls]
+    assert operations[0:2] == ["acquire_vehicles", "refresh_token"]
+    assert operations[-1] == "acquire_vehicles"
+    _assert_request(transport.calls[1], "refresh_request")
+
+
+@pytest.mark.asyncio
+async def test_refresh_rotation_failure_publishes_only_new_g_app_state() -> None:
+    transport = _FakeTransport(
+        acquire_vehicles=[_response({}, status=401)],
+        refresh_token=[
+            {
+                "code": "000000",
+                "data": {
+                    "token": "SYNTHETIC-G-TOKEN-ROTATED",
+                    "refreshToken": "SYNTHETIC-G-REFRESH-ROTATED",
+                    "ssoToken": "SYNTHETIC-SSO-TOKEN-ROTATED",
+                },
+            }
+        ],
+        initialize_bean_tech=[GwmSchemaError(operation="initialize_bean_tech")],
+        initialize_auto_ai=[FIXTURE["responses"]["auto_ai"]],
+    )
+    client = _client(transport)
+
+    result = await client.authenticate(_credentials(), state=_complete_state())
+
+    assert isinstance(result, ChinaInitializationRequired)
+    assert result.state.g_token == "SYNTHETIC-G-TOKEN-ROTATED"
+    assert result.state.g_refresh_token == "SYNTHETIC-G-REFRESH-ROTATED"
+    assert result.state.bean_tech_access_token is None
+    assert result.state.auto_ai_token_id is None
+    _assert_request(transport.calls[1], "refresh_request")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("refresh_response", "error_type"),
+    [
+        ({"code": "7654321"}, GwmApiError),
+        (_response({}, status=429), GwmRateLimitError),
+    ],
+)
+async def test_refresh_unknown_or_rate_limit_failure_never_cascades(
+    refresh_response: object,
+    error_type: type[GwmClientError],
+) -> None:
+    transport = _FakeTransport(
+        acquire_vehicles=[_response({}, status=401)],
+        refresh_token=[refresh_response],
+    )
+    client = _client(transport)
+
+    with pytest.raises(error_type):
+        await client.authenticate(_credentials(), state=_complete_state())
+
+    assert [request.operation for request in transport.calls] == [
+        "acquire_vehicles",
+        "refresh_token",
+    ]
+    _assert_request(transport.calls[1], "refresh_request")
+
+
+@pytest.mark.asyncio
+async def test_unknown_complete_session_api_error_does_not_refresh_or_discard_installed_state() -> None:
+    transport = _FakeTransport(
+        acquire_vehicles=[
+            FIXTURE["responses"]["discovery"],
+            {"code": "7654321", "description": SENSITIVE},
+        ]
+    )
+    client = _client(transport)
+    authenticated = await client.authenticate(_credentials(), state=_complete_state())
+    assert isinstance(authenticated, ChinaAuthenticated)
+    with pytest.raises(GwmApiError) as raised:
+        await client.authenticate(_credentials(), state=authenticated.state)
+    assert raised.value.api_code == "7654321"
+    assert client.authenticated
+    assert [request.operation for request in transport.calls] == [
+        "acquire_vehicles",
+        "acquire_vehicles",
+    ]
+    assert SENSITIVE not in repr(raised.value)
+
+
+@pytest.mark.asyncio
+async def test_unknown_sms_login_error_propagates_and_code_is_one_shot_per_account() -> None:
+    transport = _FakeTransport(login=[{"code": "7000000", "description": SENSITIVE}])
+    client = _client(transport)
+    with pytest.raises(GwmApiError) as raised:
+        await client.authenticate(_credentials(), verification_code=CODE)
+    assert raised.value.api_code == "7000000"
+
+    repeated = await client.authenticate(_credentials(), verification_code=CODE)
+    assert isinstance(repeated, ChinaVerificationRequired)
+    assert not repeated.code_requested
+    assert not repeated.code_rejected
+    assert Counter(request.operation for request in transport.calls) == Counter({"login": 1})
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("status", [401, 403])
+async def test_sms_login_auth_rejection_is_an_explicit_finite_continuation(status: int) -> None:
+    transport = _FakeTransport(
+        request_verification=[{"code": "000000", "data": {}}],
+        login=[_response({}, status=status)],
+    )
+    client = _client(transport)
+    requested = await client.authenticate(_credentials())
+    assert isinstance(requested, ChinaVerificationRequired)
+
+    rejected = await client.authenticate(
+        _credentials(),
+        state=requested.state,
+        verification_code=CODE,
+    )
+
+    assert isinstance(rejected, ChinaVerificationRequired)
+    assert not rejected.code_requested
+    assert rejected.code_rejected
+    assert rejected.state.verification_requested_at is None
+    assert [request.operation for request in transport.calls] == ["request_verification", "login"]
+
+
+@pytest.mark.asyncio
+async def test_new_sms_delivery_rearms_one_shot_code_submission_without_retaining_code() -> None:
+    transport = _FakeTransport(
+        login=[{"code": "7000000"}, {"code": "7000001"}],
+        request_verification=[{"code": "000000", "data": {}}],
+    )
+    client = _client(transport)
+    with pytest.raises(GwmApiError):
+        await client.authenticate(_credentials(), verification_code=CODE)
+    requested = await client.authenticate(_credentials())
+    assert isinstance(requested, ChinaVerificationRequired)
+    assert requested.code_requested
+    with pytest.raises(GwmApiError):
+        await client.authenticate(
+            _credentials(),
+            state=requested.state,
+            verification_code=CODE,
+        )
+    assert Counter(request.operation for request in transport.calls) == Counter(
+        {"login": 2, "request_verification": 1}
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("operation", ["request_verification", "login"])
+async def test_risk_control_1013_is_a_typed_stop_with_no_cascade(operation: str) -> None:
+    transport = _FakeTransport(**{operation: [{"code": "1013", "description": SENSITIVE}]})
+    client = _client(transport)
+    result = await client.authenticate(
+        _credentials(),
+        verification_code=CODE if operation == "login" else None,
+    )
+    assert isinstance(result, ChinaRiskControlRequired)
+    assert result.api_code == "1013"
+    assert [request.operation for request in transport.calls] == [operation]
+    assert SENSITIVE not in repr(result)
+
+
+@pytest.mark.asyncio
+async def test_outer_g_app_auto_ai_risk_control_is_not_misclassified_as_schema() -> None:
+    transport = _FakeTransport(
+        initialize_bean_tech=[FIXTURE["responses"]["bean_tech"]],
+        initialize_auto_ai=[{"code": "1013", "description": SENSITIVE}],
+    )
+    client = _client(transport)
+
+    result = await client.authenticate(_credentials(), state=_partial_state())
+
+    assert isinstance(result, ChinaRiskControlRequired)
+    assert result.state == _partial_state()
+    assert SENSITIVE not in repr(result)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("auto_ai_response", "failure"),
+    [
+        ({"code": "7654321", "description": SENSITIVE}, "auto_ai:api_error:7654321"),
+        ({"code": []}, "auto_ai:schema_error"),
+    ],
+)
+async def test_outer_g_app_auto_ai_errors_keep_exact_classification(
+    auto_ai_response: object,
+    failure: str,
+) -> None:
+    transport = _FakeTransport(
+        initialize_bean_tech=[FIXTURE["responses"]["bean_tech"]],
+        initialize_auto_ai=[auto_ai_response],
+    )
+    client = _client(transport)
+
+    result = await client.authenticate(_credentials(), state=_partial_state())
+
+    assert isinstance(result, ChinaInitializationRequired)
+    assert result.failures == (failure,)
+    assert result.state == _partial_state()
+    assert SENSITIVE not in repr(result)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("code", [[], {}, True])
+async def test_malformed_application_code_is_schema_not_network(code: object) -> None:
+    transport = _FakeTransport(request_verification=[{"code": code}])
+    client = _client(transport)
+
+    with pytest.raises(GwmSchemaError):
+        await client.authenticate(_credentials())
+
+
+@pytest.mark.asyncio
+async def test_malformed_login_token_is_schema_not_network() -> None:
+    transport = _FakeTransport(
+        login=[
+            {
+                "code": "000000",
+                "data": {
+                    "gToken": [],
+                    "gRefreshToken": "SYNTHETIC-G-REFRESH",
+                    "ssoToken": "SYNTHETIC-SSO-TOKEN",
+                    "userId": "SYNTHETIC-USER",
+                    "beanId": "SYNTHETIC-BEAN",
+                },
+            }
+        ]
+    )
+    client = _client(transport)
+
+    with pytest.raises(GwmSchemaError):
+        await client.authenticate(_credentials(), verification_code=CODE)
+
+
+@pytest.mark.asyncio
+async def test_initialization_retries_only_network_and_selected_gateway_failures() -> None:
+    sleeps: list[float] = []
+
+    async def sleeper(delay: float) -> None:
+        sleeps.append(delay)
+
+    transport = _FakeTransport(
+        initialize_bean_tech=[
+            GwmNetworkError(operation="initialize_bean_tech"),
+            GwmHttpError(operation="initialize_bean_tech", status=503),
+            FIXTURE["responses"]["bean_tech"],
+        ],
+        initialize_auto_ai=[FIXTURE["responses"]["auto_ai"]],
+        acquire_vehicles=[FIXTURE["responses"]["discovery"]],
+    )
+    client = _client(transport, sleeper=sleeper)
+    result = await client.authenticate(_credentials(), state=_partial_state())
+    assert isinstance(result, ChinaAuthenticated)
+    assert sleeps == [1.0, 1.0]
+    assert Counter(request.operation for request in transport.calls)["initialize_bean_tech"] == 3
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("failure", "category"),
+    [
+        (GwmTlsError(operation="initialize_bean_tech"), "tls_error"),
+        (GwmRateLimitError(operation="initialize_bean_tech"), "rate_limit_error"),
+        (GwmSchemaError(operation="initialize_bean_tech"), "schema_error"),
+        (GwmAuthenticationError(operation="initialize_bean_tech"), "authentication_error"),
+    ],
+)
+async def test_terminal_initialization_failures_are_not_retried_or_cascaded(
+    failure: GwmClientError,
+    category: str,
+) -> None:
+    transport = _FakeTransport(
+        initialize_bean_tech=[failure],
+        initialize_auto_ai=[FIXTURE["responses"]["auto_ai"]],
+    )
+    client = _client(transport)
+    result = await client.authenticate(_credentials(), state=_partial_state())
+    assert isinstance(result, ChinaInitializationRequired)
+    assert not result.state.complete
+    assert result.state.bean_tech_access_token is None
+    assert result.state.auto_ai_token_id is None
+    assert any(category in label for label in result.failures)
+    assert Counter(request.operation for request in transport.calls)["initialize_bean_tech"] == 1
+    assert all(request.operation not in {"refresh_token", "login", "request_verification"} for request in transport.calls)
+
+
+@pytest.mark.asyncio
+async def test_unknown_initialization_api_error_publishes_g_app_only_partial_metadata() -> None:
+    transport = _FakeTransport(
+        initialize_bean_tech=[{"code": "7654321", "description": SENSITIVE}],
+        initialize_auto_ai=[FIXTURE["responses"]["auto_ai"]],
+    )
+    client = _client(transport)
+    result = await client.authenticate(_credentials(), state=_partial_state())
+    assert isinstance(result, ChinaInitializationRequired)
+    assert result.failures == ("bean_tech:api_error:7654321",)
+    assert result.state.g_token == "SYNTHETIC-G-TOKEN"
+    assert result.state.bean_tech_access_token is None
+    assert result.state.auto_ai_token_id is None
+    assert SENSITIVE not in repr(result)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("service", "response", "failure"),
+    [
+        (
+            "initialize_bean_tech",
+            {"code": "000000", "data": {"accessToken": []}},
+            "bean_tech:schema_error",
+        ),
+        (
+            "initialize_auto_ai",
+            {"header": {"c": 0}, "body": {"tokenId": [], "userId": "SYNTHETIC-USER"}},
+            "auto_ai:schema_error",
+        ),
+    ],
+)
+async def test_malformed_platform_tokens_publish_schema_partial(
+    service: str,
+    response: object,
+    failure: str,
+) -> None:
+    plans: dict[str, list[object]] = {
+        "initialize_bean_tech": [FIXTURE["responses"]["bean_tech"]],
+        "initialize_auto_ai": [FIXTURE["responses"]["auto_ai"]],
+    }
+    plans[service] = [response]
+    client = _client(_FakeTransport(**plans))
+
+    result = await client.authenticate(_credentials(), state=_partial_state())
+
+    assert isinstance(result, ChinaInitializationRequired)
+    assert result.failures == (failure,)
+    assert not result.state.complete
+    assert result.state.bean_tech_access_token is None
+    assert result.state.auto_ai_token_id is None
+
+
+@pytest.mark.asyncio
+async def test_platform_success_followed_by_discovery_failure_discards_downstream_pair() -> None:
+    plans = _success_plans(login=False)
+    plans["acquire_vehicles"] = [_response({}, status=502)]
+    transport = _FakeTransport(**plans)
+    client = _client(transport)
+    result = await client.authenticate(_credentials(), state=_partial_state())
+    assert isinstance(result, ChinaInitializationRequired)
+    assert result.failures == ("discovery:http_error:502",)
+    assert not result.state.complete
+    assert result.state.bean_tech_access_token is None
+    assert result.state.auto_ai_token_id is None
+    assert not client.authenticated
+
+
+@pytest.mark.asyncio
+async def test_missing_platform_prerequisite_fails_locally_without_one_sided_initialization() -> None:
+    partial = _partial_state(sso_token=None, pt_token=None)
+    transport = _FakeTransport()
+    client = _client(transport)
+    result = await client.authenticate(_credentials(), state=partial)
+    assert isinstance(result, ChinaInitializationRequired)
+    assert set(result.failures) == {
+        "bean_tech:configuration_error",
+        "auto_ai:configuration_error",
+    }
+    assert transport.calls == []
+
+
+@pytest.mark.asyncio
+async def test_discovery_and_status_return_cloud_compatible_typed_privacy_minimized_models() -> None:
+    plans = _success_plans()
+    plans["get_last_status"] = [FIXTURE["responses"]["status"]]
+    transport = _FakeTransport(**plans)
+    client = _client(transport)
+    authenticated = await client.authenticate(_credentials(), verification_code=CODE)
+    assert isinstance(authenticated, ChinaAuthenticated)
+
+    status = await client.get_last_status(VehicleIdentifier(VIN))
+    assert isinstance(status, ChinaVehicleStatus)
+    assert isinstance(status, CloudVehicleStatus)
+    values = {item.code: item.value for item in status.items}
+    assert values["2013021"] == "78"
+    assert values["2011501"] == "204"
+    assert values["2103010"] == "56040"
+    assert values["2208001"] == "0"
+    assert status.latitude == 0.0
+    assert status.longitude == 0.0
+    assert "vehicleSts" not in repr(status)
+    assert VIN not in repr(status)
+    _assert_request(transport.calls[-1], "get_last_status")
+
+
+@pytest.mark.asyncio
+async def test_discovery_models_retain_only_safe_mapping_metadata_and_navinfo_is_enforced() -> None:
+    transport = _FakeTransport(
+        acquire_vehicles=[
+            FIXTURE["responses"]["discovery"],
+            FIXTURE["responses"]["discovery"],
+        ]
+    )
+    client = _client(transport)
+    authenticated = await client.authenticate(_credentials(), state=_complete_state())
+    assert isinstance(authenticated, ChinaAuthenticated)
+    vehicles = await client.acquire_vehicles()
+    assert all(isinstance(vehicle, ChinaVehicle | CloudVehicle) for vehicle in vehicles)
+    assert vehicles[0].platform == "navinfo"
+    assert vehicles[0].network_type == 2
+    assert vehicles[0].tank_capacity == 56.0
+    assert VIN not in repr(vehicles[0])
+
+    before = len(transport.calls)
+    with pytest.raises(GwmRoutePolicyError):
+        await client.get_last_status(VehicleIdentifier(UNSUPPORTED_VIN))
+    assert len(transport.calls) == before
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("tank_capacity", ["not-a-number", -1, True, [], "NaN", 10**400])
+async def test_optional_tank_capacity_quirks_do_not_reject_discovery(tank_capacity: object) -> None:
+    discovery = {
+        "code": "000000",
+        "data": {
+            "acquireVehiclesList": [
+                {
+                    "vin": VIN,
+                    "vehicleId": "synthetic-vehicle-1",
+                    "belongPlatform": "navinfo",
+                    "vehicleNetworkType": 2,
+                    "tankCapacity": tank_capacity,
+                }
+            ]
+        },
+    }
+    transport = _FakeTransport(acquire_vehicles=[discovery, discovery])
+    client = _client(transport)
+    authenticated = await client.authenticate(_credentials(), state=_complete_state())
+    assert isinstance(authenticated, ChinaAuthenticated)
+
+    vehicles = await client.acquire_vehicles()
+
+    assert vehicles[0].tank_capacity is None
+
+
+@pytest.mark.asyncio
+async def test_status_auth_rejection_revokes_read_eligibility_and_session() -> None:
+    plans = _success_plans()
+    plans["get_last_status"] = [_response({}, status=401)]
+    transport = _FakeTransport(**plans)
+    client = _client(transport)
+    await client.authenticate(_credentials(), verification_code=CODE)
+    with pytest.raises(GwmAuthenticationError):
+        await client.get_last_status(VehicleIdentifier(VIN))
+    assert not client.authenticated
+    with pytest.raises(GwmAuthenticationError):
+        await client.acquire_vehicles()
+
+
+@pytest.mark.asyncio
+async def test_cancellation_and_deadline_propagate_without_installing_state() -> None:
+    transport = _FakeTransport(request_verification=[_Wait(), _Wait()])
+    config = ChinaClientConfig(timeouts=RequestTimeouts(total=0.05, connect=0.05, read=0.05))
+    client = _client(transport, config=config)
+    with pytest.raises(GwmDeadlineExceededError):
+        await client.authenticate(_credentials())
+    assert not client.authenticated
+
+    task = asyncio.create_task(client.authenticate(_credentials()))
+    await asyncio.sleep(0)
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    assert not client.authenticated
+
+
+@pytest.mark.asyncio
+async def test_cancelled_matching_state_revalidation_preserves_installed_session() -> None:
+    transport = _FakeTransport(
+        acquire_vehicles=[FIXTURE["responses"]["discovery"], _Wait()],
+    )
+    client = _client(transport)
+    authenticated = await client.authenticate(_credentials(), state=_complete_state())
+    assert isinstance(authenticated, ChinaAuthenticated)
+
+    task = asyncio.create_task(client.authenticate(_credentials(), state=authenticated.state))
+    await asyncio.sleep(0)
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+
+    assert client.authenticated
+    assert [request.operation for request in transport.calls] == [
+        "acquire_vehicles",
+        "acquire_vehicles",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_external_transport_lifecycle_and_invalid_injected_entropy_are_fail_closed() -> None:
+    external = _FakeTransport()
+    client = _client(external)
+    await client.aclose()
+    await client.aclose()
+    assert external.close_calls == 0
+    assert client.closed
+
+    bad_salt_transport = _FakeTransport(request_verification=[{"code": "000000"}])
+    bad_salt = ChinaClient(
+        ChinaClientConfig(),
+        transport=bad_salt_transport,
+        clock=lambda: CLOCK,
+        salt_source=lambda: b"short",
+    )
+    with pytest.raises(GwmConfigurationError):
+        await bad_salt.authenticate(_credentials())
+    assert bad_salt_transport.calls == []
+
+    bad_nonce_transport = _FakeTransport()
+    bad_nonce = ChinaClient(
+        ChinaClientConfig(),
+        transport=bad_nonce_transport,
+        clock=lambda: CLOCK,
+        salt_source=lambda: bytes.fromhex(FIXTURE["salt_hex"]),
+        nonce_source=lambda: SENSITIVE,
+    )
+    result = await bad_nonce.authenticate(_credentials(), state=_partial_state())
+    assert isinstance(result, ChinaInitializationRequired)
+    assert all(SENSITIVE not in failure for failure in result.failures)
+
+
+def test_invalid_config_timeout_code_and_state_inputs_fail_before_transport() -> None:
+    with pytest.raises(ValueError, match="^response_limit_invalid$"):
+        ChinaClientConfig(max_response_bytes=0)
+    with pytest.raises(GwmConfigurationError):
+        ChinaClient(ChinaClientConfig(), transport=_FakeTransport(), clock=object())  # type: ignore[arg-type]
+
+
+@pytest.mark.asyncio
+async def test_invalid_auth_timeout_and_code_fail_without_http() -> None:
+    transport = _FakeTransport()
+    client = _client(transport)
+    with pytest.raises(GwmConfigurationError):
+        await client.authenticate(_credentials(), timeout=31)
+    with pytest.raises(GwmConfigurationError):
+        await client.authenticate(_credentials(), verification_code="bad\ncode")
+    with pytest.raises(GwmConfigurationError):
+        await client.authenticate(_credentials(), verification_code="X" * 65)
+    assert transport.calls == []
