@@ -61,6 +61,7 @@ type _ChinaOperation = Literal[
     "send_climate_command",
     "send_lock_command",
     "send_close_windows_command",
+    "send_vehicle_control_command",
     "get_remote_command_result",
 ]
 
@@ -268,6 +269,8 @@ class _ChinaTransportRequest:
             _validate_lock_window_command_request(self, copied, command_kind="lock")
         elif self.operation == "send_close_windows_command":
             _validate_lock_window_command_request(self, copied, command_kind="windows")
+        elif self.operation == "send_vehicle_control_command":
+            _validate_vehicle_control_command_request(self, copied)
         elif self.operation == "get_remote_command_result":
             _validate_remote_command_result_request(self, copied)
         else:  # pragma: no cover - the Literal is still a runtime boundary
@@ -996,6 +999,104 @@ def _validate_lock_window_command_request(
         raise ValueError("route_invalid")
 
 
+def _validate_vehicle_control_command_request(
+    request: _ChinaTransportRequest,
+    headers: Mapping[str, str],
+) -> None:
+    variants: tuple[tuple[str, Literal["common", "engine_start"]], ...] = (
+        ("GW.M.SEND_COMMON_COMMAND", "common"),
+        ("GW.M.SET_AND_OPEN_COMMAND", "engine_start"),
+    )
+    valid_auto_ai = (
+        request.service == "auto_ai"
+        and request.method == "GET"
+        and request.body is None
+        and set(headers) == _STATUS_HEADERS
+        and _valid_auto_ai_headers(headers, token_required=True)
+        and any(
+            _valid_auto_ai_url(
+                request.url,
+                headers,
+                origin=_AUTO_AI_ORIGIN,
+                path=_AUTO_AI_PATH,
+                function=function,
+                body_validator=_vehicle_control_body_validator(variant),
+                token_required=True,
+            )
+            for function, variant in variants
+        )
+    )
+    valid_bean_tech = _valid_bean_tech_command_request(
+        request,
+        headers,
+        command_kind="vehicle_control",
+    )
+    if not valid_auto_ai and not valid_bean_tech:
+        raise ValueError("route_invalid")
+
+
+def _valid_vehicle_control_body(
+    body: Mapping[str, object],
+    variant: Literal["common", "engine_start"],
+) -> bool:
+    common_prefix = (
+        body.get("flag") == 1
+        and _LOWER_HEX_32.fullmatch(str(body.get("signStr", ""))) is not None
+        and _safe_wire_text(body.get("userId"), maximum=16 * 1024)
+        and body.get("userType") == "0"
+        and _VIN.fullmatch(str(body.get("vin", ""))) is not None
+    )
+    if not common_prefix:
+        return False
+    if variant == "engine_start":
+        engine = body.get("engineParams")
+        return (
+            list(body)
+            == [
+                "flag",
+                "signStr",
+                "userId",
+                "userType",
+                "vin",
+                "cmdCode",
+                "engineParams",
+            ]
+            and body.get("cmdCode") == 15
+            and isinstance(engine, Mapping)
+            and list(engine) == ["runTime"]
+            and isinstance(engine.get("runTime"), int)
+            and not isinstance(engine.get("runTime"), bool)
+            and 5 <= int(engine["runTime"]) <= 30
+        )
+    if body.get("cmdCode") == 29:
+        return (
+            list(body)
+            == [
+                "flag",
+                "signStr",
+                "userId",
+                "userType",
+                "vin",
+                "cmdCode",
+                "openAngle",
+            ]
+            and body.get("openAngle") in {1, 2, 3}
+        )
+    return (
+        list(body) == ["flag", "signStr", "userId", "userType", "vin", "cmdCode"]
+        and body.get("cmdCode") in {5, 16, 17, 18, 19, 20, 28}
+    )
+
+
+def _vehicle_control_body_validator(
+    variant: Literal["common", "engine_start"],
+) -> Callable[[Mapping[str, object]], bool]:
+    def validate(body: Mapping[str, object]) -> bool:
+        return _valid_vehicle_control_body(body, variant)
+
+    return validate
+
+
 def _valid_lock_window_body(
     body: Mapping[str, object], expected_codes: set[int]
 ) -> bool:
@@ -1014,7 +1115,7 @@ def _valid_bean_tech_command_request(
     request: _ChinaTransportRequest,
     headers: Mapping[str, str],
     *,
-    command_kind: Literal["lock", "windows"],
+    command_kind: Literal["lock", "windows", "vehicle_control"],
 ) -> bool:
     raw_body = _utf8_body(request.body)
     body = _decode_wire_object(raw_body) if raw_body is not None else None
@@ -1029,17 +1130,46 @@ def _valid_bean_tech_command_request(
         return False
     command = commands[0]
     sequence = body.get("seqNo")
-    expected_control_types = {"VEHICLE_LOCK", "VEHICLE_UNLOCK"}
-    valid_command = (
-        list(command) == ["controlType", "cmdBody"]
-        and command.get("controlType") in expected_control_types
-        and command.get("cmdBody") is None
-        if command_kind == "lock"
-        else list(command) == ["controlType", "cmdBody"]
-        and command.get("controlType") == "WINDOW_CLOSE"
-        and command.get("cmdBody")
-        == {"leftFront": 0, "leftBack": 0, "rightFront": 0, "rightBack": 0}
-    )
+    valid_command_shape = list(command) == ["controlType", "cmdBody"]
+    if command_kind == "lock":
+        valid_command = (
+            valid_command_shape
+            and command.get("controlType") in {"VEHICLE_LOCK", "VEHICLE_UNLOCK"}
+            and command.get("cmdBody") is None
+        )
+    elif command_kind == "windows":
+        valid_command = (
+            valid_command_shape
+            and command.get("controlType") == "WINDOW_CLOSE"
+            and command.get("cmdBody")
+            == {"leftFront": 0, "leftBack": 0, "rightFront": 0, "rightBack": 0}
+        )
+    else:
+        control_type = command.get("controlType")
+        if control_type == "ENGINE_START":
+            engine_body = command.get("cmdBody")
+            valid_command = (
+                valid_command_shape
+                and isinstance(engine_body, Mapping)
+                and list(engine_body) == ["operationTime"]
+                and isinstance(engine_body.get("operationTime"), int)
+                and not isinstance(engine_body.get("operationTime"), bool)
+                and 300 <= int(engine_body["operationTime"]) <= 1800
+                and int(engine_body["operationTime"]) % 60 == 0
+            )
+        else:
+            expected_bodies: dict[str, object] = {
+                "ENGINE_STOP": None,
+                "WHISTLE": None,
+                "FLASH": None,
+                "SKYLIGNT_CLOSE": {"skyLight": 0},
+            }
+            valid_command = (
+                valid_command_shape
+                and isinstance(control_type, str)
+                and control_type in expected_bodies
+                and command.get("cmdBody") == expected_bodies[control_type]
+            )
     return (
         valid_command
         and request.service == "bean_tech"

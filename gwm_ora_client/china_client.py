@@ -42,6 +42,8 @@ from .china_transport import (
     _ChinaTransportResponse,
 )
 from .commands import (
+    BEANTECH_CHINA_VEHICLE_CONTROL_ACTIONS,
+    ChinaVehicleControlCommand,
     ClimateCommand,
     CloseWindowsCommand,
     DoorLockCommand,
@@ -81,6 +83,7 @@ __all__ = [
     "ChinaVehicle",
     "ChinaVehicleStatus",
     "ChinaVerificationRequired",
+    "ChinaVehicleControlCommand",
     "CloseWindowsCommand",
     "ClimateCommand",
     "DoorLockCommand",
@@ -608,6 +611,28 @@ class ChinaClient:
                 command,
                 operation=operation,
                 command_code=3,
+                deadline=deadline,
+            ),
+        )
+
+    async def send_vehicle_control_command(
+        self,
+        command: ChinaVehicleControlCommand,
+        *,
+        timeout: float | None = None,
+    ) -> RemoteCommandAcceptance:
+        """Send one platform-filtered extended China control without a PIN."""
+
+        operation: Literal["send_vehicle_control_command"] = (
+            "send_vehicle_control_command"
+        )
+        if type(command) is not ChinaVehicleControlCommand:
+            raise GwmConfigurationError(operation=operation)
+        return await self._run_read(
+            operation,
+            timeout=timeout,
+            action=lambda deadline: self._send_vehicle_control_command_locked(
+                command,
                 deadline=deadline,
             ),
         )
@@ -1207,6 +1232,104 @@ class ChinaClient:
         except (RecursionError, OverflowError, TypeError, ValueError):
             raise GwmSchemaError(operation=operation) from None
 
+    async def _send_vehicle_control_command_locked(
+        self,
+        command: ChinaVehicleControlCommand,
+        *,
+        deadline: _Deadline,
+    ) -> RemoteCommandAcceptance:
+        operation: Literal["send_vehicle_control_command"] = (
+            "send_vehicle_control_command"
+        )
+        state = self._required_session(operation=operation)
+        vehicle = self._vehicles.get(command.identifier.value.casefold())
+        if vehicle is None:
+            raise GwmRoutePolicyError(operation=operation)
+        platform = (vehicle.platform or "").strip().casefold()
+        if platform not in {"navinfo", "beantech"}:
+            raise GwmRoutePolicyError(operation=operation)
+
+        if platform == "beantech":
+            if command.action not in BEANTECH_CHINA_VEHICLE_CONTROL_ACTIONS:
+                raise GwmRoutePolicyError(operation=operation)
+            control_type, command_body = _bean_tech_vehicle_control(command)
+            try:
+                sequence_number = self._sequence_source()
+            except Exception:
+                raise GwmConfigurationError(operation=operation) from None
+            if (
+                not isinstance(sequence_number, str)
+                or _BEAN_TECH_SEQUENCE.fullmatch(sequence_number) is None
+            ):
+                raise GwmConfigurationError(operation=operation)
+            response = await self._send_locked(
+                self._build_bean_tech_command_request(
+                    state,
+                    command.identifier,
+                    sequence_number=sequence_number,
+                    operation=operation,
+                    control_type=control_type,
+                    command_body=command_body,
+                ),
+                deadline=deadline,
+            )
+            _decode_g_app_envelope(response, operation=operation)
+            return RemoteCommandAcceptance(sequence_number)
+
+        if state.auto_ai_token_id is None or state.auto_ai_user_id is None:
+            raise GwmAuthenticationError(operation=operation)
+        body: dict[str, object] = {
+            "flag": 1,
+            "signStr": hashlib.md5(
+                (command.identifier.value + state.auto_ai_token_id).encode("utf-8"),
+                usedforsecurity=False,
+            ).hexdigest(),
+            "userId": state.auto_ai_user_id,
+            "userType": "0",
+            "vin": command.identifier.value,
+        }
+        command_code, function = _navinfo_vehicle_control(command)
+        body["cmdCode"] = command_code
+        if command.action == "remote_start":
+            body["engineParams"] = {
+                "runTime": command.run_time_minutes or 15,
+            }
+        elif command.action in {"sunroof_full", "sunroof_half", "sunroof_tilt"}:
+            body["openAngle"] = {
+                "sunroof_full": 1,
+                "sunroof_half": 2,
+                "sunroof_tilt": 3,
+            }[command.action]
+        response = await self._send_locked(
+            self._build_auto_ai_request(
+                operation=operation,
+                state=state,
+                function=function,
+                body=body,
+                url=_AUTO_AI_DIRECT,
+                include_token=True,
+            ),
+            deadline=deadline,
+        )
+        try:
+            result = _decode_auto_ai_envelope(response, operation=operation)
+            command_id = _scalar_text(_property(result, "transactionId"))
+            if (
+                command_id is None
+                or not command_id
+                or len(command_id) > 512
+                or any(
+                    ord(character) < 0x21 or ord(character) > 0x7E
+                    for character in command_id
+                )
+            ):
+                raise ValueError("command_acceptance_invalid")
+            return RemoteCommandAcceptance(command_id)
+        except GwmClientError:
+            raise
+        except (RecursionError, OverflowError, TypeError, ValueError):
+            raise GwmSchemaError(operation=operation) from None
+
     async def _get_remote_command_results_locked(
         self,
         identifier: VehicleIdentifier,
@@ -1529,7 +1652,11 @@ class ChinaClient:
         identifier: VehicleIdentifier,
         *,
         sequence_number: str,
-        operation: Literal["send_lock_command", "send_close_windows_command"],
+        operation: Literal[
+            "send_lock_command",
+            "send_close_windows_command",
+            "send_vehicle_control_command",
+        ],
         control_type: str,
         command_body: Mapping[str, object] | None,
     ) -> _ChinaTransportRequest:
@@ -1643,6 +1770,7 @@ class ChinaClient:
             "send_climate_command",
             "send_lock_command",
             "send_close_windows_command",
+            "send_vehicle_control_command",
         ],
         state: ChinaAuthState,
         function: str,
@@ -2030,6 +2158,51 @@ def _bean_tech_lock_window_control(
             },
         )
     raise ValueError("command_code_invalid")
+
+
+def _navinfo_vehicle_control(
+    command: ChinaVehicleControlCommand,
+) -> tuple[int, str]:
+    command_codes = {
+        "remote_start": 15,
+        "remote_stop": 16,
+        "horn": 19,
+        "flash_lights": 20,
+        "horn_and_lights": 5,
+        "tailgate_open": 17,
+        "tailgate_close": 18,
+        "sunroof_close": 28,
+        "sunroof_tilt": 29,
+        "sunroof_half": 29,
+        "sunroof_full": 29,
+    }
+    return (
+        command_codes[command.action],
+        (
+            "GW.M.SET_AND_OPEN_COMMAND"
+            if command.action == "remote_start"
+            else "GW.M.SEND_COMMON_COMMAND"
+        ),
+    )
+
+
+def _bean_tech_vehicle_control(
+    command: ChinaVehicleControlCommand,
+) -> tuple[str, Mapping[str, object] | None]:
+    if command.action == "remote_start":
+        return (
+            "ENGINE_START",
+            {"operationTime": (command.run_time_minutes or 15) * 60},
+        )
+    if command.action == "remote_stop":
+        return "ENGINE_STOP", None
+    if command.action == "horn":
+        return "WHISTLE", None
+    if command.action == "flash_lights":
+        return "FLASH", None
+    if command.action == "sunroof_close":
+        return "SKYLIGNT_CLOSE", {"skyLight": 0}
+    raise ValueError("vehicle_control_action_invalid")
 
 
 def _optional_bool(value: object, *, default: bool) -> bool:

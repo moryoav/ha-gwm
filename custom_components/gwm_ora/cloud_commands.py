@@ -6,11 +6,12 @@ import hashlib
 import secrets
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
-from typing import Never, cast
+from typing import Any, Never, cast
 
 from gwm_ora_client import (
     DEFAULT_OPERATION_TIME_MINUTES,
     DEFAULT_TEMPERATURE_C,
+    ChinaVehicleControlCommand,
     ClimateCommand,
     ClimateMode,
     CloseWindowsCommand,
@@ -224,6 +225,40 @@ class DirectClimateCommandApi:
             identifier, "Window close", acceptance.command_id
         )
 
+    async def async_vehicle_control(
+        self,
+        vin: str,
+        action: str,
+        *,
+        run_time_minutes: int | None = None,
+    ) -> dict[str, object]:
+        """Validate, send, and journal one extended mainland-China control."""
+
+        self._ensure_china_vehicle_control_available()
+        identifier = _vehicle_identifier(vin, command_name="China vehicle control")
+        normalized_action = action.strip().lower() if isinstance(action, str) else ""
+        try:
+            command = ChinaVehicleControlCommand(
+                identifier,
+                cast(Any, normalized_action),
+                run_time_minutes,
+            )
+        except ValueError:
+            raise GwmOraApiError(
+                "Unsupported China vehicle control or remote-start run time"
+            ) from None
+        sender = getattr(self._cloud, "async_send_vehicle_control_command", None)
+        if not callable(sender):
+            raise GwmOraApiForbidden(
+                "Direct China vehicle controls are not active for this entry"
+            )
+        acceptance = await sender(command)
+        return await self._record_acceptance(
+            identifier,
+            _CHINA_VEHICLE_CONTROL_NAMES[command.action],
+            acceptance.command_id,
+        )
+
     async def async_get_command(self, command_id: str) -> dict[str, object]:
         """Poll one accepted provider ID and persist every terminal transition."""
 
@@ -250,10 +285,11 @@ class DirectClimateCommandApi:
             )
         except GwmClientError:
             raise
+        region = None if self._cloud.region == "cn" else Region(self._cloud.region)
         result = select_remote_command_result(
             results,
             command_id=entry.cloud_command_id,
-            region=Region(self._cloud.region),
+            region=region,
             expected_remote_type=_expected_remote_type(entry.command_name),
         )
         now = self._now()
@@ -365,6 +401,14 @@ class DirectClimateCommandApi:
                 "Direct-cloud remote commands require a security PIN"
             )
 
+    def _ensure_china_vehicle_control_available(self) -> None:
+        if not self._enabled:
+            raise GwmOraApiForbidden("Direct-cloud remote commands are disabled")
+        if self._cloud.region != "cn":
+            raise GwmOraApiForbidden(
+                "These vehicle controls are available only for mainland China"
+            )
+
     def _now(self) -> datetime:
         value = self._clock()
         if (
@@ -378,11 +422,6 @@ class DirectClimateCommandApi:
     @staticmethod
     def _unavailable() -> Never:
         raise GwmOraApiForbidden("This direct-cloud write is not available yet")
-
-    async def async_vehicle_control(
-        self, *args: object, **kwargs: object
-    ) -> dict[str, object]:
-        self._unavailable()
 
     async def async_get_charging_plan(
         self, *args: object, **kwargs: object
@@ -424,6 +463,8 @@ def _expected_remote_type(command_name: str) -> str:
         return "0x05"
     if command_name == "Window close":
         return "0x08"
+    if command_name in _CHINA_VEHICLE_CONTROL_NAMES.values():
+        return "china"
     raise GwmOraApiError(
         "Remote command journal contains an unsupported command family"
     )
@@ -437,6 +478,21 @@ def _local_completed_command(vin: str, status: str) -> dict[str, object]:
         "state": "completed",
         "status": status,
     }
+
+
+_CHINA_VEHICLE_CONTROL_NAMES = {
+    "remote_start": "Remote start",
+    "remote_stop": "Remote stop",
+    "horn": "Sound horn",
+    "flash_lights": "Flash lights",
+    "horn_and_lights": "Sound horn and flash lights",
+    "tailgate_open": "Tailgate open",
+    "tailgate_close": "Tailgate close",
+    "sunroof_close": "Sunroof close",
+    "sunroof_tilt": "Sunroof tilt",
+    "sunroof_half": "Sunroof half open",
+    "sunroof_full": "Sunroof fully open",
+}
 
 
 __all__ = ["DirectClimateCommandApi"]

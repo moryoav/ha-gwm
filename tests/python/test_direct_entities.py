@@ -36,6 +36,7 @@ def _vehicle(
     charge_soc: float | None = None,
     climate_commands: bool = False,
     lock_window_commands: bool = False,
+    china_vehicle_commands: bool = False,
 ) -> dict[str, Any]:
     return {
         "vin": vin,
@@ -48,6 +49,7 @@ def _vehicle(
             "remote_commands": False,
             "climate_commands": climate_commands,
             "lock_window_commands": lock_window_commands,
+            "china_vehicle_commands": china_vehicle_commands,
             "charging_control": False,
         },
         "values": {"soc": soc, "charge_soc": charge_soc},
@@ -241,3 +243,67 @@ async def test_task18_capability_exposes_lock_window_without_task19_buttons() ->
         "remote_start",
     ).available
     assert not GwmOraDoorLock(api, coordinator, "MISSING").available
+
+
+@pytest.mark.asyncio
+async def test_task19_china_buttons_are_capability_and_platform_filtered() -> None:
+    api = DirectReadOnlyCommandApi()
+    coordinator = GwmOraDataUpdateCoordinator(
+        HomeAssistant("synthetic-config"),
+        api,
+        direct_client=SimpleNamespace(),  # type: ignore[arg-type]
+    )
+    coordinator.async_set_updated_data(
+        {
+            "region": "cn",
+            "vehicles": [
+                _vehicle(
+                    "SYNTHETIC-NAVINFO",
+                    80,
+                    platform="navinfo",
+                    china_vehicle_commands=True,
+                ),
+                _vehicle(
+                    "SYNTHETIC-BEANTECH",
+                    70,
+                    platform="beantech",
+                    china_vehicle_commands=True,
+                ),
+                _vehicle(
+                    "SYNTHETIC-UNKNOWN",
+                    60,
+                    platform="future-platform",
+                    china_vehicle_commands=True,
+                ),
+            ],
+        }
+    )
+
+    assert GwmOraChinaRemoteButton(
+        api,
+        coordinator,
+        "SYNTHETIC-NAVINFO",
+        "tailgate_open",
+        "open_tailgate",
+    ).available
+    assert GwmOraChinaRemoteButton(
+        api,
+        coordinator,
+        "SYNTHETIC-BEANTECH",
+        "remote_start",
+        "remote_start",
+    ).available
+    assert not GwmOraChinaRemoteButton(
+        api,
+        coordinator,
+        "SYNTHETIC-BEANTECH",
+        "tailgate_open",
+        "open_tailgate",
+    ).available
+    assert not GwmOraChinaRemoteButton(
+        api,
+        coordinator,
+        "SYNTHETIC-UNKNOWN",
+        "horn",
+        "sound_horn",
+    ).available

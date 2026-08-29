@@ -24,6 +24,9 @@ from custom_components.gwm_ora.cloud_commands import DirectClimateCommandApi
 from custom_components.gwm_ora.cloud_runtime import DirectClimateContext
 from custom_components.gwm_ora.cloud_storage import direct_cloud_state_store
 from gwm_ora_client import (
+    ChinaAuthState,
+    ChinaCredentials,
+    ChinaVehicleControlCommand,
     CloudClimateConfiguration,
     CloudStatusItem,
     CloudVehicle,
@@ -59,6 +62,7 @@ class _Cloud:
         self.sent = []
         self.lock_sent = []
         self.windows_sent = []
+        self.vehicle_controls_sent: list[ChinaVehicleControlCommand] = []
         self.poll_results: list[tuple[RemoteCommandResultItem, ...]] = []
         self.send_error: BaseException | None = None
 
@@ -136,6 +140,15 @@ class _Cloud:
         self.windows_sent.append(command)
         return RemoteCommandAcceptance("provider-command-windows")
 
+    async def async_send_vehicle_control_command(
+        self,
+        command: ChinaVehicleControlCommand,
+    ) -> RemoteCommandAcceptance:
+        if self.send_error is not None:
+            raise self.send_error
+        self.vehicle_controls_sent.append(command)
+        return RemoteCommandAcceptance("provider-command-control")
+
     async def async_get_vehicle_data(self) -> dict[str, object]:
         return {"region": self.region, "vehicles": []}
 
@@ -181,6 +194,40 @@ async def _api(
         credentials,
         enabled=enabled,
         security_pin="1234" if enabled else None,
+        clock=clock,
+    )
+    return api, store, credentials
+
+
+async def _china_api(
+    tmp_path: Path,
+    cloud: _Cloud,
+    clock: _Clock,
+    *,
+    enabled: bool = True,
+) -> tuple[DirectClimateCommandApi, Any, DirectCloudCredentials]:
+    credentials = DirectCloudCredentials(
+        "cn",
+        "CN",
+        "13800138000",
+        None,
+        _DEVICE_ID,
+    )
+    hass = HomeAssistant(str(tmp_path))
+    store = direct_cloud_state_store(hass, direct_unique_id(credentials))
+    await store.async_save_auth_state(
+        credentials,
+        ChinaAuthState.for_credentials(
+            ChinaCredentials(credentials.account, credentials.device_id)
+        ),
+    )
+    cloud.region = "cn"
+    api = DirectClimateCommandApi(
+        cloud,  # type: ignore[arg-type]
+        store,
+        credentials,
+        enabled=enabled,
+        security_pin=None,
         clock=clock,
     )
     return api, store, credentials
@@ -392,3 +439,81 @@ async def test_close_windows_timeout_is_terminal_without_an_extra_poll(
     assert cloud.poll_results == []
     journal = await store.async_get_command_journal(direct_entry_data(credentials))
     assert journal[0].state == "failed"
+
+
+@pytest.mark.asyncio
+async def test_china_vehicle_control_is_no_pin_journaled_and_restart_safe(
+    tmp_path: Path,
+) -> None:
+    clock = _Clock()
+    first_cloud = _Cloud()
+    first, store, credentials = await _china_api(tmp_path, first_cloud, clock)
+
+    accepted = await first.async_vehicle_control(
+        _VIN,
+        "remote_start",
+        run_time_minutes=20,
+    )
+    journal = await store.async_get_command_journal(direct_entry_data(credentials))
+    assert accepted["state"] == "in_progress"
+    assert len(first_cloud.vehicle_controls_sent) == 1
+    assert first_cloud.vehicle_controls_sent[0].run_time_minutes == 20
+    assert journal[0].command_name == "Remote start"
+    assert journal[0].cloud_command_id == "provider-command-control"
+
+    second_cloud = _Cloud()
+    second_cloud.region = "cn"
+    second_cloud.poll_results = [
+        (
+            RemoteCommandResultItem(
+                "provider-command-control",
+                None,
+                "0",
+                "Success",
+            ),
+        )
+    ]
+    second = DirectClimateCommandApi(
+        second_cloud,  # type: ignore[arg-type]
+        store,
+        credentials,
+        enabled=True,
+        security_pin=None,
+        clock=clock,
+    )
+    restored = await second.async_restore(direct_entry_data(credentials))
+    assert restored[0]["id"] == accepted["id"]
+    assert second_cloud.vehicle_controls_sent == []
+    completed = await second.async_get_command(str(accepted["id"]))
+    assert completed["state"] == "completed"
+    assert second_cloud.vehicle_controls_sent == []
+
+
+@pytest.mark.asyncio
+async def test_china_vehicle_control_validation_rejection_and_region_gate_are_local(
+    tmp_path: Path,
+) -> None:
+    clock = _Clock()
+    cloud = _Cloud()
+    api, store, credentials = await _china_api(tmp_path, cloud, clock)
+
+    with pytest.raises(GwmOraApiError, match="Unsupported China vehicle control"):
+        await api.async_vehicle_control(_VIN, "tailgate_open", run_time_minutes=15)
+    assert cloud.vehicle_controls_sent == []
+    assert await store.async_get_command_journal(direct_entry_data(credentials)) == ()
+
+    cloud.send_error = GwmApiError(
+        operation="send_vehicle_control_command",
+        api_code="607777",
+    )
+    with pytest.raises(GwmApiError):
+        await api.async_vehicle_control(_VIN, "horn")
+    assert await store.async_get_command_journal(direct_entry_data(credentials)) == ()
+
+    overseas, _overseas_store, _overseas_credentials = await _api(
+        tmp_path / "overseas-control",
+        _Cloud(),
+        clock,
+    )
+    with pytest.raises(GwmOraApiForbidden, match="only for mainland China"):
+        await overseas.async_vehicle_control(_VIN, "horn")

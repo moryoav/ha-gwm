@@ -354,7 +354,7 @@ class DirectCloudReadClient:
                     status,
                     basics,
                     refreshed_at=refreshed_at,
-                    # China-only Task 19 controls remain keyed to this broad flag.
+                    # Extended China controls remain disabled until Gate A-CN activation.
                     remote_commands_available=False,
                 ).as_dict()
                 capability_data = snapshot.get("capabilities")
@@ -363,6 +363,7 @@ class DirectCloudReadClient:
                 capabilities = dict(capability_data)
                 capabilities["climate_commands"] = self._climate_commands_enabled
                 capabilities["lock_window_commands"] = self._lock_window_commands_enabled
+                capabilities["china_vehicle_commands"] = False
                 snapshot["capabilities"] = capabilities
                 snapshots.append(snapshot)
         except (TypeError, ValueError):

@@ -23,6 +23,10 @@ from .china_client import (
 )
 from .client import GwmClient
 from .commands import (
+    BEANTECH_CHINA_VEHICLE_CONTROL_ACTIONS,
+    NAVINFO_CHINA_VEHICLE_CONTROL_ACTIONS,
+    ChinaVehicleControlAction,
+    ChinaVehicleControlCommand,
     ClimateCommand,
     ClimateMode,
     CloseWindowsCommand,
@@ -131,6 +135,7 @@ from .tls import LEGACY_CIPHER_STRING, create_gwm_ssl_context
 
 __all__ = [
     "ANZ_BT_AUTH",
+    "BEANTECH_CHINA_VEHICLE_CONTROL_ACTIONS",
     "AnzAuthenticated",
     "AnzAuthenticationResult",
     "AnzAuthState",
@@ -146,6 +151,8 @@ __all__ = [
     "CloseWindowsCommand",
     "ClimateCommand",
     "ClimateMode",
+    "ChinaVehicleControlAction",
+    "ChinaVehicleControlCommand",
     "ChinaAuthenticated",
     "ChinaAuthenticationResult",
     "ChinaAuthState",
@@ -197,6 +204,7 @@ __all__ = [
     "MAXIMUM_TEMPERATURE_C",
     "MINIMUM_OPERATION_TIME_MINUTES",
     "MINIMUM_TEMPERATURE_C",
+    "NAVINFO_CHINA_VEHICLE_CONTROL_ACTIONS",
     "OPERATION_TIME_STEP_MINUTES",
     "RUSSIA_GWM_AUTH",
     "Region",

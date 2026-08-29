@@ -31,6 +31,7 @@ from gwm_ora_client.china_transport import (
     _ChinaTransportResponse,
 )
 from gwm_ora_client.commands import (
+    ChinaVehicleControlCommand,
     ClimateCommand,
     CloseWindowsCommand,
     DoorLockCommand,
@@ -1058,6 +1059,131 @@ async def test_task18_commands_reject_unknown_china_platform_before_transport() 
             DoorLockCommand(VehicleIdentifier(UNSUPPORTED_VIN), True)
         )
 
+    assert len(transport.calls) == before
+
+
+@pytest.mark.asyncio
+async def test_navinfo_extended_vehicle_controls_use_exact_app_command_shapes() -> None:
+    actions = (
+        "remote_start",
+        "remote_stop",
+        "horn",
+        "flash_lights",
+        "horn_and_lights",
+        "tailgate_open",
+        "tailgate_close",
+        "sunroof_close",
+        "sunroof_tilt",
+        "sunroof_half",
+        "sunroof_full",
+    )
+    transaction_ids = tuple(f"TX-CONTROL-{index}" for index in range(len(actions)))
+    transport = _FakeTransport(
+        acquire_vehicles=[FIXTURE["responses"]["discovery"]],
+        send_vehicle_control_command=[
+            {"header": {"c": "0"}, "body": {"transactionId": transaction_id}}
+            for transaction_id in transaction_ids
+        ],
+    )
+    client = _client(transport)
+    assert isinstance(
+        await client.authenticate(_credentials(), state=_complete_state()),
+        ChinaAuthenticated,
+    )
+    identifier = VehicleIdentifier(VIN)
+
+    acceptances = [
+        await client.send_vehicle_control_command(
+            ChinaVehicleControlCommand(
+                identifier,
+                action,  # type: ignore[arg-type]
+                20 if action == "remote_start" else None,
+            )
+        )
+        for action in actions
+    ]
+
+    assert tuple(item.command_id for item in acceptances) == transaction_ids
+    requests = [
+        request
+        for request in transport.calls
+        if request.operation == "send_vehicle_control_command"
+    ]
+    payloads = [_auto_ai_payload(request) for request in requests]
+    assert [payload["header"]["fn"] for payload in payloads] == [
+        "GW.M.SET_AND_OPEN_COMMAND",
+        *("GW.M.SEND_COMMON_COMMAND" for _ in range(10)),
+    ]
+    assert [payload["body"]["cmdCode"] for payload in payloads] == [
+        15,
+        16,
+        19,
+        20,
+        5,
+        17,
+        18,
+        28,
+        29,
+        29,
+        29,
+    ]
+    assert payloads[0]["body"]["engineParams"] == {"runTime": 20}
+    assert [payloads[index]["body"]["openAngle"] for index in (8, 9, 10)] == [
+        3,
+        2,
+        1,
+    ]
+
+
+@pytest.mark.asyncio
+async def test_beantech_extended_controls_are_exact_and_unsupported_actions_fail_locally() -> None:
+    transport = _FakeTransport(
+        acquire_vehicles=[FIXTURE["responses"]["discovery"]],
+        send_vehicle_control_command=[
+            {"code": "000000", "data": {}} for _ in range(5)
+        ],
+    )
+    client = _client(transport)
+    assert isinstance(
+        await client.authenticate(_credentials(), state=_complete_state()),
+        ChinaAuthenticated,
+    )
+    identifier = VehicleIdentifier(BEAN_VIN)
+
+    for action in (
+        "remote_start",
+        "remote_stop",
+        "horn",
+        "flash_lights",
+        "sunroof_close",
+    ):
+        accepted = await client.send_vehicle_control_command(
+            ChinaVehicleControlCommand(
+                identifier,
+                action,  # type: ignore[arg-type]
+                10 if action == "remote_start" else None,
+            )
+        )
+        assert accepted.command_id == BEAN_COMMAND_ID
+
+    sends = [
+        json.loads(request.body or b"null")
+        for request in transport.calls
+        if request.operation == "send_vehicle_control_command"
+    ]
+    assert [body["commands"][0] for body in sends] == [
+        {"controlType": "ENGINE_START", "cmdBody": {"operationTime": 600}},
+        {"controlType": "ENGINE_STOP", "cmdBody": None},
+        {"controlType": "WHISTLE", "cmdBody": None},
+        {"controlType": "FLASH", "cmdBody": None},
+        {"controlType": "SKYLIGNT_CLOSE", "cmdBody": {"skyLight": 0}},
+    ]
+
+    before = len(transport.calls)
+    with pytest.raises(GwmRoutePolicyError):
+        await client.send_vehicle_control_command(
+            ChinaVehicleControlCommand(identifier, "tailgate_open")
+        )
     assert len(transport.calls) == before
 
 

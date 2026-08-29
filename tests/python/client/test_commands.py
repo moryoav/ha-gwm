@@ -11,6 +11,9 @@ from urllib.parse import urlsplit
 import pytest
 
 from gwm_ora_client import (
+    BEANTECH_CHINA_VEHICLE_CONTROL_ACTIONS,
+    NAVINFO_CHINA_VEHICLE_CONTROL_ACTIONS,
+    ChinaVehicleControlCommand,
     ClimateCommand,
     CloseWindowsCommand,
     DoorLockCommand,
@@ -299,3 +302,35 @@ def test_result_selection_preserves_russian_and_default_semantics() -> None:
     assert select_remote_command_result(
         (stale, current), command_id=sequence, region=Region.EU
     ).state == "failed"
+
+
+def test_china_vehicle_control_contract_is_closed_and_platform_filtered() -> None:
+    identifier = VehicleIdentifier(_fixture()["vin"])
+    assert len(NAVINFO_CHINA_VEHICLE_CONTROL_ACTIONS) == 11
+    assert {
+        "remote_start",
+        "remote_stop",
+        "horn",
+        "flash_lights",
+        "sunroof_close",
+    } == BEANTECH_CHINA_VEHICLE_CONTROL_ACTIONS
+    assert ChinaVehicleControlCommand(
+        identifier,
+        "remote_start",
+        20,
+    ).run_time_minutes == 20
+    assert ChinaVehicleControlCommand(identifier, "horn").action == "horn"
+
+    for action, run_time in (
+        ("future_action", None),
+        ("remote_start", 4),
+        ("remote_start", 31),
+        ("remote_start", True),
+        ("horn", 15),
+    ):
+        with pytest.raises(ValueError, match="china_vehicle_control_command_invalid"):
+            ChinaVehicleControlCommand(  # type: ignore[arg-type]
+                identifier,
+                action,
+                run_time,
+            )

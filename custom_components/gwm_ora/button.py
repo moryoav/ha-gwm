@@ -38,11 +38,14 @@ def _china_remote_buttons_for_vehicle(
     vehicle: dict,
 ) -> tuple[tuple[str, str], ...]:
     """Return remote buttons mapped for the vehicle platform."""
-    if str(vehicle.get("platform") or "").lower() != "beantech":
+    platform = str(vehicle.get("platform") or "").lower()
+    if platform == "navinfo":
         return CHINA_REMOTE_BUTTONS
-    return tuple(
-        item for item in CHINA_REMOTE_BUTTONS if item[0] in BEANTECH_REMOTE_ACTIONS
-    )
+    if platform == "beantech":
+        return tuple(
+            item for item in CHINA_REMOTE_BUTTONS if item[0] in BEANTECH_REMOTE_ACTIONS
+        )
+    return ()
 
 
 async def async_setup_entry(
@@ -117,8 +120,15 @@ class GwmOraChinaRemoteButton(GwmOraEntity, ButtonEntity):
         """Return whether this China command is available."""
         return (
             super().available
-            and self.remote_commands_available
+            and self.china_vehicle_commands_available
             and self.coordinator.region == "cn"
+            and self._action
+            in {
+                action
+                for action, _translation_key in _china_remote_buttons_for_vehicle(
+                    self.vehicle or {}
+                )
+            }
         )
 
     async def async_press(self) -> None:

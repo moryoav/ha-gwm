@@ -11,7 +11,45 @@ from .models import VehicleIdentifier
 from .regions import Region
 
 type ClimateMode = Literal["cool", "heat", "off"]
+type ChinaVehicleControlAction = Literal[
+    "remote_start",
+    "remote_stop",
+    "horn",
+    "flash_lights",
+    "horn_and_lights",
+    "tailgate_open",
+    "tailgate_close",
+    "sunroof_close",
+    "sunroof_tilt",
+    "sunroof_half",
+    "sunroof_full",
+]
 type RemoteCommandState = Literal["pending", "completed", "failed"]
+
+NAVINFO_CHINA_VEHICLE_CONTROL_ACTIONS: frozenset[ChinaVehicleControlAction] = frozenset(
+    {
+        "remote_start",
+        "remote_stop",
+        "horn",
+        "flash_lights",
+        "horn_and_lights",
+        "tailgate_open",
+        "tailgate_close",
+        "sunroof_close",
+        "sunroof_tilt",
+        "sunroof_half",
+        "sunroof_full",
+    }
+)
+BEANTECH_CHINA_VEHICLE_CONTROL_ACTIONS: frozenset[ChinaVehicleControlAction] = frozenset(
+    {
+        "remote_start",
+        "remote_stop",
+        "horn",
+        "flash_lights",
+        "sunroof_close",
+    }
+)
 
 _COMMAND_IDENTIFIER = re.compile(r"[\x21-\x7e]{1,512}")
 _OVERSEAS_SEQUENCE = re.compile(r"[0-9a-f]{32}1234")
@@ -64,6 +102,29 @@ class CloseWindowsCommand:
     def __post_init__(self) -> None:
         if type(self.identifier) is not VehicleIdentifier:
             raise ValueError("close_windows_command_invalid")
+
+
+@dataclass(frozen=True, slots=True, repr=False)
+class ChinaVehicleControlCommand:
+    """One platform-filtered mainland-China vehicle-control operation."""
+
+    identifier: VehicleIdentifier = field(repr=False)
+    action: ChinaVehicleControlAction
+    run_time_minutes: int | None = None
+
+    def __post_init__(self) -> None:
+        valid_run_time = self.run_time_minutes is None or (
+            not isinstance(self.run_time_minutes, bool)
+            and isinstance(self.run_time_minutes, int)
+            and 5 <= self.run_time_minutes <= 30
+        )
+        if (
+            type(self.identifier) is not VehicleIdentifier
+            or self.action not in NAVINFO_CHINA_VEHICLE_CONTROL_ACTIONS
+            or not valid_run_time
+            or (self.action != "remote_start" and self.run_time_minutes is not None)
+        ):
+            raise ValueError("china_vehicle_control_command_invalid")
 
 
 @dataclass(frozen=True, slots=True, repr=False)
@@ -258,10 +319,14 @@ def _successful(result: RemoteCommandResultItem) -> bool:
 
 
 __all__ = [
+    "BEANTECH_CHINA_VEHICLE_CONTROL_ACTIONS",
+    "ChinaVehicleControlAction",
+    "ChinaVehicleControlCommand",
     "CloseWindowsCommand",
     "ClimateCommand",
     "ClimateMode",
     "DoorLockCommand",
+    "NAVINFO_CHINA_VEHICLE_CONTROL_ACTIONS",
     "RemoteCommandAcceptance",
     "RemoteCommandResult",
     "RemoteCommandResultItem",
