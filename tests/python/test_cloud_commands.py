@@ -14,7 +14,7 @@ pytest.importorskip("homeassistant")
 
 from homeassistant.core import HomeAssistant
 
-from custom_components.gwm_ora.api import GwmOraApiForbidden
+from custom_components.gwm_ora.api import GwmOraApiError, GwmOraApiForbidden
 from custom_components.gwm_ora.cloud_auth import (
     DirectCloudCredentials,
     direct_entry_data,
@@ -57,6 +57,8 @@ class _Cloud:
         self.currently_on = currently_on
         self.updated: list[tuple[int, int]] = []
         self.sent = []
+        self.lock_sent = []
+        self.windows_sent = []
         self.poll_results: list[tuple[RemoteCommandResultItem, ...]] = []
         self.send_error: BaseException | None = None
 
@@ -107,8 +109,32 @@ class _Cloud:
         command_id: str,
     ) -> tuple[RemoteCommandResultItem, ...]:
         assert identifier.value == _VIN
-        assert command_id == "provider-command-1"
+        assert command_id.startswith("provider-command-")
         return self.poll_results.pop(0) if self.poll_results else ()
+
+    async def async_send_lock_command(
+        self,
+        command: object,
+        *,
+        security_password_hash: str,
+    ) -> RemoteCommandAcceptance:
+        if self.send_error is not None:
+            raise self.send_error
+        assert len(security_password_hash) == 32
+        self.lock_sent.append(command)
+        return RemoteCommandAcceptance("provider-command-lock")
+
+    async def async_send_close_windows_command(
+        self,
+        command: object,
+        *,
+        security_password_hash: str,
+    ) -> RemoteCommandAcceptance:
+        if self.send_error is not None:
+            raise self.send_error
+        assert len(security_password_hash) == 32
+        self.windows_sent.append(command)
+        return RemoteCommandAcceptance("provider-command-windows")
 
     async def async_get_vehicle_data(self) -> dict[str, object]:
         return {"region": self.region, "vehicles": []}
@@ -183,15 +209,21 @@ async def test_acceptance_is_journaled_before_polling_and_reaches_terminal_resul
 
     pending = await api.async_get_command(str(accepted["id"]))
     assert pending["state"] == "in_progress"
-    assert (await store.async_get_command_journal(direct_entry_data(credentials)))[0].state == "polling"
+    assert (await store.async_get_command_journal(direct_entry_data(credentials)))[
+        0
+    ].state == "polling"
     completed = await api.async_get_command(str(accepted["id"]))
     assert completed["state"] == "completed"
     assert "Success [0]" in str(completed["status"])
-    assert (await store.async_get_command_journal(direct_entry_data(credentials)))[0].state == "completed"
+    assert (await store.async_get_command_journal(direct_entry_data(credentials)))[
+        0
+    ].state == "completed"
 
 
 @pytest.mark.asyncio
-async def test_restart_restores_polling_without_resending_vehicle_operation(tmp_path: Path) -> None:
+async def test_restart_restores_polling_without_resending_vehicle_operation(
+    tmp_path: Path,
+) -> None:
     clock = _Clock()
     first_cloud = _Cloud()
     first, store, credentials = await _api(tmp_path, first_cloud, clock)
@@ -229,11 +261,15 @@ async def test_timeout_is_persisted_without_an_extra_poll(tmp_path: Path) -> Non
     timed_out = await api.async_get_command(str(accepted["id"]))
     assert timed_out["state"] == "timeout"
     assert cloud.poll_results == []
-    assert (await store.async_get_command_journal(direct_entry_data(credentials)))[0].state == "failed"
+    assert (await store.async_get_command_journal(direct_entry_data(credentials)))[
+        0
+    ].state == "failed"
 
 
 @pytest.mark.asyncio
-async def test_rejection_and_disabled_mode_never_create_a_journal_entry(tmp_path: Path) -> None:
+async def test_rejection_and_disabled_mode_never_create_a_journal_entry(
+    tmp_path: Path,
+) -> None:
     cloud = _Cloud()
     cloud.send_error = GwmApiError(operation="send_climate_command", api_code="607777")
     clock = _Clock()
@@ -242,13 +278,17 @@ async def test_rejection_and_disabled_mode_never_create_a_journal_entry(tmp_path
         await api.async_set_climate(_VIN, mode="cool")
     assert await store.async_get_command_journal(direct_entry_data(credentials)) == ()
 
-    disabled, _store, _credentials_value = await _api(tmp_path / "disabled", _Cloud(), clock, enabled=False)
+    disabled, _store, _credentials_value = await _api(
+        tmp_path / "disabled", _Cloud(), clock, enabled=False
+    )
     with pytest.raises(GwmOraApiForbidden):
         await disabled.async_set_climate(_VIN, mode="cool")
 
 
 @pytest.mark.asyncio
-async def test_runtime_only_and_temperature_while_off_save_without_command(tmp_path: Path) -> None:
+async def test_runtime_only_and_temperature_while_off_save_without_command(
+    tmp_path: Path,
+) -> None:
     clock = _Clock()
     cloud = _Cloud(currently_on=False)
     api, _store, _credentials_value = await _api(tmp_path, cloud, clock)
@@ -259,3 +299,96 @@ async def test_runtime_only_and_temperature_while_off_save_without_command(tmp_p
     assert temperature["state"] == "completed"
     assert cloud.updated == [(22, 20), (24, 15)]
     assert cloud.sent == []
+
+
+@pytest.mark.asyncio
+async def test_lock_and_window_acceptance_use_same_restart_safe_journal(
+    tmp_path: Path,
+) -> None:
+    clock = _Clock()
+    first_cloud = _Cloud()
+    first, store, credentials = await _api(tmp_path, first_cloud, clock)
+
+    locked = await first.async_lock(_VIN, "lock")
+    closed = await first.async_close_windows(_VIN)
+    journal = await store.async_get_command_journal(direct_entry_data(credentials))
+
+    assert [entry.command_name for entry in journal] == ["Door lock", "Window close"]
+    assert locked["state"] == closed["state"] == "in_progress"
+    assert len(first_cloud.lock_sent) == len(first_cloud.windows_sent) == 1
+
+    second_cloud = _Cloud()
+    second_cloud.region = "rus"
+    second_cloud.poll_results = [
+        (
+            RemoteCommandResultItem(None, "0x04", "9", "Wrong family"),
+            RemoteCommandResultItem(None, "0x05", "6", "Success"),
+        ),
+        (
+            RemoteCommandResultItem(None, "0x04", "9", "Wrong family"),
+            RemoteCommandResultItem(None, "0x08", "6", "Success"),
+        ),
+    ]
+    second = DirectClimateCommandApi(
+        second_cloud,  # type: ignore[arg-type]
+        store,
+        credentials,
+        enabled=True,
+        security_pin="1234",
+        clock=clock,
+    )
+    restored = await second.async_restore(direct_entry_data(credentials))
+
+    assert {item["id"] for item in restored} == {locked["id"], closed["id"]}
+    assert second_cloud.lock_sent == second_cloud.windows_sent == []
+    assert (await second.async_get_command(str(locked["id"])))["state"] == "completed"
+    assert (await second.async_get_command(str(closed["id"])))["state"] == "completed"
+    assert second_cloud.lock_sent == second_cloud.windows_sent == []
+
+
+@pytest.mark.asyncio
+async def test_lock_window_validation_rejection_and_disabled_mode_are_fail_closed(
+    tmp_path: Path,
+) -> None:
+    clock = _Clock()
+    cloud = _Cloud()
+    api, store, credentials = await _api(tmp_path, cloud, clock)
+
+    with pytest.raises(GwmOraApiError, match="action must be"):
+        await api.async_lock(_VIN, "open")
+    with pytest.raises(GwmOraApiError, match="valid vehicle"):
+        await api.async_close_windows(" ")
+    assert await store.async_get_command_journal(direct_entry_data(credentials)) == ()
+    assert cloud.lock_sent == cloud.windows_sent == []
+
+    cloud.send_error = GwmApiError(operation="send_lock_command", api_code="607777")
+    with pytest.raises(GwmApiError):
+        await api.async_lock(_VIN, "unlock")
+    assert await store.async_get_command_journal(direct_entry_data(credentials)) == ()
+
+    disabled, _store, _credentials_value = await _api(
+        tmp_path / "disabled-lock",
+        _Cloud(),
+        clock,
+        enabled=False,
+    )
+    with pytest.raises(GwmOraApiForbidden):
+        await disabled.async_close_windows(_VIN)
+
+
+@pytest.mark.asyncio
+async def test_close_windows_timeout_is_terminal_without_an_extra_poll(
+    tmp_path: Path,
+) -> None:
+    cloud = _Cloud()
+    clock = _Clock()
+    api, store, credentials = await _api(tmp_path, cloud, clock)
+    accepted = await api.async_close_windows(_VIN)
+    clock.value += timedelta(seconds=91)
+
+    timed_out = await api.async_get_command(str(accepted["id"]))
+
+    assert timed_out["state"] == "timeout"
+    assert cloud.poll_results == []
+    journal = await store.async_get_command_journal(direct_entry_data(credentials))
+    assert journal[0].state == "failed"

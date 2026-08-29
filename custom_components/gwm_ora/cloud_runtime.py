@@ -20,9 +20,11 @@ from gwm_ora_client import (
     AnzAuthenticated,
     AnzAuthState,
     ClimateCommand,
+    CloseWindowsCommand,
     CloudVehicle,
     CloudVehicleBasics,
     CloudVehicleStatus,
+    DoorLockCommand,
     EuAuthenticated,
     EuAuthState,
     GwmClient,
@@ -87,6 +89,20 @@ class _OverseasReadClient(Protocol):
     async def send_climate_command(
         self,
         command: ClimateCommand,
+        *,
+        security_password_hash: str,
+    ) -> RemoteCommandAcceptance: ...
+
+    async def send_lock_command(
+        self,
+        command: DoorLockCommand,
+        *,
+        security_password_hash: str,
+    ) -> RemoteCommandAcceptance: ...
+
+    async def send_close_windows_command(
+        self,
+        command: CloseWindowsCommand,
         *,
         security_password_hash: str,
     ) -> RemoteCommandAcceptance: ...
@@ -240,6 +256,7 @@ class DirectCloudReadClient:
         state_store: _AuthStateStore | None = None,
         entry_data: dict[str, object] | None = None,
         climate_commands_enabled: bool = False,
+        lock_window_commands_enabled: bool = False,
     ) -> None:
         if region not in {REGION_EU, REGION_ANZ, REGION_RUSSIA}:
             raise GwmConfigurationError(operation="request")
@@ -249,9 +266,13 @@ class DirectCloudReadClient:
         self._bootstrap = bootstrap
         self._state_store = state_store
         self._entry_data = dict(entry_data or {})
-        if type(climate_commands_enabled) is not bool:
+        if (
+            type(climate_commands_enabled) is not bool
+            or type(lock_window_commands_enabled) is not bool
+        ):
             raise GwmConfigurationError(operation="request")
         self._climate_commands_enabled = climate_commands_enabled
+        self._lock_window_commands_enabled = lock_window_commands_enabled
         self._vehicles: dict[str, CloudVehicle] = {}
 
     @classmethod
@@ -263,6 +284,7 @@ class DirectCloudReadClient:
         *,
         state_store: _AuthStateStore | None = None,
         climate_commands_enabled: bool = False,
+        lock_window_commands_enabled: bool = False,
     ) -> DirectCloudReadClient:
         """Validate a staged handoff against the current config entry."""
 
@@ -299,6 +321,7 @@ class DirectCloudReadClient:
             state_store=state_store,
             entry_data=data,
             climate_commands_enabled=climate_commands_enabled,
+            lock_window_commands_enabled=lock_window_commands_enabled,
         )
 
     @property
@@ -331,8 +354,7 @@ class DirectCloudReadClient:
                     status,
                     basics,
                     refreshed_at=refreshed_at,
-                    # Later command tasks continue to key their entities from
-                    # the broader capability. Task 17 exposes climate only.
+                    # China-only Task 19 controls remain keyed to this broad flag.
                     remote_commands_available=False,
                 ).as_dict()
                 capability_data = snapshot.get("capabilities")
@@ -340,6 +362,7 @@ class DirectCloudReadClient:
                     raise TypeError("capabilities_invalid")
                 capabilities = dict(capability_data)
                 capabilities["climate_commands"] = self._climate_commands_enabled
+                capabilities["lock_window_commands"] = self._lock_window_commands_enabled
                 snapshot["capabilities"] = capabilities
                 snapshots.append(snapshot)
         except (TypeError, ValueError):
@@ -351,7 +374,9 @@ class DirectCloudReadClient:
 
         return {
             "region": self.region,
-            "remote_commands_enabled": self._climate_commands_enabled,
+            "remote_commands_enabled": (
+                self._climate_commands_enabled or self._lock_window_commands_enabled
+            ),
             "charging_control_enabled": False,
             "vehicles": snapshots,
         }
@@ -398,6 +423,28 @@ class DirectCloudReadClient:
         security_password_hash: str,
     ) -> RemoteCommandAcceptance:
         return await self._client.send_climate_command(
+            command,
+            security_password_hash=security_password_hash,
+        )
+
+    async def async_send_lock_command(
+        self,
+        command: DoorLockCommand,
+        *,
+        security_password_hash: str,
+    ) -> RemoteCommandAcceptance:
+        return await self._client.send_lock_command(
+            command,
+            security_password_hash=security_password_hash,
+        )
+
+    async def async_send_close_windows_command(
+        self,
+        command: CloseWindowsCommand,
+        *,
+        security_password_hash: str,
+    ) -> RemoteCommandAcceptance:
+        return await self._client.send_close_windows_command(
             command,
             security_password_hash=security_password_hash,
         )

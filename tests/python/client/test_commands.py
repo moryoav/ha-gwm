@@ -12,6 +12,8 @@ import pytest
 
 from gwm_ora_client import (
     ClimateCommand,
+    CloseWindowsCommand,
+    DoorLockCommand,
     GwmApiError,
     GwmClient,
     GwmClientConfig,
@@ -158,6 +160,80 @@ async def test_regional_climate_contracts_are_closed_and_header_exact(region: Re
     assert urlsplit(result_request.url).path.endswith("/vehicle/getRemoteCtrlResultT5")
     assert urlsplit(result_request.url).query == "seqNo=" + sequence
     assert (result_request.headers.get("vin") == fixture["vin"]) is case["result_vin_header"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("region", list(Region))
+async def test_regional_lock_and_close_window_contracts_are_exact(region: Region) -> None:
+    fixture = _fixture()
+    case = fixture["regions"][region.value]
+    response_count = 6 if case["security_check"] else 3
+    transport = _RecordingTransport([_response() for _ in range(response_count)])
+    client = GwmClient(
+        GwmClientConfig(region),
+        GwmSession(
+            country=case["country"],
+            device_id=case["device_id"],
+            access_token="SYNTHETIC-COMMAND-TOKEN",
+            app_ssl_context=_context(region),
+        ),
+        transport=transport,
+        sequence_source=lambda: fixture["sequence_number"],
+    )
+    identifier = VehicleIdentifier(fixture["vin"])
+
+    locked = await client.send_lock_command(
+        DoorLockCommand(identifier, True),
+        security_password_hash=fixture["security_password_hash"],
+    )
+    unlocked = await client.send_lock_command(
+        DoorLockCommand(identifier, False),
+        security_password_hash=fixture["security_password_hash"],
+    )
+    closed = await client.send_close_windows_command(
+        CloseWindowsCommand(identifier),
+        security_password_hash=fixture["security_password_hash"],
+    )
+
+    assert locked.command_id == unlocked.command_id == closed.command_id == fixture["sequence_number"]
+    sends = [request for request in transport.requests if request.url.endswith("/vehicle/T5/sendCmd")]
+    assert len(sends) == 3
+    assert all((request.headers.get("vin") == fixture["vin"]) is case["send_vin_header"] for request in sends)
+    common = {
+        "remoteType": "0",
+        "securityPassword": fixture["security_password_hash"],
+        "seqNo": fixture["sequence_number"],
+        "type": case["type"],
+        "vin": fixture["vin"],
+    }
+    assert _body(sends[0]) == {
+        "instructions": {"0x05": {"operationTime": "0", "switchOrder": "2"}},
+        **common,
+    }
+    assert _body(sends[1]) == {
+        "instructions": {"0x05": {"operationTime": "0", "switchOrder": "1"}},
+        **common,
+    }
+    expected_window = {
+        "leftFront": "0",
+        "leftBack": "0",
+        "rightFront": "0",
+        "rightBack": "0",
+    }
+    if region is not Region.RUSSIA:
+        expected_window["skyLight"] = ""
+    assert _body(sends[2]) == {
+        "instructions": {
+            "0x08": {
+                "switchOrder": "2" if region is Region.RUSSIA else "0",
+                "window": expected_window,
+            }
+        },
+        **common,
+    }
+    if case["security_check"]:
+        checks = [request for request in transport.requests if request.url.endswith("/userAuth/checkSecurityPassword")]
+        assert len(checks) == 3
 
 
 @pytest.mark.asyncio

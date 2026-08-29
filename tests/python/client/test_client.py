@@ -303,7 +303,9 @@ def test_only_closed_operation_surfaces_and_typed_public_methods_exist() -> None
         "get_last_status",
         "get_remote_command_results",
         "get_vehicle_basics",
+        "send_close_windows_command",
         "send_climate_command",
+        "send_lock_command",
         "update_climate_defaults",
     }
     for forbidden in (

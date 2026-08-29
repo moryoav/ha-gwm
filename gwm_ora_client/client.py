@@ -26,6 +26,8 @@ from .anz_auth import (
 from .anz_auth import authenticate_anz as _run_anz_authentication
 from .commands import (
     ClimateCommand,
+    CloseWindowsCommand,
+    DoorLockCommand,
     RemoteCommandAcceptance,
     RemoteCommandResultItem,
     parse_remote_command_results,
@@ -631,6 +633,118 @@ class GwmClient:
                     method="POST",
                     path="userAuth/checkSecurityPassword",
                     body=check_body,
+                    session=session,
+                    vin_header=None,
+                )
+                await self._send_command_request(check, deadline=deadline)
+            request = self._prepare_command_request(
+                operation=operation,
+                gateway_role=GatewayRole.APP_V1,
+                method="POST",
+                path="vehicle/T5/sendCmd",
+                body=body,
+                session=session,
+                vin_header=command.identifier if self.region is Region.RUSSIA else None,
+            )
+            await self._send_command_request(request, deadline=deadline)
+            return RemoteCommandAcceptance(sequence_number)
+
+        return await self._execute_authenticated_command(operation, timeout=timeout, action=action)
+
+    async def send_lock_command(
+        self,
+        command: DoorLockCommand,
+        *,
+        security_password_hash: str,
+        timeout: float | None = None,
+    ) -> RemoteCommandAcceptance:
+        """Send one overseas lock or unlock operation."""
+
+        if type(command) is not DoorLockCommand:
+            raise GwmConfigurationError(operation="send_lock_command")
+        return await self._send_overseas_remote_command(
+            operation="send_lock_command",
+            command=command,
+            security_password_hash=security_password_hash,
+            instructions={
+                "0x05": {
+                    "operationTime": "0",
+                    "switchOrder": "2" if command.lock else "1",
+                }
+            },
+            timeout=timeout,
+        )
+
+    async def send_close_windows_command(
+        self,
+        command: CloseWindowsCommand,
+        *,
+        security_password_hash: str,
+        timeout: float | None = None,
+    ) -> RemoteCommandAcceptance:
+        """Send one overseas close-all-windows operation."""
+
+        window = {
+            "leftFront": "0",
+            "leftBack": "0",
+            "rightFront": "0",
+            "rightBack": "0",
+        }
+        if self.region is not Region.RUSSIA:
+            window["skyLight"] = ""
+        return await self._send_overseas_remote_command(
+            operation="send_close_windows_command",
+            command=command,
+            security_password_hash=security_password_hash,
+            instructions={
+                "0x08": {
+                    "switchOrder": "2" if self.region is Region.RUSSIA else "0",
+                    "window": window,
+                }
+            },
+            timeout=timeout,
+        )
+
+    async def _send_overseas_remote_command(
+        self,
+        *,
+        operation: str,
+        command: DoorLockCommand | CloseWindowsCommand,
+        security_password_hash: str,
+        instructions: Mapping[str, object],
+        timeout: float | None,
+    ) -> RemoteCommandAcceptance:
+        try:
+            sequence_number = self._sequence_source()
+            validate_overseas_command_inputs(
+                command,
+                security_password_hash=security_password_hash,
+                sequence_number=sequence_number,
+                region=self.region,
+            )
+        except (TypeError, ValueError):
+            raise GwmConfigurationError(operation=operation) from None
+        body = encode_dotnet_json(
+            {
+                "instructions": instructions,
+                "remoteType": "0",
+                "securityPassword": security_password_hash,
+                "seqNo": sequence_number,
+                "type": 3 if self.region is Region.RUSSIA else 2,
+                "vin": command.identifier.value,
+            }
+        )
+
+        async def action(session: GwmSession, deadline: _Deadline) -> RemoteCommandAcceptance:
+            if self.region is Region.RUSSIA:
+                check = self._prepare_command_request(
+                    operation=operation,
+                    gateway_role=GatewayRole.H5_V1,
+                    method="POST",
+                    path="userAuth/checkSecurityPassword",
+                    body=encode_dotnet_json(
+                        {"securityPassword": security_password_hash, "type": "3"}
+                    ),
                     session=session,
                     vin_header=None,
                 )

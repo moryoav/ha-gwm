@@ -76,7 +76,7 @@ class DirectCommandJournalEntry:
                 self.vehicle_id,
                 _MAX_COMMAND_IDENTIFIER_LENGTH,
             )
-            or not _bounded_command_text(self.command_name, _MAX_COMMAND_NAME_LENGTH)
+            or not _bounded_command_name(self.command_name, _MAX_COMMAND_NAME_LENGTH)
             or not _bounded_command_text(
                 self.cloud_command_id,
                 _MAX_COMMAND_IDENTIFIER_LENGTH,
@@ -798,6 +798,12 @@ def _bounded_text(value: object, maximum: int) -> bool:
 def _bounded_command_text(value: object, maximum: int) -> bool:
     return _bounded_text(value, maximum) and all(
         0x21 <= ord(character) <= 0x7E for character in value
+    )
+
+
+def _bounded_command_name(value: object, maximum: int) -> bool:
+    return _bounded_text(value, maximum) and all(
+        0x20 <= ord(character) <= 0x7E for character in value
     )
 
 

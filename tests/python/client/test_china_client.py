@@ -30,7 +30,12 @@ from gwm_ora_client.china_transport import (
     _ChinaTransportRequest,
     _ChinaTransportResponse,
 )
-from gwm_ora_client.commands import ClimateCommand
+from gwm_ora_client.commands import (
+    ClimateCommand,
+    CloseWindowsCommand,
+    DoorLockCommand,
+    RemoteCommandResultItem,
+)
 from gwm_ora_client.config import RequestTimeouts
 from gwm_ora_client.errors import (
     GwmApiError,
@@ -64,6 +69,7 @@ CODE = FIXTURE["credentials"]["verification_code"]
 VIN = "LGWTEST0000000001"
 UNSUPPORTED_VIN = "LGWTEST0000000002"
 BEAN_VIN = BEAN_FIXTURE["vin"]
+BEAN_COMMAND_ID = "0123456789abcdef0123456789abcdef1234"
 SENSITIVE = "SENSITIVE-PRIVATE-VALUE-MUST-NOT-LEAK"
 
 
@@ -166,6 +172,7 @@ def _client(
         clock=clock,
         salt_source=lambda: bytes.fromhex(FIXTURE["salt_hex"]),
         nonce_source=lambda: FIXTURE["nonce"],
+        sequence_source=lambda: BEAN_COMMAND_ID,
         sleeper=sleeper,
     )
 
@@ -907,6 +914,148 @@ async def test_beantech_climate_is_rejected_before_command_transport() -> None:
     with pytest.raises(GwmRoutePolicyError):
         await client.send_climate_command(
             ClimateCommand(VehicleIdentifier("LGWTEST0000000003"), "cool", 22, 15)
+        )
+
+    assert len(transport.calls) == before
+
+
+@pytest.mark.asyncio
+async def test_navinfo_lock_unlock_close_windows_and_result_need_no_pin() -> None:
+    transactions = ("TX-LOCK-1", "TX-UNLOCK-2", "TX-WINDOW-3")
+    transport = _FakeTransport(
+        acquire_vehicles=[FIXTURE["responses"]["discovery"]],
+        send_lock_command=[
+            {"header": {"c": "0"}, "body": {"transactionId": transactions[0]}},
+            {"header": {"c": "0"}, "body": {"transactionId": transactions[1]}},
+        ],
+        send_close_windows_command=[
+            {"header": {"c": "0"}, "body": {"transactionId": transactions[2]}}
+        ],
+        get_remote_command_result=[
+            {
+                "code": "000000",
+                "data": {
+                    "messageList": [
+                        {
+                            "messageType": "remote",
+                            "messageData": json.dumps(
+                                {
+                                    "transactionId": transactions[2],
+                                    "resultCode": "0",
+                                    "resultMessage": "Success",
+                                },
+                                separators=(",", ":"),
+                            ),
+                        }
+                    ]
+                },
+            }
+        ],
+    )
+    client = _client(transport)
+    assert isinstance(
+        await client.authenticate(_credentials(), state=_complete_state()),
+        ChinaAuthenticated,
+    )
+    identifier = VehicleIdentifier(VIN)
+
+    locked = await client.send_lock_command(DoorLockCommand(identifier, True))
+    unlocked = await client.send_lock_command(DoorLockCommand(identifier, False))
+    closed = await client.send_close_windows_command(CloseWindowsCommand(identifier))
+    results = await client.get_remote_command_results(identifier, closed.command_id)
+
+    assert (locked.command_id, unlocked.command_id, closed.command_id) == transactions
+    requests = [
+        request
+        for request in transport.calls
+        if request.operation in {"send_lock_command", "send_close_windows_command"}
+    ]
+    assert [_auto_ai_payload(request)["body"]["cmdCode"] for request in requests] == [2, 1, 3]
+    assert all(
+        _auto_ai_payload(request)["header"]["fn"] == "GW.M.SEND_COMMON_COMMAND"
+        for request in requests
+    )
+    assert results[0].command_id == transactions[2]
+    assert results[0].result_code == "0"
+
+
+@pytest.mark.asyncio
+async def test_beantech_lock_close_windows_and_legacy_result_are_isolated() -> None:
+    transport = _FakeTransport(
+        acquire_vehicles=[FIXTURE["responses"]["discovery"]],
+        send_lock_command=[
+            {"code": "000000", "data": {}},
+            {"code": "000000", "data": {}},
+        ],
+        send_close_windows_command=[{"code": "000000", "data": {}}],
+        get_remote_command_result=[
+            {
+                "code": "000000",
+                "data": [
+                    {
+                        "remoteType": "0x08",
+                        "resultCode": 6,
+                        "resultMsg": "Success",
+                    }
+                ],
+            }
+        ],
+    )
+    client = _client(transport)
+    assert isinstance(
+        await client.authenticate(_credentials(), state=_complete_state()),
+        ChinaAuthenticated,
+    )
+    identifier = VehicleIdentifier(BEAN_VIN)
+
+    locked = await client.send_lock_command(DoorLockCommand(identifier, True))
+    unlocked = await client.send_lock_command(DoorLockCommand(identifier, False))
+    closed = await client.send_close_windows_command(CloseWindowsCommand(identifier))
+    results = await client.get_remote_command_results(identifier, closed.command_id)
+
+    assert locked.command_id == unlocked.command_id == closed.command_id == BEAN_COMMAND_ID
+    sends = [
+        request
+        for request in transport.calls
+        if request.operation in {"send_lock_command", "send_close_windows_command"}
+    ]
+    command_bodies = [json.loads(request.body or b"null") for request in sends]
+    assert command_bodies[0]["commands"] == [
+        {"controlType": "VEHICLE_LOCK", "cmdBody": None}
+    ]
+    assert command_bodies[1]["commands"] == [
+        {"controlType": "VEHICLE_UNLOCK", "cmdBody": None}
+    ]
+    assert command_bodies[2]["commands"] == [
+        {
+            "controlType": "WINDOW_CLOSE",
+            "cmdBody": {
+                "leftFront": 0,
+                "leftBack": 0,
+                "rightFront": 0,
+                "rightBack": 0,
+            },
+        }
+    ]
+    result_request = transport.calls[-1]
+    assert urlsplit(result_request.url).path == "/app-api/api/v1.0/vehicle/getRemoteCtrlResultT5"
+    assert urlsplit(result_request.url).query == "seqNo=" + BEAN_COMMAND_ID
+    assert results == (RemoteCommandResultItem(BEAN_COMMAND_ID, "0x08", "6", "Success"),)
+
+
+@pytest.mark.asyncio
+async def test_task18_commands_reject_unknown_china_platform_before_transport() -> None:
+    transport = _FakeTransport(acquire_vehicles=[FIXTURE["responses"]["discovery"]])
+    client = _client(transport)
+    assert isinstance(
+        await client.authenticate(_credentials(), state=_complete_state()),
+        ChinaAuthenticated,
+    )
+    before = len(transport.calls)
+
+    with pytest.raises(GwmRoutePolicyError):
+        await client.send_lock_command(
+            DoorLockCommand(VehicleIdentifier(UNSUPPORTED_VIN), True)
         )
 
     assert len(transport.calls) == before

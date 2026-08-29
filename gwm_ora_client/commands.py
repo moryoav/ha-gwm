@@ -44,6 +44,29 @@ class ClimateCommand:
 
 
 @dataclass(frozen=True, slots=True, repr=False)
+class DoorLockCommand:
+    """One lock or unlock operation ready for a regional wire client."""
+
+    identifier: VehicleIdentifier = field(repr=False)
+    lock: bool
+
+    def __post_init__(self) -> None:
+        if type(self.identifier) is not VehicleIdentifier or type(self.lock) is not bool:
+            raise ValueError("door_lock_command_invalid")
+
+
+@dataclass(frozen=True, slots=True, repr=False)
+class CloseWindowsCommand:
+    """One close-all-windows operation ready for a regional wire client."""
+
+    identifier: VehicleIdentifier = field(repr=False)
+
+    def __post_init__(self) -> None:
+        if type(self.identifier) is not VehicleIdentifier:
+            raise ValueError("close_windows_command_invalid")
+
+
+@dataclass(frozen=True, slots=True, repr=False)
 class RemoteCommandAcceptance:
     """Provider-owned identifier returned only after command acceptance."""
 
@@ -94,7 +117,7 @@ class RemoteCommandResult:
 
 
 def validate_overseas_command_inputs(
-    command: ClimateCommand,
+    command: ClimateCommand | DoorLockCommand | CloseWindowsCommand,
     *,
     security_password_hash: str,
     sequence_number: str,
@@ -103,16 +126,16 @@ def validate_overseas_command_inputs(
     """Reject malformed or region-incompatible command material before I/O."""
 
     if (
-        type(command) is not ClimateCommand
+        type(command) not in {ClimateCommand, DoorLockCommand, CloseWindowsCommand}
         or type(region) is not Region
         or region not in {Region.EU, Region.ANZ, Region.RUSSIA}
-        or command.mode == "heat"
+        or (type(command) is ClimateCommand and command.mode == "heat")
         or not isinstance(security_password_hash, str)
         or _MD5_HASH.fullmatch(security_password_hash) is None
         or not isinstance(sequence_number, str)
         or _OVERSEAS_SEQUENCE.fullmatch(sequence_number) is None
     ):
-        raise ValueError("climate_command_invalid")
+        raise ValueError("remote_command_invalid")
 
 
 def parse_remote_command_results(
@@ -235,8 +258,10 @@ def _successful(result: RemoteCommandResultItem) -> bool:
 
 
 __all__ = [
+    "CloseWindowsCommand",
     "ClimateCommand",
     "ClimateMode",
+    "DoorLockCommand",
     "RemoteCommandAcceptance",
     "RemoteCommandResult",
     "RemoteCommandResultItem",

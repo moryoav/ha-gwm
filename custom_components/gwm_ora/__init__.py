@@ -249,6 +249,7 @@ async def _async_setup_direct_entry(
             bootstrap,
             state_store=state_store,
             climate_commands_enabled=climate_enabled,
+            lock_window_commands_enabled=climate_enabled,
         )
     except (GwmConfigurationError, TypeError, ValueError) as err:
         raise ConfigEntryAuthFailed(

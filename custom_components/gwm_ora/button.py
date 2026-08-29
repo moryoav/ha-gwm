@@ -94,7 +94,7 @@ class GwmOraCloseWindowsButton(GwmOraEntity, ButtonEntity):
     @property
     def available(self) -> bool:
         """Return whether close-window commands are available."""
-        return super().available and self.remote_commands_available
+        return super().available and self.lock_window_commands_available
 
     async def async_press(self) -> None:
         """Close windows."""

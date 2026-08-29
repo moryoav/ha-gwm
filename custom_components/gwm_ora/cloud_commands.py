@@ -1,4 +1,4 @@
-"""Restart-safe direct-cloud climate command orchestration."""
+"""Restart-safe direct-cloud command orchestration."""
 
 from __future__ import annotations
 
@@ -13,6 +13,8 @@ from gwm_ora_client import (
     DEFAULT_TEMPERATURE_C,
     ClimateCommand,
     ClimateMode,
+    CloseWindowsCommand,
+    DoorLockCommand,
     GwmClientError,
     Region,
     VehicleIdentifier,
@@ -33,7 +35,7 @@ _RUSSIA_RESULT_TIMEOUT = timedelta(seconds=300)
 
 
 class DirectClimateCommandApi:
-    """Expose only Task 17 climate writes over the durable Task 14 journal."""
+    """Expose approved direct writes over the durable Task 14 journal."""
 
     def __init__(
         self,
@@ -113,9 +115,17 @@ class DirectClimateCommandApi:
             or not isinstance(operation_time_minutes, int)
             or not is_valid_operation_time(operation_time_minutes)
         ):
-            raise GwmOraApiError("A/C run time must be a whole number from 5 to 30 minutes")
-        if normalized_mode is None and temperature is None and operation_time_minutes is None:
-            raise GwmOraApiError("A/C command requires a mode, temperature, or run time")
+            raise GwmOraApiError(
+                "A/C run time must be a whole number from 5 to 30 minutes"
+            )
+        if (
+            normalized_mode is None
+            and temperature is None
+            and operation_time_minutes is None
+        ):
+            raise GwmOraApiError(
+                "A/C command requires a mode, temperature, or run time"
+            )
 
         run_time_only = normalized_mode is None and temperature is None
         context = await self._cloud.async_get_climate_context(
@@ -157,7 +167,9 @@ class DirectClimateCommandApi:
                 operation_time_minutes=effective_operation_time,
             )
 
-        should_send = normalized_mode is not None or temperature is not None and currently_on
+        should_send = (
+            normalized_mode is not None or temperature is not None and currently_on
+        )
         command_name = "A/C run time" if run_time_only else "A/C"
         if not should_send:
             message = (
@@ -178,21 +190,39 @@ class DirectClimateCommandApi:
             command,
             security_password_hash=_security_password_hash(self._security_pin),
         )
-        accepted_at = self._now()
-        try:
-            entry = await self._state_store.async_record_accepted_command(
-                self._credentials,
-                vehicle_id=identifier.value,
-                command_name=command_name,
-                cloud_command_id=acceptance.command_id,
-                accepted_at=accepted_at,
-            )
-        except Exception as err:
-            raise GwmOraApiError(
-                "GWM accepted the command but its recovery journal could not be saved; do not retry"
-            ) from err
-        self._commands[entry.journal_id] = entry
-        return self._command_view(entry)
+        return await self._record_acceptance(
+            identifier, command_name, acceptance.command_id
+        )
+
+    async def async_lock(self, vin: str, action: str) -> dict[str, object]:
+        """Validate, send, and journal one lock or unlock request."""
+
+        self._ensure_available()
+        identifier = _vehicle_identifier(vin, command_name="Door lock")
+        normalized_action = action.strip().lower() if isinstance(action, str) else ""
+        if normalized_action not in {"lock", "unlock"}:
+            raise GwmOraApiError("Door lock action must be 'lock' or 'unlock'")
+        command_name = "Door lock" if normalized_action == "lock" else "Door unlock"
+        acceptance = await self._cloud.async_send_lock_command(
+            DoorLockCommand(identifier, normalized_action == "lock"),
+            security_password_hash=_security_password_hash(self._security_pin),
+        )
+        return await self._record_acceptance(
+            identifier, command_name, acceptance.command_id
+        )
+
+    async def async_close_windows(self, vin: str) -> dict[str, object]:
+        """Validate, send, and journal one close-all-windows request."""
+
+        self._ensure_available()
+        identifier = _vehicle_identifier(vin, command_name="Window close")
+        acceptance = await self._cloud.async_send_close_windows_command(
+            CloseWindowsCommand(identifier),
+            security_password_hash=_security_password_hash(self._security_pin),
+        )
+        return await self._record_acceptance(
+            identifier, "Window close", acceptance.command_id
+        )
 
     async def async_get_command(self, command_id: str) -> dict[str, object]:
         """Poll one accepted provider ID and persist every terminal transition."""
@@ -224,6 +254,7 @@ class DirectClimateCommandApi:
             results,
             command_id=entry.cloud_command_id,
             region=Region(self._cloud.region),
+            expected_remote_type=_expected_remote_type(entry.command_name),
         )
         now = self._now()
         if result is None or result.state == "pending":
@@ -248,6 +279,27 @@ class DirectClimateCommandApi:
             entry,
             status=f"{entry.command_name}: {status_word} - {details} [{code}]",
         )
+
+    async def _record_acceptance(
+        self,
+        identifier: VehicleIdentifier,
+        command_name: str,
+        cloud_command_id: str,
+    ) -> dict[str, object]:
+        try:
+            entry = await self._state_store.async_record_accepted_command(
+                self._credentials,
+                vehicle_id=identifier.value,
+                command_name=command_name,
+                cloud_command_id=cloud_command_id,
+                accepted_at=self._now(),
+            )
+        except Exception as err:
+            raise GwmOraApiError(
+                "GWM accepted the command but its recovery journal could not be saved; do not retry"
+            ) from err
+        self._commands[entry.journal_id] = entry
+        return self._command_view(entry)
 
     async def _mark_timeout(
         self,
@@ -299,17 +351,27 @@ class DirectClimateCommandApi:
 
     @property
     def _result_timeout(self) -> timedelta:
-        return _RUSSIA_RESULT_TIMEOUT if self._cloud.region == Region.RUSSIA.value else _DEFAULT_RESULT_TIMEOUT
+        return (
+            _RUSSIA_RESULT_TIMEOUT
+            if self._cloud.region == Region.RUSSIA.value
+            else _DEFAULT_RESULT_TIMEOUT
+        )
 
     def _ensure_available(self) -> None:
         if not self._enabled:
             raise GwmOraApiForbidden("Direct-cloud remote commands are disabled")
         if not self._security_pin:
-            raise GwmOraApiForbidden("Direct-cloud remote commands require a security PIN")
+            raise GwmOraApiForbidden(
+                "Direct-cloud remote commands require a security PIN"
+            )
 
     def _now(self) -> datetime:
         value = self._clock()
-        if not isinstance(value, datetime) or value.tzinfo is None or value.utcoffset() is None:
+        if (
+            not isinstance(value, datetime)
+            or value.tzinfo is None
+            or value.utcoffset() is None
+        ):
             raise GwmOraApiError("Direct command clock is invalid")
         return value.astimezone(UTC)
 
@@ -317,19 +379,19 @@ class DirectClimateCommandApi:
     def _unavailable() -> Never:
         raise GwmOraApiForbidden("This direct-cloud write is not available yet")
 
-    async def async_lock(self, *args: object, **kwargs: object) -> dict[str, object]:
+    async def async_vehicle_control(
+        self, *args: object, **kwargs: object
+    ) -> dict[str, object]:
         self._unavailable()
 
-    async def async_close_windows(self, *args: object, **kwargs: object) -> dict[str, object]:
+    async def async_get_charging_plan(
+        self, *args: object, **kwargs: object
+    ) -> dict[str, object]:
         self._unavailable()
 
-    async def async_vehicle_control(self, *args: object, **kwargs: object) -> dict[str, object]:
-        self._unavailable()
-
-    async def async_get_charging_plan(self, *args: object, **kwargs: object) -> dict[str, object]:
-        self._unavailable()
-
-    async def async_set_charging_plan(self, *args: object, **kwargs: object) -> dict[str, object]:
+    async def async_set_charging_plan(
+        self, *args: object, **kwargs: object
+    ) -> dict[str, object]:
         self._unavailable()
 
 
@@ -339,7 +401,32 @@ def _climate_is_on(status: object) -> bool:
 
 
 def _security_password_hash(pin: str) -> str:
-    return hashlib.md5(pin.encode("ascii", errors="replace"), usedforsecurity=False).hexdigest()
+    return hashlib.md5(
+        pin.encode("ascii", errors="replace"), usedforsecurity=False
+    ).hexdigest()
+
+
+def _vehicle_identifier(vin: object, *, command_name: str) -> VehicleIdentifier:
+    if not isinstance(vin, str):
+        raise GwmOraApiError(f"{command_name} command requires a valid vehicle")
+    try:
+        return VehicleIdentifier(vin)
+    except (TypeError, ValueError):
+        raise GwmOraApiError(
+            f"{command_name} command requires a valid vehicle"
+        ) from None
+
+
+def _expected_remote_type(command_name: str) -> str:
+    if command_name in {"A/C", "A/C run time"}:
+        return "0x04"
+    if command_name in {"Door lock", "Door unlock"}:
+        return "0x05"
+    if command_name == "Window close":
+        return "0x08"
+    raise GwmOraApiError(
+        "Remote command journal contains an unsupported command family"
+    )
 
 
 def _local_completed_command(vin: str, status: str) -> dict[str, object]:

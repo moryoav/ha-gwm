@@ -65,6 +65,14 @@ class GwmOraEntity(CoordinatorEntity[GwmOraDataUpdateCoordinator]):
         return bool(capabilities.get("climate_commands", capabilities.get("remote_commands")))
 
     @property
+    def lock_window_commands_available(self) -> bool:
+        """Return the lock/window capability with add-on compatibility."""
+
+        vehicle = self.vehicle or {}
+        capabilities = vehicle.get("capabilities") or {}
+        return bool(capabilities.get("lock_window_commands", capabilities.get("remote_commands")))
+
+    @property
     def vehicle_platform(self) -> str:
         """Return the normalized vehicle backend platform."""
         return str((self.vehicle or {}).get("platform") or "").lower()
