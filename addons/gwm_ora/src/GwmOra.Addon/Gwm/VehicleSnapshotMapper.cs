@@ -118,6 +118,10 @@ public static class VehicleSnapshotMapper
         var operationTimeMinutes = NormalizeOperationTime(
             basics.Config?.AirConditionerStatusTime,
             DefaultOperationTimeMinutes);
+        var isBeanTech = String.Equals(
+            vehicle.BelongPlatform?.Trim(),
+            "beantech",
+            StringComparison.OrdinalIgnoreCase);
 
         return new VehicleSnapshot
         {
@@ -148,7 +152,10 @@ public static class VehicleSnapshotMapper
                 Action = acOn ? "cooling" : "off",
                 TargetTemperatureC = targetTemperature,
                 OperationTimeMinutes = operationTimeMinutes,
-                CurrentTemperatureC = values.InteriorTemperatureC
+                CurrentTemperatureC = values.InteriorTemperatureC,
+                // BeanTech reports a 17-31 °C range; every other platform keeps 16-32 °C.
+                MinTemperatureC = isBeanTech ? 17 : 16,
+                MaxTemperatureC = isBeanTech ? 31 : 32
             },
             CommandStatus = commandStatus,
             RawItems = rawItems

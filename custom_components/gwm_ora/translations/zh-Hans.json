@@ -93,7 +93,7 @@
       "charging_status": {
         "name": "充电状态",
         "state": {
-          "disconnected": "未连接",
+          "disconnected": "未充电",
           "connected": "已连接",
           "charging": "充电中",
           "charging_complete": "充电完成",

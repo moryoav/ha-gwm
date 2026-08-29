@@ -816,10 +816,9 @@ public sealed class ChinaProtocolClientTests
             command =>
             {
                 Assert.Equal("GW.M.SET_AIR_PRM", command.Function);
-                // cmdCode is always set on China climate commands (6 = start, 7 = stop),
-                // including when the A/C is already on -- it used to be missing there,
-                // which the server rejected with CN_UNSUPPORTED_COMMAND.
-                Assert.Equal(6, command.Body["cmdCode"]!.GetValue<int>());
+                // NavInfo omits cmdCode on SET_AIR_PRM (A/C already running); only BeanTech
+                // maps a control type and therefore always carries one.
+                Assert.False(command.Body.ContainsKey("cmdCode"));
                 Assert.Equal(Vin, command.Body["vin"]!.GetValue<string>());
                 Assert.Equal(20, command.Body["airParams"]!["runTime"]!.GetValue<int>());
                 Assert.Equal(26, command.Body["airParams"]!["temperature"]!.GetValue<int>());

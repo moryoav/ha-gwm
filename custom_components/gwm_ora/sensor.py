@@ -55,6 +55,12 @@ def _value(key: str) -> Callable[[dict[str, Any] | None], Any]:
     return lambda vehicle: vehicle_value(vehicle, key)
 
 
+def _remaining_charging_time_value(vehicle: dict[str, Any] | None) -> Any:
+    """Return remaining charging minutes, or "未充电" when the car is not charging."""
+    value = vehicle_value(vehicle, "remaining_charging_time_min")
+    return "未充电" if value is None else value
+
+
 def _enum_value(
     key: str, options: set[str]
 ) -> Callable[[dict[str, Any] | None], str | None]:
@@ -137,10 +143,7 @@ SENSORS: tuple[GwmOraSensorEntityDescription, ...] = (
     GwmOraSensorEntityDescription(
         key="remaining_charging_time_min",
         translation_key="remaining_charging_time",
-        device_class=SensorDeviceClass.DURATION,
-        native_unit_of_measurement=UnitOfTime.MINUTES,
-        state_class=SensorStateClass.MEASUREMENT,
-        value_fn=_value("remaining_charging_time_min"),
+        value_fn=_remaining_charging_time_value,
     ),
     GwmOraSensorEntityDescription(
         key="charging_status",
@@ -470,7 +473,7 @@ SENSORS: tuple[GwmOraSensorEntityDescription, ...] = (
         device_class=SensorDeviceClass.BATTERY,
         native_unit_of_measurement=PERCENTAGE,
         state_class=SensorStateClass.MEASUREMENT,
-        entity_registry_enabled_default=False,
+        entity_registry_enabled_default=True,
         value_fn=_value("remaining_usable_charge_percent"),
     ),
 )

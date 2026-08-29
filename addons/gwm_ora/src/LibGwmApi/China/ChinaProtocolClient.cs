@@ -313,7 +313,10 @@ public sealed class ChinaProtocolClient
         JsonObject command;
         if (request.ChinaCommand is not null)
         {
-            (function, command) = BuildChinaRemoteCommand(request.Vin, request.ChinaCommand);
+            (function, command) = BuildChinaRemoteCommand(
+                request.Vin,
+                request.ChinaCommand,
+                IsPlatform(vehicle, "beantech"));
         }
         else if (request.Instructions?.X05 is not null)
         {
@@ -616,7 +619,8 @@ public sealed class ChinaProtocolClient
 
     private (string Function, JsonObject Command) BuildChinaRemoteCommand(
         string vin,
-        ChinaRemoteCommand request)
+        ChinaRemoteCommand request,
+        bool isBeanTech)
     {
         var command = BaseControlRequest(vin);
         string function;
@@ -652,7 +656,11 @@ public sealed class ChinaProtocolClient
                     break;
                 }
 
-                if (climateMode is not ("cool" or "heat" or "auto"))
+                // BeanTech only has an "auto" mode (no separate heat/cool); NavInfo keeps
+                // the original cool/heat modes. `auto` must not reach a NavInfo vehicle.
+                if (isBeanTech
+                    ? climateMode is not ("cool" or "heat" or "auto")
+                    : climateMode is not ("cool" or "heat"))
                 {
                     throw new GwmApiException(
                         "CN_CLIMATE_MODE",
@@ -661,11 +669,15 @@ public sealed class ChinaProtocolClient
 
                 // The official client uses SET_AIR_PRM when HVAC is already running. Sending
                 // SET_AND_OPEN_COMMAND again is accepted as a start command but does not apply
-                // a changed temperature on the tested China vehicle.
+                // a changed temperature on the tested China vehicle. SET_AIR_PRM must not carry
+                // a cmdCode for NavInfo; BeanTech always maps one to a control type.
                 function = request.AirAlreadyOn
                     ? "GW.M.SET_AIR_PRM"
                     : "GW.M.SET_AND_OPEN_COMMAND";
-                command["cmdCode"] = 6;
+                if (isBeanTech || !request.AirAlreadyOn)
+                {
+                    command["cmdCode"] = 6;
+                }
 
                 command["airParams"] = new JsonObject
                 {

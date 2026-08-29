@@ -73,6 +73,10 @@ class GwmOraClimateRunTimeNumber(GwmOraEntity, NumberEntity):
         super().__init__(coordinator, vin)
         self._api = api
         self._attr_unique_id = f"{vin}_climate_run_time"
+        # BeanTech only accepts whole 5-minute steps (5/10/.../30); other
+        # platforms keep the upstream 1-minute step.
+        if self.is_china_beantech:
+            self._attr_native_step = 5
 
     @property
     def available(self) -> bool:
@@ -118,7 +122,7 @@ class GwmOraRemoteStartRunTimeNumber(GwmOraEntity, RestoreNumber):
     _attr_mode = NumberMode.SLIDER
     _attr_native_min_value = 5
     _attr_native_max_value = 30
-    _attr_native_step = 1
+    _attr_native_step = 5
     _attr_native_unit_of_measurement = UnitOfTime.MINUTES
 
     def __init__(self, api, coordinator, vin: str) -> None:
