@@ -18,9 +18,8 @@ from .entity import GwmOraEntity, async_call_addon_api, setup_vehicle_entities, 
 PARALLEL_UPDATES = 0
 
 # How long a switch keeps showing the requested state before falling back to
-# the value reported by the car, and how many polls it may span at most.
+# the value reported by the car.
 OPTIMISTIC_STATE_TIMEOUT = 120.0
-OPTIMISTIC_STATE_MAX_UPDATES = 2
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -219,7 +218,6 @@ class _OptimisticRemoteSwitch(GwmOraEntity, SwitchEntity):
 
     _optimistic_state: bool | None = None
     _optimistic_until: float = 0.0
-    _optimistic_updates_left: int = 0
 
     def _actual_is_on(self) -> bool | None:
         """Return the state reported by the car."""
@@ -238,23 +236,18 @@ class _OptimisticRemoteSwitch(GwmOraEntity, SwitchEntity):
         """Show ``value`` until the car confirms it or the timeout expires."""
         self._optimistic_state = value
         self._optimistic_until = time.monotonic() + OPTIMISTIC_STATE_TIMEOUT
-        self._optimistic_updates_left = OPTIMISTIC_STATE_MAX_UPDATES
         self.async_write_ha_state()
 
     def _handle_coordinator_update(self) -> None:
-        if self._optimistic_state is not None:
-            self._optimistic_updates_left -= 1
-            # Stop overriding once the car agrees, once it has had a couple of
-            # polls to report the change, or once the timeout expires. The poll
-            # budget matters for the mutually exclusive seat heating/ventilation
-            # switches: turning one on makes the car switch the other off, and
-            # that must not stay hidden behind a stale requested state.
-            if (
-                self._actual_is_on() == self._optimistic_state
-                or self._optimistic_updates_left <= 0
-                or time.monotonic() >= self._optimistic_until
-            ):
-                self._optimistic_state = None
+        # Only stop overriding once the car confirms the requested state, or the
+        # timeout expires. Do not budget this by coordinator updates: command
+        # status is pushed every couple of seconds, which would clear an
+        # optimistic state far sooner than the intended timeout.
+        if self._optimistic_state is not None and (
+            self._actual_is_on() == self._optimistic_state
+            or time.monotonic() >= self._optimistic_until
+        ):
+            self._optimistic_state = None
         super()._handle_coordinator_update()
 
 

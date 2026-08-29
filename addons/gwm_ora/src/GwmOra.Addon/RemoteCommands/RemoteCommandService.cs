@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using GwmOra.Addon.Configuration;
 using GwmOra.Addon.Gwm;
 using GwmOra.Addon.Models;
@@ -24,7 +25,7 @@ public sealed class RemoteCommandService
     private readonly RemoteCommandStore _store;
     private readonly IHostApplicationLifetime _lifetime;
     private readonly ILogger<RemoteCommandService> _logger;
-    private readonly SemaphoreSlim _commandQueue = new(1, 1);
+    private readonly ConcurrentDictionary<string, SemaphoreSlim> _commandQueues = new();
 
     public RemoteCommandService(
         AddonOptions options,
@@ -46,19 +47,23 @@ public sealed class RemoteCommandService
 
     public RemoteCommandSnapshot? Get(string id) => _store.Get(id);
 
-    private void QueueCommand(Func<Task> execute)
+    private void QueueCommand(string vin, Func<Task> execute)
     {
+        // Serialize per vehicle, not globally. The server already rejects a
+        // command while another is still executing for that vehicle, so a global
+        // queue would only slow down unrelated vehicles.
+        var queue = _commandQueues.GetOrAdd(vin, _ => new SemaphoreSlim(1, 1));
         _ = Task.Run(
             async () =>
             {
-                await _commandQueue.WaitAsync(_lifetime.ApplicationStopping);
+                await queue.WaitAsync(_lifetime.ApplicationStopping);
                 try
                 {
                     await execute();
                 }
                 finally
                 {
-                    _commandQueue.Release();
+                    queue.Release();
                 }
             },
             CancellationToken.None);
@@ -76,7 +81,7 @@ public sealed class RemoteCommandService
 
         var commandName = mode is null && !request.Temperature.HasValue ? "A/C run time" : "A/C";
         var command = _store.Create(vin, commandName);
-        QueueCommand(() => ExecuteClimateAsync(command.Id, request, _lifetime.ApplicationStopping));
+        QueueCommand(command.Vin, () => ExecuteClimateAsync(command.Id, request, _lifetime.ApplicationStopping));
         return command;
     }
 
@@ -116,7 +121,7 @@ public sealed class RemoteCommandService
         }
 
         var command = _store.Create(vin, normalized == "lock" ? "Door lock" : "Door unlock");
-        QueueCommand(() => ExecuteLockAsync(command.Id, normalized == "lock", _lifetime.ApplicationStopping));
+        QueueCommand(command.Vin, () => ExecuteLockAsync(command.Id, normalized == "lock", _lifetime.ApplicationStopping));
         return command;
     }
 
@@ -124,7 +129,7 @@ public sealed class RemoteCommandService
     {
         EnsureRemoteCommandsAvailable();
         var command = _store.Create(vin, "Window close");
-        QueueCommand(() => ExecuteWindowCloseAsync(command.Id, _lifetime.ApplicationStopping));
+        QueueCommand(command.Vin, () => ExecuteWindowCloseAsync(command.Id, _lifetime.ApplicationStopping));
         return command;
     }
 
@@ -184,6 +189,7 @@ public sealed class RemoteCommandService
 
         var command = _store.Create(vin, commandName);
         QueueCommand(
+            command.Vin,
             () => ExecuteVehicleControlAsync(
                 command.Id,
                 action,
@@ -418,6 +424,7 @@ public sealed class RemoteCommandService
             vin,
             enable ? "Smart scheduled charging on" : "Smart scheduled charging off");
         QueueCommand(
+            command.Vin,
             () => ExecuteChargingModeAsync(command.Id, enable, _lifetime.ApplicationStopping));
         return command;
     }
