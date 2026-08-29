@@ -382,9 +382,18 @@ public sealed class ChinaProtocolClient
         JsonObject command,
         CancellationToken cancellationToken)
     {
-        if ((command["cmdCode"]?.GetValue<int>() ?? 0) == 46)
+        var cmdCode = command["cmdCode"]?.GetValue<int>() ?? 0;
+        if (cmdCode == 46)
         {
             await SendBeanTechComfortOffAsync(request, cancellationToken);
+            return;
+        }
+
+        if (cmdCode == 45)
+        {
+            // 一键舒适「常用」：先查收藏的模式（one-touch/mode 里 commonUseMode==1），
+            // 再按收藏的模式发命令，不能硬编码成凉爽。
+            await SendBeanTechComfortFavoriteAsync(request, cancellationToken);
             return;
         }
 
@@ -464,6 +473,75 @@ public sealed class ChinaProtocolClient
                     ["cmdBody"] = new JsonObject { ["leftFront"] = 0, ["operationMode"] = 2, ["rightFront"] = 0 }
                 },
                 new JsonObject { ["controlType"] = "STEERING_WHEEL_HEATLESS" }
+            }
+        };
+
+        await SendBeanTechPostAsync(
+            BeanTechBaseUrl + "app-api/api/v3.0/vehicle/remote-ctrl/timely",
+            body,
+            request.Vin,
+            cancellationToken);
+    }
+
+    // 一键舒适「常用」：不是「上次启动」，而是用户设置的那个收藏模式。
+    // 查 one-touch/mode，找 commonUseMode==1 的模式，返回它的 modeId 和 type。
+    public async Task<(string ModeId, string Type)> GetBeanTechComfortFavoriteAsync(
+        string vin,
+        CancellationToken cancellationToken)
+    {
+        var data = await SendBeanTechGetAsync(
+            BeanTechBaseUrl + "app-api/api/v3.0/vehicle/one-touch/mode",
+            new Dictionary<string, string>(StringComparer.Ordinal) { ["vin"] = vin },
+            vin,
+            cancellationToken);
+
+        if (data is not JsonArray modes)
+        {
+            throw new GwmApiException(
+                "CN_COMFORT_MODE",
+                "BeanTech one-touch comfort modes are missing.");
+        }
+
+        foreach (var mode in modes)
+        {
+            if (Value(mode, "commonUseMode") == "1")
+            {
+                return (Value(mode, "modeId") ?? String.Empty, Value(mode, "type") ?? "1");
+            }
+        }
+
+        throw new GwmApiException(
+            "CN_COMFORT_MODE",
+            "BeanTech has no favorite comfort mode configured.");
+    }
+
+    private async Task SendBeanTechComfortFavoriteAsync(
+        SendCmd request,
+        CancellationToken cancellationToken)
+    {
+        var (modeId, type) = await GetBeanTechComfortFavoriteAsync(request.Vin, cancellationToken);
+
+        var seqNo = Guid.NewGuid().ToString("N")
+                    + Random.Shared.Next(1000, 10000).ToString(CultureInfo.InvariantCulture);
+        _commandTransactions[request.SeqNo] = seqNo;
+
+        var body = new JsonObject
+        {
+            ["vin"] = request.Vin,
+            ["seqNo"] = seqNo,
+            ["sendType"] = 0,
+            ["commands"] = new JsonArray
+            {
+                new JsonObject
+                {
+                    ["controlType"] = "COMFORT_MODE_CTRL",
+                    ["cmdBody"] = new JsonObject
+                    {
+                        ["action"] = 1,
+                        ["modeId"] = modeId,
+                        ["type"] = type
+                    }
+                }
             }
         };
 
@@ -601,8 +679,8 @@ public sealed class ChinaProtocolClient
                 return ("COMFORT_MODE_CTRL", new JsonObject { ["action"] = 1, ["modeId"] = "4982234", ["type"] = "1" });
             case 44:
                 return ("COMFORT_MODE_CTRL", new JsonObject { ["action"] = 1, ["modeId"] = "4982235", ["type"] = "2" });
-            case 45:
-                return ("COMFORT_MODE_CTRL", new JsonObject { ["action"] = 1, ["modeId"] = "4982235", ["type"] = "2" });
+            // case 45 = 一键舒适「常用」，走 SendBeanTechComfortFavoriteAsync 特殊路径
+            // （查 one-touch/mode 收藏模式再发），不在这里硬编码。
             // 电池包保温（frida 实测 2026-08-29）：无 cmdBody，只有 controlType
             case 47:
                 return ("BATTERY_GUN_HEAT_START", null);

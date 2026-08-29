@@ -172,7 +172,7 @@ public sealed class RemoteCommandService
             "cabin_cleaning" => "Cabin cleaning",
             "comfort_warm" => "Comfort (warm)",
             "comfort_cool" => "Comfort (cool)",
-            "comfort_last" => "Comfort (last)",
+            "comfort_favorite" => "Comfort (favorite)",
             "comfort_off" => "Comfort off",
             "battery_gun_heat" => "Battery pack heating (plugged in)",
             "battery_gun_heat_stop" => "Battery pack heating off (plugged in)",
@@ -382,7 +382,7 @@ public sealed class RemoteCommandService
                 "cabin_cleaning" => RemoteCommandFactory.CreateChinaCommand(command.Vin, SecurityPassword, ChinaRemoteCommandKind.Common, 42),
                 "comfort_warm" => RemoteCommandFactory.CreateChinaCommand(command.Vin, SecurityPassword, ChinaRemoteCommandKind.Common, 43),
                 "comfort_cool" => RemoteCommandFactory.CreateChinaCommand(command.Vin, SecurityPassword, ChinaRemoteCommandKind.Common, 44),
-                "comfort_last" => RemoteCommandFactory.CreateChinaCommand(command.Vin, SecurityPassword, ChinaRemoteCommandKind.Common, 45),
+                "comfort_favorite" => RemoteCommandFactory.CreateChinaCommand(command.Vin, SecurityPassword, ChinaRemoteCommandKind.Common, 45),
                 "comfort_off" => RemoteCommandFactory.CreateChinaCommand(command.Vin, SecurityPassword, ChinaRemoteCommandKind.Common, 46),
                 // 电池包保温（frida 实测 2026-08-29，需 PIN）
                 "battery_gun_heat" => RemoteCommandFactory.CreateChinaCommand(command.Vin, SecurityPassword, ChinaRemoteCommandKind.Common, 47),

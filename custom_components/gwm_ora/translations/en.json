@@ -199,7 +199,7 @@
       "cabin_cleaning": { "name": "Cabin cleaning" },
       "comfort_warm": { "name": "Comfort (warm mode)" },
       "comfort_cool": { "name": "Comfort (cool mode)" },
-      "comfort_last": { "name": "Comfort (last mode)" },
+      "comfort_favorite": { "name": "Comfort (favorite)" },
       "comfort_off": { "name": "Comfort (turn off)" },
       "close_windows": { "name": "Close windows" },
       "remote_start": { "name": "Remote start" },

@@ -199,7 +199,7 @@
       "cabin_cleaning": { "name": "座舱清洁" },
       "comfort_warm": { "name": "一键舒适（温暖模式）" },
       "comfort_cool": { "name": "一键舒适（凉爽模式）" },
-      "comfort_last": { "name": "一键舒适（上次启动）" },
+      "comfort_favorite": { "name": "一键舒适（常用）" },
       "comfort_off": { "name": "一键舒适（一键关闭）" },
       "close_windows": { "name": "关闭车窗" },
       "remote_start": { "name": "远程启动" },

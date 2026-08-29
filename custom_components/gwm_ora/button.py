@@ -26,7 +26,7 @@ CHINA_REMOTE_BUTTONS: tuple[tuple[str, str], ...] = (
     ("cabin_cleaning", "cabin_cleaning"),
     ("comfort_warm", "comfort_warm"),
     ("comfort_cool", "comfort_cool"),
-    ("comfort_last", "comfort_last"),
+    ("comfort_favorite", "comfort_favorite"),
     ("comfort_off", "comfort_off"),
 )
 
@@ -52,7 +52,7 @@ BEANTECH_REMOTE_ACTIONS = {
     "cabin_cleaning",
     "comfort_warm",
     "comfort_cool",
-    "comfort_last",
+    "comfort_favorite",
     "comfort_off",
 }
 
