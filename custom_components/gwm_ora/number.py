@@ -41,11 +41,18 @@ async def async_setup_entry(
                 entry.runtime_data.coordinator,
                 vehicle["vin"],
             ),
-            GwmOraRemoteStartRunTimeNumber(
-                entry.runtime_data.api,
-                entry.runtime_data.coordinator,
-                vehicle["vin"],
-            ),
+        )
+        + (
+            (
+                GwmOraRemoteStartRunTimeNumber(
+                    entry.runtime_data.api,
+                    entry.runtime_data.coordinator,
+                    vehicle["vin"],
+                ),
+            )
+            if entry.runtime_data.coordinator.region == "cn"
+            and str(vehicle.get("platform") or "").lower() == "beantech"
+            else ()
         ),
     )
 

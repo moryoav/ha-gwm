@@ -276,7 +276,7 @@ def test_beantech_controls_only_expose_mapped_capabilities() -> None:
     pytest.importorskip("homeassistant")
     from custom_components.gwm_ora.button import (
         BEANTECH_REMOTE_ACTIONS,
-        CHINA_REMOTE_BUTTONS,
+        NAVINFO_REMOTE_ACTIONS,
         _china_remote_buttons_for_vehicle,
     )
     from custom_components.gwm_ora.entity import (
@@ -293,7 +293,7 @@ def test_beantech_controls_only_expose_mapped_capabilities() -> None:
     }
 
     assert beantech_actions == BEANTECH_REMOTE_ACTIONS
-    assert navinfo_actions == {action for action, _ in CHINA_REMOTE_BUTTONS}
+    assert navinfo_actions == NAVINFO_REMOTE_ACTIONS
     assert not _vehicle_charging_control_available(
         {"capabilities": {"charging_control": False}},
         {"charging_control_enabled": True},

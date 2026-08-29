@@ -23,6 +23,9 @@ public sealed class AddonOptions
     [JsonPropertyName("security_pin")]
     public string? SecurityPin { get; init; }
 
+    [JsonPropertyName("beantech_encrypted_security_pin")]
+    public string? BeantechEncryptedSecurityPin { get; init; }
+
     [JsonPropertyName("enable_remote_commands")]
     public bool EnableRemoteCommands { get; init; }
 
@@ -118,6 +121,7 @@ public static class AddonOptionsLoader
             Password = options.Password,
             VerificationCode = String.IsNullOrWhiteSpace(options.VerificationCode) ? null : options.VerificationCode.Trim(),
             SecurityPin = String.IsNullOrWhiteSpace(options.SecurityPin) ? null : options.SecurityPin.Trim(),
+            BeantechEncryptedSecurityPin = String.IsNullOrWhiteSpace(options.BeantechEncryptedSecurityPin) ? null : options.BeantechEncryptedSecurityPin.Trim(),
             EnableRemoteCommands = options.EnableRemoteCommands,
             EnableChargingControl = options.EnableChargingControl,
             PollIntervalSeconds = options.PollIntervalSeconds,

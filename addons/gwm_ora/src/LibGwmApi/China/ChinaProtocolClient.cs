@@ -300,6 +300,15 @@ public sealed class ChinaProtocolClient
             throw UnsupportedPlatform(vehicle);
         }
 
+        if (!IsPlatform(vehicle, "beantech")
+            && request.ChinaCommand is { } chinaCommand
+            && BeanTechOnlyCommandCodes.Contains(chinaCommand.CommandCode))
+        {
+            throw new GwmApiException(
+                "CN_UNSUPPORTED_COMMAND",
+                $"Command code {chinaCommand.CommandCode} is only supported on BeanTech vehicles.");
+        }
+
         string function;
         JsonObject command;
         if (request.ChinaCommand is not null)
@@ -494,12 +503,24 @@ public sealed class ChinaProtocolClient
 
         if (String.IsNullOrWhiteSpace(token))
         {
+            // Do not echo the response body: it may contain the security token.
             throw new GwmApiException(
                 "CN_SECURITY_TOKEN",
-                $"Beantech generate-token did not return a security token. Response data: {data?.ToJsonString()}");
+                "Beantech generate-token did not return a security token.");
         }
         return token;
     }
+
+    // Command codes that only BeanTech supports. The NavInfo command path passes an
+    // arbitrary CommandCode through for the Common/EngineStart/SunroofOpen kinds, so
+    // these must be rejected up front for non-BeanTech vehicles instead of relying on
+    // the NavInfo backend.
+    private static readonly HashSet<int> BeanTechOnlyCommandCodes = new()
+    {
+        5, // horn + flash
+        30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, // comfort
+        47, 48, 49, 50 // battery pack heating
+    };
 
     private static (string? ControlType, JsonObject? CmdBody) MapBeanTechControl(JsonObject command)
     {
@@ -790,10 +811,20 @@ public sealed class ChinaProtocolClient
         foreach (var message in list)
         {
             var messageData = Property(message, "messageData") ?? message;
+            var resultCode = Value(messageData, "resultCode");
+            // BeanTech reports "still pending" as resultCode "2"; the shared poller
+            // only recognises "2000" as pending, so translate it. Otherwise the first
+            // pending response is treated as a failure and the command queue is
+            // released while the vehicle is still executing.
+            if (String.Equals(resultCode, "2", StringComparison.Ordinal))
+            {
+                resultCode = "2000";
+            }
+
             results.Add(new RemoteCtrlResultT5
             {
                 HwCommandId = sequenceNumber,
-                ResultCode = Value(messageData, "resultCode"),
+                ResultCode = resultCode,
                 ResultMsg = Value(messageData, "resultMessage")
             });
         }

@@ -33,6 +33,91 @@ def _charging_plan_is_active(response: dict[str, Any]) -> bool:
     )
 
 
+def _is_china_beantech_vehicle(coordinator, vehicle: dict[str, Any]) -> bool:
+    """Return whether the vehicle is a BeanTech vehicle on the China gateway."""
+    return (
+        coordinator.region == "cn"
+        and str(vehicle.get("platform") or "").lower() == "beantech"
+    )
+
+
+def _beantech_switches(api, coordinator, vin: str) -> tuple[SwitchEntity, ...]:
+    """Switch entities that only the BeanTech platform supports."""
+    return (
+        GwmOraRemoteStartSwitch(api, coordinator, vin),
+        GwmOraRemoteControlSwitch(
+            api, coordinator, vin,
+            turn_on_action="seat_heating_driver", turn_off_action="seat_heating_stop",
+            state_key="front_driver_seat_heater_level", translation_key="seat_heating_driver",
+        ),
+        GwmOraRemoteControlSwitch(
+            api, coordinator, vin,
+            turn_on_action="seat_heating_passenger", turn_off_action="seat_heating_stop",
+            state_key="front_passenger_seat_heater_level", translation_key="seat_heating_passenger",
+        ),
+        GwmOraRemoteControlSwitch(
+            api, coordinator, vin,
+            turn_on_action="seat_ventilation_driver", turn_off_action="seat_ventilation_stop",
+            state_key="front_driver_seat_vent_level", translation_key="seat_ventilation_driver",
+        ),
+        GwmOraRemoteControlSwitch(
+            api, coordinator, vin,
+            turn_on_action="seat_ventilation_passenger", turn_off_action="seat_ventilation_stop",
+            state_key="front_passenger_seat_vent_level", translation_key="seat_ventilation_passenger",
+        ),
+        GwmOraRemoteControlSwitch(
+            api, coordinator, vin,
+            turn_on_action="steering_wheel_heating", turn_off_action="steering_wheel_heating_stop",
+            state_key="steering_wheel_heater_active", translation_key="steering_wheel_heating",
+        ),
+        GwmOraRemoteControlSwitch(
+            api, coordinator, vin,
+            turn_on_action="defrost_front", turn_off_action="defrost_front_stop",
+            state_key="front_defroster", translation_key="defrost_front",
+        ),
+        GwmOraRemoteControlSwitch(
+            api, coordinator, vin,
+            turn_on_action="defrost_back", turn_off_action="defrost_back_stop",
+            state_key="rear_defroster", translation_key="defrost_back",
+        ),
+        GwmOraClimatePresetSwitch(
+            api, coordinator, vin,
+            temperature=17, translation_key="fast_cool",
+        ),
+        GwmOraClimatePresetSwitch(
+            api, coordinator, vin,
+            temperature=31, translation_key="fast_heat",
+        ),
+        GwmOraBatteryHeatSwitch(
+            api, coordinator, vin,
+            turn_on_action="battery_initiative_heat",
+            turn_off_action="battery_initiative_heat_stop",
+            translation_key="battery_initiative_heat",
+        ),
+        GwmOraBatteryHeatSwitch(
+            api, coordinator, vin,
+            turn_on_action="battery_gun_heat",
+            turn_off_action="battery_gun_heat_stop",
+            translation_key="battery_gun_heat",
+        ),
+        GwmOraSmartChargeSwitch(api, coordinator, vin),
+    )
+
+
+def _vehicle_switches(api, coordinator, vehicle: dict[str, Any]) -> tuple[SwitchEntity, ...]:
+    """Return the switches for a vehicle, filtered by backend platform.
+
+    Entities are created per platform rather than gated only by ``available``,
+    because an unavailable entity still runs ``async_added_to_hass``: a BeanTech
+    vehicle must not try to read the NavInfo charging plan, and a NavInfo
+    vehicle must not try to read the BeanTech charging endpoint.
+    """
+    vin = vehicle["vin"]
+    if _is_china_beantech_vehicle(coordinator, vehicle):
+        return _beantech_switches(api, coordinator, vin)
+    return (GwmOraChargingScheduleSwitch(api, coordinator, vin),)
+
+
 async def async_setup_entry(
     hass: HomeAssistant,
     entry: GwmOraConfigEntry,
@@ -42,71 +127,8 @@ async def async_setup_entry(
     setup_vehicle_entities(
         entry,
         async_add_entities,
-        lambda vehicle: (
-            GwmOraChargingScheduleSwitch(
-                entry.runtime_data.api, entry.runtime_data.coordinator, vehicle["vin"]
-            ),
-            GwmOraRemoteStartSwitch(
-                entry.runtime_data.api, entry.runtime_data.coordinator, vehicle["vin"]
-            ),
-            GwmOraRemoteControlSwitch(
-                entry.runtime_data.api, entry.runtime_data.coordinator, vehicle["vin"],
-                turn_on_action="seat_heating_driver", turn_off_action="seat_heating_stop",
-                state_key="front_driver_seat_heater_level", translation_key="seat_heating_driver",
-            ),
-            GwmOraRemoteControlSwitch(
-                entry.runtime_data.api, entry.runtime_data.coordinator, vehicle["vin"],
-                turn_on_action="seat_heating_passenger", turn_off_action="seat_heating_stop",
-                state_key="front_passenger_seat_heater_level", translation_key="seat_heating_passenger",
-            ),
-            GwmOraRemoteControlSwitch(
-                entry.runtime_data.api, entry.runtime_data.coordinator, vehicle["vin"],
-                turn_on_action="seat_ventilation_driver", turn_off_action="seat_ventilation_stop",
-                state_key="front_driver_seat_vent_level", translation_key="seat_ventilation_driver",
-            ),
-            GwmOraRemoteControlSwitch(
-                entry.runtime_data.api, entry.runtime_data.coordinator, vehicle["vin"],
-                turn_on_action="seat_ventilation_passenger", turn_off_action="seat_ventilation_stop",
-                state_key="front_passenger_seat_vent_level", translation_key="seat_ventilation_passenger",
-            ),
-            GwmOraRemoteControlSwitch(
-                entry.runtime_data.api, entry.runtime_data.coordinator, vehicle["vin"],
-                turn_on_action="steering_wheel_heating", turn_off_action="steering_wheel_heating_stop",
-                state_key="steering_wheel_heater_active", translation_key="steering_wheel_heating",
-            ),
-            GwmOraRemoteControlSwitch(
-                entry.runtime_data.api, entry.runtime_data.coordinator, vehicle["vin"],
-                turn_on_action="defrost_front", turn_off_action="defrost_front_stop",
-                state_key="front_defroster", translation_key="defrost_front",
-            ),
-            GwmOraRemoteControlSwitch(
-                entry.runtime_data.api, entry.runtime_data.coordinator, vehicle["vin"],
-                turn_on_action="defrost_back", turn_off_action="defrost_back_stop",
-                state_key="rear_defroster", translation_key="defrost_back",
-            ),
-            GwmOraClimatePresetSwitch(
-                entry.runtime_data.api, entry.runtime_data.coordinator, vehicle["vin"],
-                temperature=17, translation_key="fast_cool",
-            ),
-            GwmOraClimatePresetSwitch(
-                entry.runtime_data.api, entry.runtime_data.coordinator, vehicle["vin"],
-                temperature=31, translation_key="fast_heat",
-            ),
-            GwmOraBatteryHeatSwitch(
-                entry.runtime_data.api, entry.runtime_data.coordinator, vehicle["vin"],
-                turn_on_action="battery_initiative_heat",
-                turn_off_action="battery_initiative_heat_stop",
-                translation_key="battery_initiative_heat",
-            ),
-            GwmOraBatteryHeatSwitch(
-                entry.runtime_data.api, entry.runtime_data.coordinator, vehicle["vin"],
-                turn_on_action="battery_gun_heat",
-                turn_off_action="battery_gun_heat_stop",
-                translation_key="battery_gun_heat",
-            ),
-            GwmOraSmartChargeSwitch(
-                entry.runtime_data.api, entry.runtime_data.coordinator, vehicle["vin"]
-            ),
+        lambda vehicle: _vehicle_switches(
+            entry.runtime_data.api, entry.runtime_data.coordinator, vehicle
         ),
     )
 

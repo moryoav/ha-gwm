@@ -30,6 +30,20 @@ CHINA_REMOTE_BUTTONS: tuple[tuple[str, str], ...] = (
     ("comfort_off", "comfort_off"),
 )
 
+NAVINFO_REMOTE_ACTIONS = {
+    "remote_start",
+    "remote_stop",
+    "horn",
+    "flash_lights",
+    "horn_and_lights",
+    "tailgate_open",
+    "tailgate_close",
+    "sunroof_close",
+    "sunroof_tilt",
+    "sunroof_half",
+    "sunroof_full",
+}
+
 BEANTECH_REMOTE_ACTIONS = {
     "horn",
     "flash_lights",
@@ -47,10 +61,12 @@ def _china_remote_buttons_for_vehicle(
     vehicle: dict,
 ) -> tuple[tuple[str, str], ...]:
     """Return remote buttons mapped for the vehicle platform."""
-    if str(vehicle.get("platform") or "").lower() != "beantech":
-        return CHINA_REMOTE_BUTTONS
+    if str(vehicle.get("platform") or "").lower() == "beantech":
+        return tuple(
+            item for item in CHINA_REMOTE_BUTTONS if item[0] in BEANTECH_REMOTE_ACTIONS
+        )
     return tuple(
-        item for item in CHINA_REMOTE_BUTTONS if item[0] in BEANTECH_REMOTE_ACTIONS
+        item for item in CHINA_REMOTE_BUTTONS if item[0] in NAVINFO_REMOTE_ACTIONS
     )
 
 

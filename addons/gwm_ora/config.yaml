@@ -37,6 +37,7 @@ schema:
   password: password
   verification_code: password?
   security_pin: password?
+  beantech_encrypted_security_pin: password?
   enable_remote_commands: bool
   enable_charging_control: bool
   poll_interval_seconds: "int(30,3600)"

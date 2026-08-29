@@ -778,7 +778,7 @@ public sealed class RemoteCommandService
     }
 
     private string SecurityPassword => IsChinaRegion
-        ? _options.SecurityPin ?? String.Empty // 中国区 security_pin 填加密后的 securityPwd（setPasswordEncryptionForBB 结果）
+        ? _options.BeantechEncryptedSecurityPin ?? String.Empty // beantech 填加密后的 securityPwd（setPasswordEncryptionForBB 结果）
         : new CheckSecurityPassword(_options.SecurityPin!).Md5Hash;
 
     private bool IsRussianRegion =>

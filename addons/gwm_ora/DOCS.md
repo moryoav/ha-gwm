@@ -18,7 +18,8 @@
 | `username` | yes | GWM account e-mail address, or the registered phone number for `cn`. |
 | `password` | except `cn` | GWM account password. Ignored for `cn`, which uses SMS login. |
 | `verification_code` | no | One-time SMS/e-mail verification code sent by GWM. China login always uses an SMS code; leave this empty on the first China start so the add-on can request one. |
-| `security_pin` | no | Vehicle remote control PIN from the official app. Required outside China. NavInfo commands do not send it. The BeanTech encrypted PIN format is not implemented yet. |
+| `security_pin` | no | Vehicle remote control PIN from the official app. Required for remote commands outside `cn`. `cn` **NavInfo** commands do not send it, so leave it empty there. |
+| `beantech_encrypted_security_pin` | no | For `cn` **BeanTech** vehicles only: the *encrypted* security password, i.e. the `setPasswordEncryptionForBB` result captured from the app — **not** the raw PIN. The app encrypts the PIN with a native white-box AES routine that cannot be reproduced from the plaintext PIN, so the encrypted value must be captured (for example with Frida) and pasted here. See the China section. |
 | `enable_remote_commands` | yes | Enables A/C, lock, unlock, and close-window commands. In China it also exposes experimental model-dependent controls. BeanTech commands are unverified. |
 | `enable_charging_control` | yes | Enables the **Scheduled charging** switch and the `gwm_ora.set_charging_plan` / `gwm_ora.clear_charging_plan` actions. Default `false`. Independent of `enable_remote_commands` and needs no security PIN. Validated on an ANZ vehicle. China charging control is currently limited to NavInfo vehicles. |
 | `poll_interval_seconds` | yes | GWM cloud polling interval from 30 to 3600 seconds. |
@@ -91,7 +92,7 @@ The add-on stores the three China service sessions under `/data` and tries to cl
 
 Only after vehicle discovery and the read-only entities look correct should a tester enable controls. Set `enable_remote_commands: true` to expose the controls supported by that platform. NavInfo exposes A/C, lock, unlock, close windows, remote start/stop, horn, lights, combined vehicle search, tailgate open/close, and sunroof close/tilt/half/full controls. China climate also offers experimental heating.
 
-BeanTech currently exposes initial mappings for lock/unlock, close windows, remote start/stop, horn, flashing lights, and closing the sunroof. These mappings are not live-verified. The exact command fields and the official app's encrypted PIN format still need more research, so a command may fail without reaching the vehicle. BeanTech climate, combined horn and lights, tailgate, other sunroof positions, and charging schedules stay unavailable until their request formats are known.
+BeanTech currently exposes initial mappings for lock/unlock, close windows, remote start/stop, horn, flashing lights, and closing the sunroof. These mappings are not live-verified. The exact command fields still need more research, so a command may fail without reaching the vehicle. BeanTech climate, combined horn and lights, tailgate, other sunroof positions, and charging schedules stay unavailable until their request formats are known.
 
 Test one command at a time while the vehicle is visible, parked, clear of people and obstacles, and in a safe state. For sunroof testing, start closed. Compare the physical result and the **Remote command status** sensor with the official app after every command. If a command fails, share only sanitized request shape, response code, response message, and result-polling details.
 
