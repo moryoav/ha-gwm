@@ -149,6 +149,8 @@ public sealed class VehicleValues
     public bool? TirePressureIndicatorRearRight { get; init; }
     public double? AuxBatteryLevel { get; init; }
     public double? RemainingUsableChargePercent { get; init; }
+    public double? BatteryPackCurrent { get; init; }
+    public double? BatteryPackVoltage { get; init; }
 }
 
 public sealed class ClimateSnapshot

@@ -110,7 +110,9 @@ public static class VehicleSnapshotMapper
             TirePressureIndicatorRearLeft = Bool(rawItems, "9000022"),
             TirePressureIndicatorRearRight = Bool(rawItems, "9000023"),
             AuxBatteryLevel = Number(rawItems, "9000024"),
-            RemainingUsableChargePercent = Number(rawItems, "9000025")
+            RemainingUsableChargePercent = Number(rawItems, "9000025"),
+            BatteryPackCurrent = Number(rawItems, "9000026"),
+            BatteryPackVoltage = Number(rawItems, "9000027")
         };
 
         var acOn = values.AcActive == true;

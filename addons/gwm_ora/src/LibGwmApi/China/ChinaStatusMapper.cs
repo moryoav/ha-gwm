@@ -223,6 +223,10 @@ internal static class ChinaStatusMapper
         Add(items, "9000018", Value(status, "wirelessLevel"));
         Add(items, "9000019", Value(status, "oilQty"));
 
+        // BeanTech-only battery pack electrical signals.
+        Add(items, "9000026", Value(status, "battPackCurr"));
+        Add(items, "9000027", Value(status, "battPackVolt"));
+
         // BeanTech-only tire warning signals.
         Add(items, "9000020", Value(tirePress, "lfTirePressIndcrSts"));
         Add(items, "9000021", Value(tirePress, "rfTirePressIndcrSts"));
