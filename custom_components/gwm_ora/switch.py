@@ -432,12 +432,10 @@ class GwmOraSmartChargeSwitch(GwmOraEntity, SwitchEntity):
         )
         self.coordinator.set_local_flag(self.vin, "smart_charge", enable)
         # Tracked like any other remote command so its result shows up in the
-        # command-status sensor ("... completed - 充电设置成功 [0]").
-        #
-        # Deliberately not re-reading the car here: the setting is still pending
-        # at this point (result code 2), so a read would return the old value and
-        # bounce the switch back. The command result is the confirmation.
-        self.coordinator.async_track_command(command)
+        # command-status sensor ("... completed - 充电设置成功 [0]"). The switch
+        # stays optimistic until the command reaches a terminal state, then reads
+        # the value back so a failure reverts it and a success reflects the car.
+        self.coordinator.async_track_command(command, on_terminal=self._async_read_state)
 
 
 class GwmOraBatteryHeatSwitch(_OptimisticRemoteSwitch):

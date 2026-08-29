@@ -7,7 +7,7 @@ import logging
 import time
 from contextlib import suppress
 from datetime import timedelta
-from typing import Any
+from typing import Any, Awaitable, Callable
 
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed
@@ -114,8 +114,17 @@ class GwmOraDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._local_flags[(vin, key)] = value
         self.async_update_listeners()
 
-    def async_track_command(self, command: dict[str, Any]) -> None:
-        """Track a queued remote command and push status updates into HA."""
+    def async_track_command(
+        self,
+        command: dict[str, Any],
+        on_terminal: Callable[[], Awaitable[None]] | None = None,
+    ) -> None:
+        """Track a queued remote command and push status updates into HA.
+
+        ``on_terminal``, when given, runs once the command reaches a terminal
+        state (completed, failed, timeout or canceled) so an entity can reconcile
+        its state with the vehicle instead of trusting an optimistic update.
+        """
         self._apply_command_status(command)
         command_id = command.get("id")
         if not command_id or command.get("state") in self._TERMINAL_COMMAND_STATES:
@@ -124,7 +133,7 @@ class GwmOraDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         if command_id in self._command_tasks:
             return
 
-        task = self.hass.async_create_task(self._async_follow_command(command_id))
+        task = self.hass.async_create_task(self._async_follow_command(command_id, on_terminal))
         self._command_tasks[command_id] = task
         task.add_done_callback(lambda _: self._command_tasks.pop(command_id, None))
 
@@ -134,7 +143,11 @@ class GwmOraDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             task.cancel()
         self._command_tasks.clear()
 
-    async def _async_follow_command(self, command_id: str) -> None:
+    async def _async_follow_command(
+        self,
+        command_id: str,
+        on_terminal: Callable[[], Awaitable[None]] | None = None,
+    ) -> None:
         """Poll one command until the add-on reports a terminal state."""
         deadline = time.monotonic() + 130
         while time.monotonic() < deadline:
@@ -151,6 +164,8 @@ class GwmOraDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
             if command.get("state") == "completed":
                 await self._async_refresh_after_completed_command()
+            if on_terminal is not None:
+                await on_terminal()
             return
 
     async def _async_refresh_after_completed_command(self) -> None:
