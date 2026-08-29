@@ -552,6 +552,84 @@ public sealed class ChinaProtocolClient
             cancellationToken);
     }
 
+    // 电池保温真实状态：switch/status 里的 insertGunKeepWarm / activeKeepWarm。
+    public async Task<(bool InsertGunKeepWarm, bool ActiveKeepWarm)> GetBeanTechSwitchStatusAsync(
+        string vin,
+        CancellationToken cancellationToken)
+    {
+        var data = await SendBeanTechGetAsync(
+            BeanTechBaseUrl + "app-api/api/v3.0/vehicle/switch/status",
+            new Dictionary<string, string>(StringComparer.Ordinal) { ["vin"] = vin },
+            vin,
+            cancellationToken);
+
+        var switchStatus = Property(data, "switchStatus");
+        return (
+            Value(switchStatus, "insertGunKeepWarm") == "1",
+            Value(switchStatus, "activeKeepWarm") == "1");
+    }
+
+    // 空调设置温度：config/query 的 AIR_CONDITIONER_START.cmdContent.temperature。
+    public async Task<int?> GetBeanTechAirConditionerTemperatureAsync(
+        string vin,
+        CancellationToken cancellationToken)
+    {
+        var body = new JsonObject
+        {
+            ["sendType"] = 0,
+            ["types"] = new JsonArray { "AIR_CONDITIONER_START" },
+            ["userId"] = Session.UserId,
+            ["vin"] = vin
+        };
+
+        var data = await SendBeanTechPostAsync(
+            BeanTechBaseUrl + "app-api/api/v3.0/vehicle/remote-ctrl/config/query",
+            body,
+            vin,
+            cancellationToken);
+
+        if (data is JsonArray items)
+        {
+            foreach (var item in items)
+            {
+                if (Value(item, "type") != "AIR_CONDITIONER_START")
+                {
+                    continue;
+                }
+
+                var cmdContent = Property(item, "cmdContent");
+                if (Int32.TryParse(Value(cmdContent, "temperature"), out var temperature))
+                {
+                    return temperature;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    // 远控记录：分页查询，返回原始 data（含 pageNum/total/pages/list）。
+    public async Task<JsonNode> GetBeanTechRemoteRecordsAsync(
+        string vin,
+        int pageNum,
+        int pageSize,
+        CancellationToken cancellationToken)
+    {
+        var body = new JsonObject
+        {
+            ["vin"] = vin,
+            ["type"] = "SELF",
+            ["pageNum"] = pageNum,
+            ["pageSize"] = pageSize
+        };
+
+        return await SendBeanTechPostAsync(
+            BeanTechBaseUrl + "app-api/api/v3.0/vehicle/remote-ctrl/records/query",
+            body,
+            vin,
+            cancellationToken);
+    }
+
     private async Task<string> GenerateBeanTechSecurityTokenAsync(
         SendCmd request,
         CancellationToken cancellationToken)

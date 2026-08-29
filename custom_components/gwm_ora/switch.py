@@ -92,12 +92,14 @@ def _beantech_switches(api, coordinator, vin: str) -> tuple[SwitchEntity, ...]:
             turn_on_action="battery_initiative_heat",
             turn_off_action="battery_initiative_heat_stop",
             translation_key="battery_initiative_heat",
+            state_key="active_keep_warm",
         ),
         GwmOraBatteryHeatSwitch(
             api, coordinator, vin,
             turn_on_action="battery_gun_heat",
             turn_off_action="battery_gun_heat_stop",
             translation_key="battery_gun_heat",
+            state_key="insert_gun_keep_warm",
         ),
         GwmOraSmartChargeSwitch(api, coordinator, vin),
     )
@@ -434,10 +436,9 @@ class GwmOraSmartChargeSwitch(GwmOraEntity, SwitchEntity):
 class GwmOraBatteryHeatSwitch(_OptimisticRemoteSwitch):
     """Battery pack heating (active, or while plugged in).
 
-    The vehicle accepts these commands but does not report the resulting state
-    in its status snapshot -- ``battery_pack_state`` stayed at 0 across verified
-    on/off commands -- so the switch reflects the last command sent from Home
-    Assistant rather than a value read back from the car.
+    The real on/off state comes from the switch/status snapshot, polled with the
+    vehicle data (``insert_gun_keep_warm`` / ``active_keep_warm``), so a failed
+    command or restart no longer leaves the switch showing a stale value.
     """
 
     def __init__(
@@ -449,16 +450,18 @@ class GwmOraBatteryHeatSwitch(_OptimisticRemoteSwitch):
         turn_on_action: str,
         turn_off_action: str,
         translation_key: str,
+        state_key: str,
     ) -> None:
         super().__init__(coordinator, vin)
         self._api = api
         self._turn_on_action = turn_on_action
         self._turn_off_action = turn_off_action
+        self._state_key = state_key
         self._attr_translation_key = translation_key
         self._attr_unique_id = f"{vin}_{translation_key}"
 
     def _actual_is_on(self) -> bool | None:
-        return self.coordinator.local_flag(self.vin, self._attr_translation_key)
+        return vehicle_value(self.vehicle, self._state_key)
 
     @property
     def available(self) -> bool:
@@ -474,7 +477,6 @@ class GwmOraBatteryHeatSwitch(_OptimisticRemoteSwitch):
             self._api.async_vehicle_control(self.vin, self._turn_on_action)
         )
         self.coordinator.async_track_command(command)
-        self.coordinator.set_local_flag(self.vin, self._attr_translation_key, True)
         self._set_optimistic(True)
 
     async def async_turn_off(self, **kwargs: Any) -> None:
@@ -482,7 +484,6 @@ class GwmOraBatteryHeatSwitch(_OptimisticRemoteSwitch):
             self._api.async_vehicle_control(self.vin, self._turn_off_action)
         )
         self.coordinator.async_track_command(command)
-        self.coordinator.set_local_flag(self.vin, self._attr_translation_key, False)
         self._set_optimistic(False)
 
 

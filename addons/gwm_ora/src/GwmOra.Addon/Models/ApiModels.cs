@@ -151,6 +151,8 @@ public sealed class VehicleValues
     public double? RemainingUsableChargePercent { get; init; }
     public double? BatteryPackCurrent { get; init; }
     public double? BatteryPackVoltage { get; init; }
+    public bool? InsertGunKeepWarm { get; init; }
+    public bool? ActiveKeepWarm { get; init; }
 }
 
 public sealed class ClimateSnapshot

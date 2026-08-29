@@ -225,6 +225,27 @@ api.MapPost("/vehicles/{vin}/charging/mode", (string vin, ChargingModeRequest re
     }
 });
 
+api.MapGet("/vehicles/{vin}/remote-records", async (string vin, int? page, int? size, RemoteCommandService commands, CancellationToken cancellationToken) =>
+{
+    try
+    {
+        var data = await commands.GetRemoteRecordsAsync(
+            vin,
+            page ?? 1,
+            Math.Clamp(size ?? 20, 1, 100),
+            cancellationToken);
+        return Results.Ok(data);
+    }
+    catch (ArgumentException ex)
+    {
+        return Results.Problem(ex.Message, statusCode: StatusCodes.Status400BadRequest);
+    }
+    catch (Exception ex)
+    {
+        return Results.Problem(ex.Message, statusCode: StatusCodes.Status502BadGateway);
+    }
+});
+
 app.MapGet("/", (GwmVehicleService vehicles) => IngressPage.Render(vehicles));
 
 await app.RunAsync();

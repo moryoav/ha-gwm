@@ -124,6 +124,16 @@ class GwmOraApiClient:
             json={"enable": enable},
         )
 
+    async def async_get_remote_records(
+        self, vin: str, *, page: int = 1, size: int = 20
+    ) -> dict[str, Any]:
+        """Return a page of BeanTech remote control records."""
+        return await self._request(
+            "GET",
+            f"/vehicles/{vin}/remote-records",
+            params={"page": page, "size": size},
+        )
+
     async def async_set_charging_plan(
         self,
         vin: str,

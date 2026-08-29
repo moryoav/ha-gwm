@@ -18,7 +18,10 @@ public static class VehicleSnapshotMapper
         VehicleBasicsInfo basics,
         bool remoteCommandsAvailable,
         string commandStatus,
-        bool chargingControlAvailable = false)
+        bool chargingControlAvailable = false,
+        bool? insertGunKeepWarm = null,
+        bool? activeKeepWarm = null,
+        int? acTemperature = null)
     {
         var rawItems = RawItems(status);
         var values = new VehicleValues
@@ -112,11 +115,14 @@ public static class VehicleSnapshotMapper
             AuxBatteryLevel = Number(rawItems, "9000024"),
             RemainingUsableChargePercent = Number(rawItems, "9000025"),
             BatteryPackCurrent = Number(rawItems, "9000026"),
-            BatteryPackVoltage = Number(rawItems, "9000027")
+            BatteryPackVoltage = Number(rawItems, "9000027"),
+            InsertGunKeepWarm = insertGunKeepWarm,
+            ActiveKeepWarm = activeKeepWarm
         };
 
         var acOn = values.AcActive == true;
-        var targetTemperature = NormalizeTemperature(basics.Config?.AirConditionerTemperature, 22);
+        var targetTemperature = acTemperature
+                               ?? NormalizeTemperature(basics.Config?.AirConditionerTemperature, 22);
         var operationTimeMinutes = NormalizeOperationTime(
             basics.Config?.AirConditionerStatusTime,
             DefaultOperationTimeMinutes);

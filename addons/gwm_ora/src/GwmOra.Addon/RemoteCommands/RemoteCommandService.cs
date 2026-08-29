@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Text.Json.Nodes;
 using GwmOra.Addon.Configuration;
 using GwmOra.Addon.Gwm;
 using GwmOra.Addon.Models;
@@ -414,6 +415,13 @@ public sealed class RemoteCommandService
             StartTime = startTime,
             EndTime = endTime
         };
+    }
+
+    public async Task<JsonNode> GetRemoteRecordsAsync(string vin, int pageNum, int pageSize, CancellationToken cancellationToken)
+    {
+        ValidateVin(vin);
+        var client = await AuthenticatedClientAsync(cancellationToken);
+        return await client.GetBeanTechRemoteRecordsAsync(vin, pageNum, pageSize, cancellationToken);
     }
 
     public RemoteCommandSnapshot SetChargingMode(string vin, bool enable)

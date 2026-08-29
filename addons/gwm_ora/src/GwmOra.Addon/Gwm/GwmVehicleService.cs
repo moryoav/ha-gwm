@@ -92,13 +92,42 @@ public sealed class GwmVehicleService
                 var basicsTask = client.GetVehicleBasicsInfoOrDefaultAsync(vehicle.Vin, cancellationToken);
                 await Task.WhenAll(statusTask, basicsTask);
 
+                bool? insertGunKeepWarm = null;
+                bool? activeKeepWarm = null;
+                int? acTemperature = null;
+                if (String.Equals(vehicle.BelongPlatform?.Trim(), "beantech", StringComparison.OrdinalIgnoreCase))
+                {
+                    try
+                    {
+                        var (gun, active) = await client.GetBeanTechSwitchStatusAsync(vehicle.Vin, cancellationToken);
+                        insertGunKeepWarm = gun;
+                        activeKeepWarm = active;
+                    }
+                    catch (Exception)
+                    {
+                        // 保温状态读取失败时保持 null，不阻断整次刷新。
+                    }
+
+                    try
+                    {
+                        acTemperature = await client.GetBeanTechAirConditionerTemperatureAsync(vehicle.Vin, cancellationToken);
+                    }
+                    catch (Exception)
+                    {
+                        // 空调温度读取失败时保持 null，回退到默认值。
+                    }
+                }
+
                 snapshots.Add(VehicleSnapshotMapper.Map(
                     vehicle,
                     await statusTask,
                     await basicsTask,
                     RemoteCommandsAvailable,
                     _remoteCommandStore.GetLastStatus(vehicle.Vin),
-                    ChargingControlAvailable(vehicle)));
+                    ChargingControlAvailable(vehicle),
+                    insertGunKeepWarm,
+                    activeKeepWarm,
+                    acTemperature));
             }
 
             _vehicles = snapshots.ToArray();

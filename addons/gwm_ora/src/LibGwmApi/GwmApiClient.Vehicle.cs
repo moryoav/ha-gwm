@@ -1,6 +1,7 @@
 ﻿using libgwmapi.DTO.Vehicle;
 using libgwmapi.DTO.UserAuth;
 using Microsoft.Extensions.Logging;
+using System.Text.Json.Nodes;
 
 namespace libgwmapi;
 
@@ -181,6 +182,50 @@ public partial class GwmApiClient
         }
 
         return _chinaClient.GetBeanTechChargeResultAsync(seqNo, vin, cancellationToken);
+    }
+
+    public Task<(bool InsertGunKeepWarm, bool ActiveKeepWarm)> GetBeanTechSwitchStatusAsync(
+        string vin,
+        CancellationToken cancellationToken)
+    {
+        if (_chinaClient is null)
+        {
+            throw new GwmApiException(
+                "CN_UNSUPPORTED_PLATFORM",
+                "Battery heating state is only available on the China BeanTech platform.");
+        }
+
+        return _chinaClient.GetBeanTechSwitchStatusAsync(vin, cancellationToken);
+    }
+
+    public Task<int?> GetBeanTechAirConditionerTemperatureAsync(
+        string vin,
+        CancellationToken cancellationToken)
+    {
+        if (_chinaClient is null)
+        {
+            throw new GwmApiException(
+                "CN_UNSUPPORTED_PLATFORM",
+                "The A/C set temperature is only available on the China BeanTech platform.");
+        }
+
+        return _chinaClient.GetBeanTechAirConditionerTemperatureAsync(vin, cancellationToken);
+    }
+
+    public Task<JsonNode> GetBeanTechRemoteRecordsAsync(
+        string vin,
+        int pageNum,
+        int pageSize,
+        CancellationToken cancellationToken)
+    {
+        if (_chinaClient is null)
+        {
+            throw new GwmApiException(
+                "CN_UNSUPPORTED_PLATFORM",
+                "Remote control records are only available on the China BeanTech platform.");
+        }
+
+        return _chinaClient.GetBeanTechRemoteRecordsAsync(vin, pageNum, pageSize, cancellationToken);
     }
 
     public Task<ChargingInfos> GetChargingInfosAsync(string vin, CancellationToken cancellationToken)
