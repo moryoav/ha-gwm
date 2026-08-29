@@ -630,6 +630,20 @@ public sealed class ChinaProtocolClient
             cancellationToken);
     }
 
+    // 最新一条远控记录的 resultMsg，如「电池包插枪保温关闭成功」。
+    public async Task<string?> GetBeanTechLatestRemoteRecordAsync(
+        string vin,
+        CancellationToken cancellationToken)
+    {
+        var data = await GetBeanTechRemoteRecordsAsync(vin, 1, 1, cancellationToken);
+        if (Property(data, "list") is JsonArray list && list.Count > 0)
+        {
+            return Value(list[0], "resultMsg");
+        }
+
+        return null;
+    }
+
     private async Task<string> GenerateBeanTechSecurityTokenAsync(
         SendCmd request,
         CancellationToken cancellationToken)

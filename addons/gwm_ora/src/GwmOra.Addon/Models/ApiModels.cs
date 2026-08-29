@@ -153,6 +153,7 @@ public sealed class VehicleValues
     public double? BatteryPackVoltage { get; init; }
     public bool? InsertGunKeepWarm { get; init; }
     public bool? ActiveKeepWarm { get; init; }
+    public string? LatestRemoteRecordMsg { get; init; }
 }
 
 public sealed class ClimateSnapshot

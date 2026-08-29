@@ -228,6 +228,20 @@ public partial class GwmApiClient
         return _chinaClient.GetBeanTechRemoteRecordsAsync(vin, pageNum, pageSize, cancellationToken);
     }
 
+    public Task<string?> GetBeanTechLatestRemoteRecordAsync(
+        string vin,
+        CancellationToken cancellationToken)
+    {
+        if (_chinaClient is null)
+        {
+            throw new GwmApiException(
+                "CN_UNSUPPORTED_PLATFORM",
+                "Remote control records are only available on the China BeanTech platform.");
+        }
+
+        return _chinaClient.GetBeanTechLatestRemoteRecordAsync(vin, cancellationToken);
+    }
+
     public Task<ChargingInfos> GetChargingInfosAsync(string vin, CancellationToken cancellationToken)
     {
         if (_chinaClient is not null)

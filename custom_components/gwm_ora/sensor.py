@@ -53,6 +53,7 @@ BEANTECH_SENSOR_KEYS = {
     "remaining_usable_charge_percent",
     "battery_pack_current",
     "battery_pack_voltage",
+    "latest_remote_record_msg",
 }
 
 # NavInfo-only sensors that BeanTech does not report (soce = SOCE/SOH from battSoh).
@@ -70,6 +71,16 @@ class GwmOraSensorEntityDescription(SensorEntityDescription):
 
 def _value(key: str) -> Callable[[dict[str, Any] | None], Any]:
     return lambda vehicle: vehicle_value(vehicle, key)
+
+
+def _remaining_charging_time_value(vehicle: dict[str, Any] | None) -> Any:
+    """Return remaining charging minutes, or 0 when the car is not charging.
+
+    The add-on keeps the value null when the car reports no charging time, but
+    the frontend shows 0 so the sensor does not read "unknown".
+    """
+    value = vehicle_value(vehicle, "remaining_charging_time_min")
+    return 0 if value is None else value
 
 
 def _enum_value(
@@ -157,7 +168,7 @@ SENSORS: tuple[GwmOraSensorEntityDescription, ...] = (
         device_class=SensorDeviceClass.DURATION,
         native_unit_of_measurement=UnitOfTime.MINUTES,
         state_class=SensorStateClass.MEASUREMENT,
-        value_fn=_value("remaining_charging_time_min"),
+        value_fn=_remaining_charging_time_value,
     ),
     GwmOraSensorEntityDescription(
         key="charging_status",
@@ -507,6 +518,11 @@ SENSORS: tuple[GwmOraSensorEntityDescription, ...] = (
         native_unit_of_measurement=UnitOfElectricPotential.VOLT,
         state_class=SensorStateClass.MEASUREMENT,
         value_fn=_value("battery_pack_voltage"),
+    ),
+    GwmOraSensorEntityDescription(
+        key="latest_remote_record_msg",
+        translation_key="latest_remote_record",
+        value_fn=_value("latest_remote_record_msg"),
     ),
 )
 

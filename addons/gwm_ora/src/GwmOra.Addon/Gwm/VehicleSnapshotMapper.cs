@@ -21,7 +21,8 @@ public static class VehicleSnapshotMapper
         bool chargingControlAvailable = false,
         bool? insertGunKeepWarm = null,
         bool? activeKeepWarm = null,
-        int? acTemperature = null)
+        int? acTemperature = null,
+        string? latestRemoteRecordMsg = null)
     {
         var rawItems = RawItems(status);
         var values = new VehicleValues
@@ -117,7 +118,8 @@ public static class VehicleSnapshotMapper
             BatteryPackCurrent = Number(rawItems, "9000026"),
             BatteryPackVoltage = Number(rawItems, "9000027"),
             InsertGunKeepWarm = insertGunKeepWarm,
-            ActiveKeepWarm = activeKeepWarm
+            ActiveKeepWarm = activeKeepWarm,
+            LatestRemoteRecordMsg = latestRemoteRecordMsg
         };
 
         var acOn = values.AcActive == true;

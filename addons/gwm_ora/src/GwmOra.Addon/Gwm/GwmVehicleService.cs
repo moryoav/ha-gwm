@@ -95,6 +95,7 @@ public sealed class GwmVehicleService
                 bool? insertGunKeepWarm = null;
                 bool? activeKeepWarm = null;
                 int? acTemperature = null;
+                string? latestRemoteRecordMsg = null;
                 if (String.Equals(vehicle.BelongPlatform?.Trim(), "beantech", StringComparison.OrdinalIgnoreCase))
                 {
                     try
@@ -116,6 +117,15 @@ public sealed class GwmVehicleService
                     {
                         // 空调温度读取失败时保持 null，回退到默认值。
                     }
+
+                    try
+                    {
+                        latestRemoteRecordMsg = await client.GetBeanTechLatestRemoteRecordAsync(vehicle.Vin, cancellationToken);
+                    }
+                    catch (Exception)
+                    {
+                        // 远控记录读取失败时保持 null。
+                    }
                 }
 
                 snapshots.Add(VehicleSnapshotMapper.Map(
@@ -127,7 +137,8 @@ public sealed class GwmVehicleService
                     ChargingControlAvailable(vehicle),
                     insertGunKeepWarm,
                     activeKeepWarm,
-                    acTemperature));
+                    acTemperature,
+                    latestRemoteRecordMsg));
             }
 
             _vehicles = snapshots.ToArray();

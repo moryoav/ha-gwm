@@ -148,6 +148,15 @@
       },
       "rear_right_seat_heater_level": {
         "default": "mdi:car-seat-heater"
+      },
+      "battery_pack_current": {
+        "default": "mdi:current-dc"
+      },
+      "battery_pack_voltage": {
+        "default": "mdi:sine-wave"
+      },
+      "power": {
+        "default": "mdi:lightning-bolt"
       }
     },
     "switch": {
