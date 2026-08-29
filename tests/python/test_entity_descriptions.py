@@ -217,6 +217,7 @@ def test_beantech_entities_are_isolated_from_other_platforms() -> None:
     )
     from custom_components.gwm_ora.sensor import (
         BEANTECH_SENSOR_KEYS,
+        NAVINFO_SENSOR_KEYS,
         _sensor_descriptions_for_vehicle,
     )
 
@@ -246,6 +247,9 @@ def test_beantech_entities_are_isolated_from_other_platforms() -> None:
     assert BEANTECH_BINARY_SENSOR_KEYS.isdisjoint(navinfo_binary)
     assert beantech_binary >= BEANTECH_BINARY_SENSOR_KEYS
     assert BEANTECH_SENSOR_KEYS.isdisjoint(eu_beantech_sensors)
+    # NavInfo-only sensors (soce) must not leak onto BeanTech vehicles.
+    assert NAVINFO_SENSOR_KEYS.isdisjoint(beantech_sensors)
+    assert navinfo_sensors >= NAVINFO_SENSOR_KEYS
 
 
 def test_beantech_enum_values_reject_unknown_codes() -> None:

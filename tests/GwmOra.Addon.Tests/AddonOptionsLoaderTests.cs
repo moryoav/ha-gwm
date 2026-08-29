@@ -176,4 +176,29 @@ public class AddonOptionsLoaderTests
 
         Assert.Throws<InvalidOperationException>(() => AddonOptionsLoader.Load(path));
     }
+
+    [Fact]
+    public void LoadParsesBeanTechEncryptedSecurityPinSeparately()
+    {
+        var path = Path.GetTempFileName();
+        File.WriteAllText(path, """
+        {
+          "country": "CN",
+          "region": "cn",
+          "username": "13800138000",
+          "password": "",
+          "security_pin": "",
+          "beantech_encrypted_security_pin": " o4/spcDndAeCrizAOffQWTHLJwEpdaaL4RhT5q0pCDkQDFODYOUxKWTQ5jWxE2EE ",
+          "poll_interval_seconds": 60,
+          "log_level": "info"
+        }
+        """);
+
+        var options = AddonOptionsLoader.Load(path);
+
+        Assert.Equal(
+            "o4/spcDndAeCrizAOffQWTHLJwEpdaaL4RhT5q0pCDkQDFODYOUxKWTQ5jWxE2EE",
+            options.BeantechEncryptedSecurityPin);
+        Assert.Null(options.SecurityPin);
+    }
 }

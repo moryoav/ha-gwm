@@ -487,6 +487,97 @@ public sealed class ChinaProtocolClientTests
     }
 
     [Fact]
+    public async Task BeanTechPendingResultCodeIsNormalizedToSharedPendingCode()
+    {
+        using var car = new HttpClient(new DelegateHandler(_ => Json("""
+            {"code":"000000","data":{"acquireVehiclesList":[{"vin":"$VIN$","belongPlatform":"beantech"}]}}
+            """.Replace("$VIN$", Vin, StringComparison.Ordinal))));
+        using var beanTech = new HttpClient(new DelegateHandler(_ => Json("""
+            {"code":"000000","data":{"messageList":[{"messageData":{"resultCode":"2","resultMessage":"远控指令待执行"}}]}}
+            """)));
+        using var unusedGApp = new HttpClient(new DelegateHandler(_ =>
+            throw new Xunit.Sdk.XunitException("G-App should not be called")));
+        using var unusedAutoAi = new HttpClient(new DelegateHandler(_ =>
+            throw new Xunit.Sdk.XunitException("AutoAI should not be called for BeanTech")));
+        var client = new ChinaProtocolClient(
+            unusedGApp,
+            car,
+            beanTech,
+            unusedAutoAi,
+            NullLoggerFactory.Instance)
+        {
+            DeviceId = "0123456789abcdef0123456789abcdef"
+        };
+        client.SetSession(CompleteSession());
+
+        var results = await client.GetRemoteCommandResultAsync("seq-1", Vin, CancellationToken.None);
+        var result = Assert.Single(results);
+        Assert.Equal("2000", result.ResultCode);
+    }
+
+    [Fact]
+    public async Task BeanTechChargingModeWriteAbortsWhenReadIsIncomplete()
+    {
+        using var unusedGApp = new HttpClient(new DelegateHandler(_ =>
+            throw new Xunit.Sdk.XunitException("G-App should not be called")));
+        using var unusedCar = new HttpClient(new DelegateHandler(_ =>
+            throw new Xunit.Sdk.XunitException("Car should not be called")));
+        // The charge/setting read omits chargeStrategy and chargeSetParam, so the
+        // write must abort instead of guessing a fallback that could clobber settings.
+        using var beanTech = new HttpClient(new DelegateHandler(_ => Json("""
+            {"code":"000000","data":{"chargingMode":1,"vin":"$VIN$"}}
+            """.Replace("$VIN$", Vin, StringComparison.Ordinal))));
+        using var unusedAutoAi = new HttpClient(new DelegateHandler(_ =>
+            throw new Xunit.Sdk.XunitException("AutoAI should not be called for BeanTech")));
+        var client = new ChinaProtocolClient(
+            unusedGApp,
+            unusedCar,
+            beanTech,
+            unusedAutoAi,
+            NullLoggerFactory.Instance)
+        {
+            DeviceId = "0123456789abcdef0123456789abcdef"
+        };
+        client.SetSession(CompleteSession());
+
+        var error = await Assert.ThrowsAsync<libgwmapi.GwmApiException>(() =>
+            client.SetBeanTechChargingModeAsync(Vin, enable: true, CancellationToken.None));
+        Assert.Equal("CN_CHARGE_SETTING_INCOMPLETE", error.Code);
+    }
+
+    [Fact]
+    public async Task BeanTechOnlyCommandCodeIsRejectedForNavInfoVehicle()
+    {
+        using var car = new HttpClient(new DelegateHandler(_ => Json("""
+            {"code":"000000","data":{"acquireVehiclesList":[{"vin":"$VIN$","belongPlatform":"navinfo","vehicleNetworkType":2}]}}
+            """.Replace("$VIN$", Vin, StringComparison.Ordinal))));
+        using var unusedGApp = new HttpClient(new DelegateHandler(_ =>
+            throw new Xunit.Sdk.XunitException("G-App should not be called")));
+        using var unusedBeanTech = new HttpClient(new DelegateHandler(_ =>
+            throw new Xunit.Sdk.XunitException("BeanTech should not be called for NavInfo")));
+        using var unusedAutoAi = new HttpClient(new DelegateHandler(_ =>
+            throw new Xunit.Sdk.XunitException("AutoAI must not receive a BeanTech-only command")));
+        var client = new ChinaProtocolClient(
+            unusedGApp,
+            car,
+            unusedBeanTech,
+            unusedAutoAi,
+            NullLoggerFactory.Instance)
+        {
+            DeviceId = "0123456789abcdef0123456789abcdef"
+        };
+        client.SetSession(CompleteSession());
+
+        var command = RemoteCommandFactory.CreateChinaCommand(
+            Vin,
+            ChinaRemoteCommandKind.Common,
+            47);
+        var error = await Assert.ThrowsAsync<libgwmapi.GwmApiException>(() =>
+            client.SendCommandAsync(command, CancellationToken.None));
+        Assert.Equal("CN_UNSUPPORTED_COMMAND", error.Code);
+    }
+
+    [Fact]
     public async Task UnknownChinaPlatformIsRejectedBeforeStatusOrCommandTransport()
     {
         using var car = new HttpClient(new DelegateHandler(_ => Json("""
