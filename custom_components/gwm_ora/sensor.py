@@ -43,6 +43,11 @@ BEANTECH_SENSOR_KEYS = {
     "remaining_usable_charge_percent",
 }
 
+# NavInfo-only sensors that BeanTech does not report (soce = SOCE/SOH from battSoh).
+NAVINFO_SENSOR_KEYS = {
+    "soce",
+}
+
 
 @dataclass(frozen=True, kw_only=True)
 class GwmOraSensorEntityDescription(SensorEntityDescription):
@@ -143,6 +148,7 @@ SENSORS: tuple[GwmOraSensorEntityDescription, ...] = (
     GwmOraSensorEntityDescription(
         key="remaining_charging_time_min",
         translation_key="remaining_charging_time",
+        native_unit_of_measurement=UnitOfTime.MINUTES,
         value_fn=_remaining_charging_time_value,
     ),
     GwmOraSensorEntityDescription(
@@ -485,7 +491,7 @@ def _sensor_descriptions_for_vehicle(
 ) -> tuple[GwmOraSensorEntityDescription, ...]:
     """Return descriptions supported by the vehicle backend."""
     if str(region or "").lower() == "cn" and str(vehicle.get("platform") or "").lower() == "beantech":
-        return SENSORS
+        return tuple(description for description in SENSORS if description.key not in NAVINFO_SENSOR_KEYS)
     return tuple(description for description in SENSORS if description.key not in BEANTECH_SENSOR_KEYS)
 
 

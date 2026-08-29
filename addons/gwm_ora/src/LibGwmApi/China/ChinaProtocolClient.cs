@@ -881,7 +881,16 @@ public sealed class ChinaProtocolClient
     {
         // 先读再回写：只改 chargingMode，chargeSetParam（含用户在 App 里设的 customTime
         // 时间窗和 drivingPlanTimes）与 chargeStrategy 原样回传，否则会把这些设置冲掉。
+        // 读取不完整时安全中止，绝不回写猜测的默认值去覆盖用户设置。
         var current = await ReadBeanTechChargeSettingAsync(vin, cancellationToken);
+        var chargeSetParam = Property(current, "chargeSetParam");
+        if (chargeSetParam is null
+            || !Int32.TryParse(Value(current, "chargeStrategy"), out var strategy))
+        {
+            throw new GwmApiException(
+                "CN_CHARGE_SETTING_INCOMPLETE",
+                "BeanTech charging settings are incomplete; refusing to overwrite them.");
+        }
 
         var seqNo = Guid.NewGuid().ToString("N")
                     + Random.Shared.Next(1000, 10000).ToString(CultureInfo.InvariantCulture);
@@ -889,15 +898,10 @@ public sealed class ChinaProtocolClient
         {
             ["vin"] = vin,
             ["chargingMode"] = enable ? BeanTechChargeModeScheduled : BeanTechChargeModeImmediate,
-            ["chargeStrategy"] =
-                Int32.TryParse(Value(current, "chargeStrategy"), out var strategy) ? strategy : 5,
+            ["chargeStrategy"] = strategy,
+            ["chargeSetParam"] = JsonNode.Parse(chargeSetParam.ToJsonString()),
             ["seqNo"] = seqNo
         };
-
-        if (Property(current, "chargeSetParam") is JsonNode param)
-        {
-            body["chargeSetParam"] = JsonNode.Parse(param.ToJsonString());
-        }
 
         await SendBeanTechPostAsync(
             BeanTechBaseUrl + BeanTechChargeSettingPath,
