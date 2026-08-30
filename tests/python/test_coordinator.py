@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+
 import pytest
 
 pytest.importorskip("homeassistant")
@@ -141,3 +143,43 @@ async def test_direct_coordinator_classifies_refresh_failures(
     with pytest.raises(expected):
         await coordinator._async_update_data()
     assert direct_client.retired is isinstance(error, GwmAuthenticationError)
+
+
+@pytest.mark.asyncio
+async def test_command_polling_tasks_are_cancelled_and_joined_before_shutdown(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    started = asyncio.Event()
+    finished = asyncio.Event()
+
+    async def blocked_sleep(_delay: float) -> None:
+        started.set()
+        try:
+            await asyncio.Event().wait()
+        finally:
+            finished.set()
+
+    monkeypatch.setattr(
+        "custom_components.gwm_ora.coordinator.asyncio.sleep",
+        blocked_sleep,
+    )
+    coordinator = GwmOraDataUpdateCoordinator(
+        HomeAssistant("synthetic-config"),
+        DirectReadOnlyCommandApi(),
+        direct_client=object(),  # type: ignore[arg-type]
+    )
+    coordinator.data = {"region": "eu", "vehicles": []}
+    coordinator.async_track_command(
+        {
+            "id": "accepted-command",
+            "vin": "SYNTHETIC-VIN",
+            "state": "in_progress",
+            "status": "accepted",
+        }
+    )
+    await started.wait()
+
+    await coordinator.async_cancel_command_tasks()
+
+    assert finished.is_set()
+    assert coordinator._command_tasks == {}

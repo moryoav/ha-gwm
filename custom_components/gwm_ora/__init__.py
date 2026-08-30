@@ -230,7 +230,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: GwmOraConfigEntry) -> b
         unloaded = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
         if not unloaded:
             return False
-        entry.runtime_data.coordinator.async_cancel_command_tasks()
+        await entry.runtime_data.coordinator.async_cancel_command_tasks()
         cloud = entry.runtime_data.cloud
         if cloud is not None:
             if (
@@ -240,7 +240,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: GwmOraConfigEntry) -> b
                 stage_direct_cloud_bootstrap(hass, entry.unique_id, bootstrap)
             await cloud.aclose()
         return True
-    entry.runtime_data.coordinator.async_cancel_command_tasks()
+    await entry.runtime_data.coordinator.async_cancel_command_tasks()
     return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
 
 
@@ -317,6 +317,7 @@ async def _async_setup_direct_entry(
         _async_register_services(hass)
         await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     except BaseException:
+        await coordinator.async_cancel_command_tasks()
         if (
             (reusable := cloud.reusable_bootstrap) is not None
             and entry.unique_id is not None

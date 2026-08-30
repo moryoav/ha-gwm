@@ -145,16 +145,19 @@ async def test_direct_entry_setup_and_unload_own_runtime_lifecycle(
     hass = HomeAssistant(str(tmp_path))
     bootstrap = _bootstrap(entry)
     stage_direct_cloud_bootstrap(hass, entry.unique_id or "", bootstrap)
+    shutdown_order: list[str] = []
     forwarded: list[tuple[str, ...]] = []
     unloaded: list[tuple[str, ...]] = []
 
     class Cloud:
+        region = "eu"
         reusable_bootstrap = bootstrap
 
         def __init__(self) -> None:
             self.closed = False
 
         async def aclose(self) -> None:
+            shutdown_order.append("transport")
             self.closed = True
 
     cloud = Cloud()
@@ -170,7 +173,8 @@ async def test_direct_entry_setup_and_unload_own_runtime_lifecycle(
         async def async_config_entry_first_refresh(self) -> None:
             return None
 
-        def async_cancel_command_tasks(self) -> None:
+        async def async_cancel_command_tasks(self) -> None:
+            shutdown_order.append("commands")
             self.cancelled = True
 
     def direct_runtime(*args: Any, **kwargs: Any) -> Cloud:
@@ -212,6 +216,7 @@ async def test_direct_entry_setup_and_unload_own_runtime_lifecycle(
     assert unloaded
     assert cloud.closed
     assert entry.runtime_data.coordinator.cancelled
+    assert shutdown_order == ["commands", "transport"]
     assert consume_direct_cloud_bootstrap(hass, entry.unique_id) is bootstrap
 
 
@@ -224,14 +229,17 @@ async def test_transient_first_refresh_failure_restages_handoff_for_retry(
     hass = HomeAssistant(str(tmp_path))
     bootstrap = _bootstrap(entry)
     stage_direct_cloud_bootstrap(hass, entry.unique_id or "", bootstrap)
+    shutdown_order: list[str] = []
 
     class Cloud:
+        region = "eu"
         reusable_bootstrap = bootstrap
 
         def __init__(self) -> None:
             self.closed = False
 
         async def aclose(self) -> None:
+            shutdown_order.append("transport")
             self.closed = True
 
     cloud = Cloud()
@@ -242,6 +250,9 @@ async def test_transient_first_refresh_failure_restages_handoff_for_retry(
 
         async def async_config_entry_first_refresh(self) -> None:
             raise ConfigEntryNotReady("synthetic transient failure")
+
+        async def async_cancel_command_tasks(self) -> None:
+            shutdown_order.append("commands")
 
     monkeypatch.setattr(
         gwm_ora.DirectCloudReadClient,
@@ -254,6 +265,7 @@ async def test_transient_first_refresh_failure_restages_handoff_for_retry(
         await async_setup_entry(hass, entry)
 
     assert cloud.closed
+    assert shutdown_order == ["commands", "transport"]
     assert consume_direct_cloud_bootstrap(hass, entry.unique_id) is bootstrap
 
 
@@ -292,6 +304,7 @@ async def test_process_restart_resumes_and_rotates_durable_session_without_login
             return EuAuthenticated(rotated.state, rotated.session)
 
     class Cloud:
+        region = "eu"
         reusable_bootstrap = rotated
 
         async def aclose(self) -> None:

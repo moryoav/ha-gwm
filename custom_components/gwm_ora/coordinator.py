@@ -140,11 +140,15 @@ class GwmOraDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._command_tasks[command_id] = task
         task.add_done_callback(lambda _: self._command_tasks.pop(command_id, None))
 
-    def async_cancel_command_tasks(self) -> None:
-        """Cancel in-flight command status polling tasks."""
-        for task in self._command_tasks.values():
-            task.cancel()
+    async def async_cancel_command_tasks(self) -> None:
+        """Cancel and join in-flight command polling before transport shutdown."""
+
+        tasks = tuple(self._command_tasks.values())
         self._command_tasks.clear()
+        for task in tasks:
+            task.cancel()
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
 
     async def _async_follow_command(self, command_id: str) -> None:
         """Poll one command until the add-on reports a terminal state."""
