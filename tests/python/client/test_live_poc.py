@@ -21,11 +21,9 @@ from gwm_ora_client.crypto import load_certificate
 
 RESOURCE_DIR = (
     Path(__file__).resolve().parents[3]
-    / "addons"
+    / "custom_components"
     / "gwm_ora"
-    / "src"
-    / "LibGwmApi"
-    / "Resources"
+    / "resources"
 )
 DEVICE_ID = "01234567-89ab-cdef-0123-456789abcdef"
 NORMALIZED_DEVICE_ID = "0123456789abcdef"

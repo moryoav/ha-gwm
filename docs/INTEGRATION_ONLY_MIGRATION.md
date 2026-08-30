@@ -6,10 +6,10 @@ This document is the durable plan, behavior contract, decision log, and test led
 
 - Working branch: `feature/integration-only`
 - Branch point: `1184737` (`Update README GWM logo to SVG`)
-- Current checkpoint: Task 21 complete; the four-region, two-China-platform offline hardening matrix now covers reads, writes, restart recovery, cancellation-safe persistence, unload ordering, and fail-closed isolation
-- Next checkpoint: Task 22 - resolve packaging, dependency, licensing, certificate, and protocol-material provenance (not yet approved)
+- Current checkpoint: Task 22 complete; the planned `gwm-ora-client` 0.1.0 distribution, integration-local resource boundary, provenance inventory, renewal controls, and archive checks are now explicit, while publication and manifest activation remain on hold
+- Next checkpoint: Task 23 - implement the approved existing-installation migration path (not yet approved)
 - Synchronized `main`: `7b599cb` (`v0.13.0`) through a two-parent merge without rebasing or selective cherry-picks
-- Task 21 completes the offline part of Gate C. Direct China remains hidden behind Gate A-CN, BeanTech exclusions remain enforced, no live request or vehicle operation was made, and live provider parity remains unverified until separately approved
+- Task 22 resolves the technical packaging choice without publishing or activating it. Direct China remains hidden behind Gate A-CN, the add-on remains supported, no installation was migrated, no live request or vehicle operation was made, and unresolved protocol-material permission and replacement conditions remain release holds
 
 Work proceeds one explicitly approved task at a time. At the end of every task, update this document, run the checks appropriate to that checkpoint, create one focused commit, push it to `feature/integration-only`, report the result, and stop. Do not begin the next task without a new user green light.
 
@@ -275,7 +275,7 @@ After Task 24, packaging, installation migration, documentation, complete tests,
 - [x] Task 19 - Add platform-filtered China engine, horn/light, tailgate, and sunroof controls and HA buttons.
 - [x] Task 20 - Add charging-control parity, including NavInfo China weekly schedules while keeping unsupported BeanTech charging unavailable.
 - [x] Task 21 - Complete four-region, two-China-platform hardening and the lifecycle/write parity matrix.
-- [ ] Task 22 — Resolve packaging, dependency, licensing, certificate, and protocol-material provenance.
+- [x] Task 22 - Resolve packaging, dependency, licensing, certificate, and protocol-material provenance.
 - [ ] Task 23 — Implement the approved existing-installation migration path.
 - [ ] Task 24 — Remove add-on/proxy code and complete final validation and documentation.
 
@@ -292,6 +292,7 @@ The changed checkpoints stay intentionally narrow:
 - Task 19 completes the extended China control family without opening Gate A-CN. I ported the eleven NavInfo action shapes and only the five BeanTech mappings supported by released evidence. I wired the existing Home Assistant buttons to an action-specific capability, the shared journal, and strict platform checks. Unknown platforms and unsupported BeanTech actions fail before transport, and all evidence remains synthetic unless I receive separate approval for a live operation.
 - Task 20 adds charging control without opening Gate A-CN. Overseas plans use the exact H5 routes and regional headers. NavInfo uses its separate AutoAI weekly schedule, fixed UTC+08 clock conversion, and weekday order. Exact account-bound ownership survives restart, opt-out cleanup clears only an unchanged owned plan, and official-app replacements are preserved. BeanTech fails before transport and all evidence remains synthetic unless I receive separate approval for a live operation.
 - Task 21 closes the offline Gate C matrix without opening Gate A-CN. EU, ANZ, and Russia share one cancellation-safe journal lifecycle while retaining separate route and result contracts. NavInfo and BeanTech keep their exact platform capabilities and local rejection boundaries. Accepted commands and observed state transitions finish durable persistence before cancellation propagates, unload joins polling tasks before transport close, and every command context must match its account region. No live operation is included.
+- Task 22 selects a separately versioned Python client and makes the HACS integration self-contained for its protocol resources. The local package build contains only the HA-independent client and its legal notices, while the six shared bootstrap files stay outside the client archives with exact provenance and renewal controls. Publication, the integration manifest dependency, existing-install migration, add-on removal, direct China activation, and live traffic remain outside this checkpoint.
 - Tasks 17 through 24 preserve the original command, charging, hardening, packaging, migration, and cutover progression. I keep the platform capability explicit: BeanTech supports lock/unlock, close windows, remote start/stop, horn, flash, and close sunroof. It does not support the climate entity, climate run-time number, tailgate operations, other sunroof positions, combined horn/lights, or charging schedules. Task 19 keeps these experimental controls separate from the already-supported command families and from direct China activation.
 
 ## Decision Log
@@ -356,6 +357,9 @@ The changed checkpoints stay intentionally narrow:
 | D-056 | 2026-08-29 | I keep Task 19 behind an extended-China capability and the existing Gate A-CN activation block. | I can complete and test exact requests, no-PIN journaling, restart polling, and Home Assistant button filtering without presenting synthetic evidence as live China readiness. I expose all eleven actions only for NavInfo and only remote start/stop, horn, flash, and sunroof close for BeanTech. |
 | D-057 | 2026-08-30 | I activate direct overseas charging behind its independent opt-in and keep direct China behind Gate A-CN. | Charging needs no PIN, but it needs exact account-bound ownership and conservative cleanup. NavInfo's separate weekly contract can be proven offline while BeanTech remains unavailable and official-app replacements remain untouched. |
 | D-058 | 2026-08-30 | I make the Task 21 write lifecycle cancellation-safe and region-bound before calling the offline Gate C matrix complete. | A provider-accepted command or observed terminal result must finish its atomic journal write before cancellation propagates. Failed setup and entry unload must join every polling task before closing the transport, and a command API cannot use a state store from another region. China keeps its no-PIN contract and direct activation remains blocked by Gate A-CN. |
+| D-059 | 2026-08-30 | I package the HA-independent code as the separately versioned `gwm-ora-client` distribution. | The package preserves D-005, declares only `aiohttp`, `cryptography`, and `yarl` as direct runtime dependencies, and lets the integration eventually pin one client requirement. Version 0.1.0 is buildable but remains unpublished, and the integration manifest remains unchanged until publication and activation receive separate approval. |
+| D-060 | 2026-08-30 | I keep shared GWM bootstrap material in the HACS integration and exclude it from the Python client archives. | HACS must deliver a self-contained `custom_components/gwm_ora` tree, while the reusable client accepts caller-supplied material and does not need to redistribute certificates or transformed keys. The add-on and integration copies remain byte-identical until the add-on is removed, and automated archive checks reject protocol files and unrelated repository trees. |
+| D-061 | 2026-08-30 | I make protocol-material provenance, permission, and certificate renewal explicit release controls. | Exact hashes, source evidence, certificate identities, and 90-day renewal deadlines are machine-readable and tested. The project will not fetch replacement identities at runtime, and package publication or final cutover stays blocked until redistribution is authorized or the affected material is replaced through a documented authorized path. |
 
 ## Post-Branch Main Drift Review
 
@@ -1447,15 +1451,30 @@ Delivered:
 - I added one three-region restart/no-resend matrix plus China no-PIN, context mismatch, acceptance cancellation, terminal cancellation, charging ownership cancellation, polling shutdown, and transport-close ordering tests.
 - The complete Python suite passes 1,095 tests and the unchanged add-on suite passes 153 .NET tests. Repository-wide Ruff, strict mypy across all 25 client source files, and Python 3.13 compilation pass. The one Python deprecation warning and the existing .NET nullable-annotation warnings are unchanged baselines.
 
+### Task 22 - Packaging and protocol-material provenance
+
+Status: complete on 2026-08-30; the packaging boundary and release controls passed offline validation. I did not publish a package, activate a manifest dependency or direct China, migrate an installation, remove the add-on, or make a live cloud or vehicle request.
+
+Delivered:
+
+- I selected a separately versioned `gwm-ora-client` distribution for the HA-independent protocol layer and prepared version 0.1.0 with Python 3.13 metadata and only its three direct runtime dependencies.
+- I made the HACS integration self-contained by placing byte-identical EU and Russia bootstrap resources under `custom_components/gwm_ora/resources/`. I kept the add-on copies unchanged for the supported legacy path.
+- I excluded certificates, transformed keys, CA bundles, Home Assistant code, add-on code, tests, documentation trees, APKs, and local reverse-engineering artifacts from the client wheel and source archive.
+- I added a machine-readable resource inventory with exact file hashes, source references, certificate identities, key pairing, and 90-day renewal deadlines. The EU renewal deadline is 2026-10-06 and the Russia deadline is 2030-01-21.
+- I added the third-party and protocol-material notice to both the repository and HACS integration. It records unresolved permission and source-history gaps as publication and cutover holds instead of treating attribution as permission.
+- I added deterministic build, metadata, archive-scope, isolated-install, resource-integrity, renewal, and notice checks. CI now builds both archives, runs Twine validation, and rejects a widened distribution.
+- I kept `custom_components/gwm_ora/manifest.json` at `requirements: []`. I did not reserve or publish the package name, and no released installation path changes in this task.
+- The complete Python suite passes 1,099 tests and the client-only suite passes 963 tests against the exact declared lower dependency bounds. The unchanged add-on suite passes 153 .NET tests. Repository-wide Ruff, strict mypy across all 25 client source files, Python 3.13 compilation, local wheel/source builds, Twine checks, archive verification, and isolated wheel import all pass. The one Python deprecation warning and existing .NET nullable-annotation warnings are unchanged baselines.
+
 ### Next checkpoint (requires explicit approval)
 
-Task 22 will resolve packaging, dependency, licensing, certificate, and protocol-material provenance without activating direct China, migrating existing installations, removing the add-on, publishing a package, or making a live cloud or vehicle request.
+Task 23 will decide and implement the existing-installation migration path. It must preserve the supported add-on rollback path and account-bound state rules, and it will not remove the add-on, publish or activate the client package, activate direct China, or make a live cloud or vehicle request without separate approval.
 
 ## Open Risks and Questions
 
 - Cross-architecture confirmation of the scoped GWM SSL context; Linux x86-64/OpenSSL 3.5.6 is proven offline, while supported ARM architectures remain untested.
-- The bundled EU general bootstrap certificate expires on 2027-01-04 and needs a renewal/provenance plan before production cutover.
-- The bundled Russia general bootstrap certificate expires on 2030-04-21 and likewise needs a renewal/provenance plan before that identity can expire in supported installations.
+- The bundled EU general bootstrap certificate expires on 2027-01-04. Its tested renewal deadline is 2026-10-06, so an authorized replacement and updated provenance must land before that deadline or EU cutover must remain blocked.
+- The bundled Russia general bootstrap certificate expires on 2030-04-21. Its tested renewal deadline is 2030-01-21, so an authorized replacement and updated provenance must land before that deadline or Russia support must fail closed.
 - Modern `cryptography` rejects invalid PrintableString characters in the legacy OEM CA subjects; the POC validates their envelopes and lets OpenSSL consume the original signed bytes instead.
 - EU authentication is implemented and exhaustively fixture-tested offline, but its undocumented application-level token-expiry and wrong-verification-code values remain unverified. Until sanitized evidence establishes those codes, only HTTP 401/403 retires token state and unknown application errors propagate without fallback side effects.
 - Exact live parity of undocumented authentication and response behavior in ANZ and Russia remains unverified; EU read transport is proven live, while Task 5 EU auth, Task 6 ANZ auth/read, and Task 10 Russia auth/read semantics were deliberately not exercised live.
@@ -1469,9 +1488,8 @@ Task 22 will resolve packaging, dependency, licensing, certificate, and protocol
 - ANZ side-by-side session effects remain untested. Task 6 prevents every password login without explicit one-shot consent and prevents automatic `607501` reclaim loops; Task 12 now presents that consent as a default-unchecked warning and the project still recommends a dedicated shared vehicle account.
 - ANZ `110641`, current token-expiry/rotation behavior, verification delivery/expiry, AU-versus-NZ differences, and unknown `checkSMSCode` failures lack sanitized current-service evidence; unknown errors stop without attempting the final login.
 - Russia application-level token-expiry and wrong/expired verification-code values lack sanitized evidence. Exact `110641` is therefore limited to the password-login challenge, submitted-code application failures remain unknown, and only HTTP 401/403 can retire or reject authentication state.
-- Safe handling and future renewal of bundled bootstrap certificates and OEM-derived key material.
-- Licensing/provenance of code, certificates, China app-derived signing material, and other resources derived from reverse-engineering work.
-- Whether the final client is bundled for HACS or published as a separately versioned Python dependency.
+- The exact bootstrap inventory, renewal process, and archive boundary are now controlled, but permission or an authorized replacement is still required for the shared identities before package publication and final cutover.
+- The Task 22 provenance audit records unresolved permission and source-history gaps for app-derived protocol material and the RSA recovery implementation. These remain release holds; the audit is not legal clearance.
 - Whether existing users perform one fresh authentication or use a temporary secured state-export path.
 - Blocking certificate/key workers finish protected temporary-file cleanup before propagating cancellation, so a cancelled authentication may return after its nominal deadline even though no network stage may continue past that deadline.
 - I still need live confirmation that each regional and platform provider returns every command identifier needed by the Task 14 journal before I can claim release or cutover confidence. Tasks 17 through 21 prove their command, charging, and lifecycle contracts offline only.

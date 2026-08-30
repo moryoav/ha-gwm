@@ -28,7 +28,7 @@ from gwm_ora_client.eu_identity import (
 from gwm_ora_client.tls import create_gwm_ssl_context as _base_gwm_ssl_context
 
 NOW = datetime(2030, 6, 1, 12, 0, tzinfo=UTC)
-RESOURCE_DIR = Path(__file__).resolve().parents[3] / "addons" / "gwm_ora" / "src" / "LibGwmApi" / "Resources"
+RESOURCE_DIR = Path(__file__).resolve().parents[3] / "custom_components" / "gwm_ora" / "resources"
 
 
 @dataclass(frozen=True, slots=True)

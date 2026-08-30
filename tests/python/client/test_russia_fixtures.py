@@ -27,11 +27,9 @@ AUTH_FIXTURE_PATH = FIXTURE_DIR / "russia_auth_contracts_v1.json"
 READ_FIXTURE_PATH = FIXTURE_DIR / "russia_read_responses_v1.json"
 RESOURCE_DIR = (
     Path(__file__).resolve().parents[3]
-    / "addons"
+    / "custom_components"
     / "gwm_ora"
-    / "src"
-    / "LibGwmApi"
-    / "Resources"
+    / "resources"
 )
 _PEM_CERTIFICATE = re.compile(
     br"-----BEGIN CERTIFICATE-----\s*(.*?)\s*-----END CERTIFICATE-----",

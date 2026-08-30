@@ -21,11 +21,9 @@ from gwm_ora_client.crypto import (
 
 RESOURCE_DIR = (
     Path(__file__).resolve().parents[3]
-    / "addons"
+    / "custom_components"
     / "gwm_ora"
-    / "src"
-    / "LibGwmApi"
-    / "Resources"
+    / "resources"
 )
 
 

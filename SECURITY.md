@@ -33,6 +33,7 @@ When reporting a vulnerability privately, include as much of the following as yo
 Please use extra care when changing or reviewing:
 
 - GWM username, password, security PIN, access token, refresh token, or generated API token handling.
+- Bundled bootstrap certificates, transformed private keys, app-derived signing values, and their provenance records.
 - `/data/options.json` and `/data/state.json` storage.
 - Add-on API authorization.
 - Supervisor discovery payloads.
@@ -40,6 +41,8 @@ Please use extra care when changing or reviewing:
 - Remote climate, lock, unlock, and close-window commands.
 - Add-on networking, container permissions, and exposed ports.
 - Logs and diagnostics containing raw GWM API payloads, VINs, or precise locations.
+
+I do not accept replacement protocol material through a public vulnerability report or issue. Contact me privately and follow the evidence controls in [Third-Party and Protocol Material Notice](THIRD_PARTY_NOTICES.md).
 
 ## Responsible Testing
 

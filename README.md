@@ -314,6 +314,10 @@ Your GWM account details and vehicle PIN are configured in the add-on, not the i
 
 Remote commands can affect the real vehicle. Use them carefully.
 
+## Packaging and Protocol Materials
+
+I am preparing the Home Assistant-independent client as a separate Python distribution, but I have not published or activated it. The current release still uses the add-on. I recorded the planned dependency boundary, bundled certificate renewal dates, source evidence, and unresolved redistribution conditions in [Third-Party and Protocol Material Notice](THIRD_PARTY_NOTICES.md).
+
 ## Disclaimer
 
 This project is unofficial and is not affiliated with or endorsed by Great Wall Motor, GWM, or Home Assistant. Vehicle cloud APIs and remote command behavior may change without notice.

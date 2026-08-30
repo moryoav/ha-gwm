@@ -1,0 +1,98 @@
+{
+  "schema_version": 1,
+  "reviewed_at": "2026-08-30",
+  "license_reference": "LicenseRef-GWM-Protocol-Materials",
+  "content_canonicalization": "utf8_lf",
+  "renewal_lead_days": 90,
+  "resources": [
+    {
+      "path": "gwm_general.cer",
+      "region": "eu",
+      "role": "shared_bootstrap_client_certificate",
+      "bytes": 1529,
+      "sha256": "24886bad04d8b26aa2aafd3fb22c74bd1f2859d81499a39c561df4930429a03d",
+      "source_id": "official-eu-gwm-android-via-zivillian-ora2mqtt",
+      "source_url": "https://github.com/zivillian/ora2mqtt/blob/main/libgwmapi/Resources/gwm_general.cer",
+      "introduced_by": "7a64b56cc326d80595d2b13e0b8483f05c7ea063",
+      "normalized_upstream_sha256": "24886bad04d8b26aa2aafd3fb22c74bd1f2859d81499a39c561df4930429a03d",
+      "certificate": {
+        "serial_hex": "2d6ac1a47934cb3258542f52ea488e0c141d7304",
+        "subject_common_name": "LGWGWM-AD-EU-GENERAL",
+        "subject_country": "DE",
+        "issuer_common_name": "IOV APP General SubCA",
+        "not_before": "2022-01-05T01:52:04Z",
+        "not_after": "2027-01-04T01:52:04Z",
+        "renew_by": "2026-10-06T01:52:04Z",
+        "spki_sha256": "bf3d2cd7d8d395c7df7d091827d65d3e5222f8755a70c7e39988db8f5d703389"
+      }
+    },
+    {
+      "path": "gwm_general.key",
+      "region": "eu",
+      "role": "shared_transformed_rsa_private_key",
+      "bytes": 732,
+      "sha256": "1fbaf6b3d46feab76f4bc73806cd08d79c7cfda6c5183ceb5fdc4d6720560da6",
+      "source_id": "official-eu-gwm-android-via-zivillian-ora2mqtt",
+      "source_url": "https://github.com/zivillian/ora2mqtt/blob/main/libgwmapi/Resources/gwm_general.key",
+      "introduced_by": "7a64b56cc326d80595d2b13e0b8483f05c7ea063",
+      "normalized_upstream_sha256": "1fbaf6b3d46feab76f4bc73806cd08d79c7cfda6c5183ceb5fdc4d6720560da6",
+      "paired_certificate": "gwm_general.cer",
+      "rsa_bits": 2048
+    },
+    {
+      "path": "gwm_root.pem",
+      "region": "eu",
+      "role": "legacy_ca_bundle",
+      "bytes": 4517,
+      "sha256": "ffb870f997b2037df5873ef1d773100ab7c380ecb78c2ce4eab84144d5895665",
+      "source_id": "official-eu-gwm-android-via-zivillian-ora2mqtt",
+      "source_url": "https://github.com/zivillian/ora2mqtt/blob/main/libgwmapi/Resources/gwm_root.pem",
+      "introduced_by": "7a64b56cc326d80595d2b13e0b8483f05c7ea063",
+      "normalized_upstream_sha256": "ffb870f997b2037df5873ef1d773100ab7c380ecb78c2ce4eab84144d5895665",
+      "certificate_count": 3
+    },
+    {
+      "path": "gwm_general_rus.cer",
+      "region": "rus",
+      "role": "shared_bootstrap_client_certificate",
+      "bytes": 1529,
+      "sha256": "2df3b98cf422ddc69d30c57f1fdb824bd54fde41b3bfa8394a1bf0516617df6f",
+      "source_id": "official-russia-gwm-android-via-contribution",
+      "source_url": "https://github.com/moryoav/ha-gwm/commit/44b6201c0d88aa26b98050f3cc51f917bf4f28a8",
+      "introduced_by": "44b6201c0d88aa26b98050f3cc51f917bf4f28a8",
+      "certificate": {
+        "serial_hex": "1cc06cd7760382f961488b4025a4802cc678db2c",
+        "subject_common_name": "LGWGWM-AD-RU-GENERAL",
+        "subject_country": "RU",
+        "issuer_common_name": "IOV APP General SubCA",
+        "not_before": "2025-04-21T08:21:35Z",
+        "not_after": "2030-04-21T08:21:35Z",
+        "renew_by": "2030-01-21T08:21:35Z",
+        "spki_sha256": "6baf5b16d57286abd59c00c7cd75a3c25db80fb073f7a1607db4d41f8d61ab83"
+      }
+    },
+    {
+      "path": "gwm_general_rus.key",
+      "region": "rus",
+      "role": "shared_transformed_rsa_private_key",
+      "bytes": 728,
+      "sha256": "ffd7c95ef5b45e66d62bb37acd037b84c860e3eea35cc1aba6c0b6246e715424",
+      "source_id": "official-russia-gwm-android-via-contribution",
+      "source_url": "https://github.com/moryoav/ha-gwm/commit/44b6201c0d88aa26b98050f3cc51f917bf4f28a8",
+      "introduced_by": "44b6201c0d88aa26b98050f3cc51f917bf4f28a8",
+      "paired_certificate": "gwm_general_rus.cer",
+      "rsa_bits": 2048
+    },
+    {
+      "path": "gwm_root_rus.pem",
+      "region": "rus",
+      "role": "legacy_ca_bundle",
+      "bytes": 4516,
+      "sha256": "822af12df026e88ea95cd4c5a74ac360933b9dc2b32981b1b8780a6bc4f1cdf4",
+      "source_id": "official-russia-gwm-android-via-contribution",
+      "source_url": "https://github.com/moryoav/ha-gwm/commit/44b6201c0d88aa26b98050f3cc51f917bf4f28a8",
+      "introduced_by": "44b6201c0d88aa26b98050f3cc51f917bf4f28a8",
+      "certificate_count": 3
+    }
+  ]
+}

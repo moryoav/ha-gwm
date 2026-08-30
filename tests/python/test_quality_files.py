@@ -43,6 +43,7 @@ def test_community_health_files_exist() -> None:
         "README.md",
         "SECURITY.md",
         "SUPPORT.md",
+        "THIRD_PARTY_NOTICES.md",
         ".github/pull_request_template.md",
         ".github/ISSUE_TEMPLATE/bug_report.yml",
         ".github/ISSUE_TEMPLATE/feature_request.yml",

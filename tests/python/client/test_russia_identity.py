@@ -22,7 +22,7 @@ from gwm_ora_client.russia_identity import (
 )
 
 NOW = datetime(2026, 8, 28, tzinfo=UTC)
-RESOURCE_DIR = Path(__file__).resolve().parents[3] / "addons" / "gwm_ora" / "src" / "LibGwmApi" / "Resources"
+RESOURCE_DIR = Path(__file__).resolve().parents[3] / "custom_components" / "gwm_ora" / "resources"
 
 
 def test_material_is_immutable_and_hides_every_identity_byte() -> None:

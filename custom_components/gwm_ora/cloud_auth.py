@@ -63,14 +63,7 @@ type OverseasClientFactory = Callable[[GwmClientConfig], GwmClient]
 type ChinaClientFactory = Callable[[ChinaClientConfig], ChinaClient]
 type ResourceLoader = Callable[[str], BootstrapMaterial]
 
-_RESOURCE_DIRECTORY = (
-    Path(__file__).resolve().parents[2]
-    / "addons"
-    / "gwm_ora"
-    / "src"
-    / "LibGwmApi"
-    / "Resources"
-)
+_RESOURCE_DIRECTORY = Path(__file__).resolve().parent / "resources"
 
 
 @dataclass(frozen=True, slots=True, repr=False)

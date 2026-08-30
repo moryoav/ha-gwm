@@ -97,6 +97,12 @@ Never post raw captures or logs without reviewing and sanitizing them. Remove or
 
 Keep field names, data types, relevant prefixes, and approximate lengths where they are needed to understand the protocol, but replace values with obviously synthetic examples. Do not upload an APK or proprietary app assets to the repository. If you are unsure whether a value is sensitive, do not publish it; ask the maintainer how to proceed.
 
+### Protocol Materials and Provenance
+
+I do not accept new app-derived certificates, private keys, signing secrets, native libraries, decompiled source, or other proprietary assets in a public pull request. Existing audited files in this repository do not grant permission to add more material. Contact me privately before preparing a change that appears to require one of these items.
+
+For an authorized replacement of an existing shared bootstrap file, I require the official app identity and version, acquisition channel, source package digest, extracted file digest, certificate identity and validity, and the applicable permission or review decision. Perform extraction outside the Git workspace and share only the minimum sanitized evidence needed for review. See [Third-Party and Protocol Material Notice](THIRD_PARTY_NOTICES.md) for the current inventory and release holds.
+
 ### Preparing a Pull Request
 
 You may use an AI coding assistant of your choice to analyze sanitized evidence and prepare a pull request. Give it this repository, this contributing guide, and only sanitized captures or notes.

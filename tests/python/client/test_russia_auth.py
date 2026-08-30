@@ -56,11 +56,9 @@ READ_FIXTURE = json.loads(
 )
 RESOURCE_DIR = (
     Path(__file__).resolve().parents[3]
-    / "addons"
+    / "custom_components"
     / "gwm_ora"
-    / "src"
-    / "LibGwmApi"
-    / "Resources"
+    / "resources"
 )
 ACCOUNT = FIXTURE["credentials"]["account"]
 PASSWORD = FIXTURE["credentials"]["password"]
