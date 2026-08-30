@@ -395,6 +395,7 @@ class ChinaClient:
         self,
         config: ChinaClientConfig,
         *,
+        authenticated_state: ChinaAuthState | None = None,
         transport: _ChinaAsyncTransport | None = None,
         clock: Callable[[], datetime] | None = None,
         salt_source: Callable[[], bytes] | None = None,
@@ -407,6 +408,11 @@ class ChinaClient:
         for callback in (clock, salt_source, nonce_source, sequence_source, sleeper):
             if callback is not None and not callable(callback):
                 raise GwmConfigurationError()
+        if authenticated_state is not None and (
+            type(authenticated_state) is not ChinaAuthState
+            or not authenticated_state.complete
+        ):
+            raise GwmConfigurationError(operation="login")
         self._config = config
         self._clock = clock or _utc_now
         self._salt_source = salt_source or (lambda: secrets.token_bytes(8))
@@ -423,8 +429,12 @@ class ChinaClient:
         else:
             self._transport = transport
             self._owns_transport = False
-        self._session: ChinaAuthState | None = None
-        self._session_revision = 0
+        # A caller may transfer a state that already passed this client's
+        # authentication/discovery validation. This mirrors the overseas
+        # client's validated-session handoff and avoids an implicit second
+        # China login during Home Assistant entry setup.
+        self._session: ChinaAuthState | None = authenticated_state
+        self._session_revision = 1 if authenticated_state is not None else 0
         self._vehicles: dict[str, ChinaVehicle] = {}
         self._charging_plans: dict[str, ChargingPlanInfo] = {}
         self._written_charging_plan_vins: set[str] = set()
@@ -477,13 +487,17 @@ class ChinaClient:
         *,
         state: ChinaAuthState | None = None,
         verification_code: str | None = None,
+        allow_sms_login: bool = True,
         timeout: float | None = None,
     ) -> ChinaAuthenticationResult:
         """Run one serialized finite China authentication continuation."""
 
         operation = "login"
-        if type(credentials) is not ChinaCredentials or (
-            state is not None and type(state) is not ChinaAuthState
+        if (
+            type(credentials) is not ChinaCredentials
+            or (state is not None and type(state) is not ChinaAuthState)
+            or type(allow_sms_login) is not bool
+            or (not allow_sms_login and verification_code is not None)
         ):
             raise GwmConfigurationError(operation=operation)
         code = _normalize_verification_code(verification_code)
@@ -511,6 +525,7 @@ class ChinaClient:
                         credentials,
                         candidate,
                         verification_code=code,
+                        allow_sms_login=allow_sms_login,
                         deadline=deadline,
                     )
                     if deadline.remaining(loop.time()) <= 0:
@@ -724,6 +739,7 @@ class ChinaClient:
         candidate: ChinaAuthState,
         *,
         verification_code: str | None,
+        allow_sms_login: bool,
         deadline: _Deadline,
     ) -> tuple[ChinaAuthenticationResult, tuple[ChinaVehicle, ...] | None]:
         if candidate.complete:
@@ -740,6 +756,7 @@ class ChinaClient:
                     credentials,
                     candidate,
                     verification_code=verification_code,
+                    allow_sms_login=allow_sms_login,
                     deadline=deadline,
                 )
             return ChinaAuthenticated(state=candidate), vehicles
@@ -747,6 +764,8 @@ class ChinaClient:
         if candidate.has_g_app:
             return await self._initialize_and_validate(credentials, _without_downstream(candidate), deadline=deadline)
 
+        if not allow_sms_login:
+            raise GwmAuthenticationError(operation="login")
         return await self._sms_continuation(
             credentials,
             candidate,
@@ -760,6 +779,7 @@ class ChinaClient:
         candidate: ChinaAuthState,
         *,
         verification_code: str | None,
+        allow_sms_login: bool,
         deadline: _Deadline,
     ) -> tuple[ChinaAuthenticationResult, tuple[ChinaVehicle, ...] | None]:
         partial_candidate = _without_downstream(candidate)
@@ -788,6 +808,8 @@ class ChinaClient:
         except _ChinaRiskControlError:
             return ChinaRiskControlRequired(state=partial_candidate), None
         except GwmAuthenticationError:
+            if not allow_sms_login:
+                raise
             empty = ChinaAuthState.for_credentials(credentials)
             return await self._sms_continuation(
                 credentials,

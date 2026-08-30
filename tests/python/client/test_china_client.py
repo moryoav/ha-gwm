@@ -383,6 +383,76 @@ async def test_definitive_complete_session_rejection_refreshes_then_reinitialize
 
 
 @pytest.mark.asyncio
+async def test_restart_policy_refreshes_complete_state_without_sms_fallback() -> None:
+    refresh = {
+        "code": "000000",
+        "data": {
+            "token": "SYNTHETIC-G-TOKEN-ROTATED",
+            "refreshToken": "SYNTHETIC-G-REFRESH-ROTATED",
+            "ssoToken": "SYNTHETIC-SSO-TOKEN-ROTATED",
+        },
+    }
+    plans = _success_plans(login=False)
+    plans["acquire_vehicles"] = [
+        _response({}, status=401),
+        FIXTURE["responses"]["discovery"],
+    ]
+    plans["refresh_token"] = [refresh]
+    transport = _FakeTransport(**plans)
+    client = _client(transport)
+
+    result = await client.authenticate(
+        _credentials(),
+        state=_complete_state(),
+        allow_sms_login=False,
+    )
+
+    assert isinstance(result, ChinaAuthenticated)
+    assert result.state.g_token == "SYNTHETIC-G-TOKEN-ROTATED"
+    operations = [request.operation for request in transport.calls]
+    assert operations[0:2] == ["acquire_vehicles", "refresh_token"]
+    assert operations[-1] == "acquire_vehicles"
+    assert "request_verification" not in operations
+    assert "login" not in operations
+
+
+@pytest.mark.asyncio
+async def test_restart_policy_never_requests_sms_when_refresh_is_rejected() -> None:
+    transport = _FakeTransport(
+        acquire_vehicles=[_response({}, status=401)],
+        refresh_token=[_response({}, status=401)],
+    )
+    client = _client(transport)
+
+    with pytest.raises(GwmAuthenticationError):
+        await client.authenticate(
+            _credentials(),
+            state=_complete_state(),
+            allow_sms_login=False,
+        )
+
+    assert [request.operation for request in transport.calls] == [
+        "acquire_vehicles",
+        "refresh_token",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_restart_policy_rejects_empty_state_without_http() -> None:
+    transport = _FakeTransport()
+    client = _client(transport)
+
+    with pytest.raises(GwmAuthenticationError):
+        await client.authenticate(
+            _credentials(),
+            state=_empty_state(),
+            allow_sms_login=False,
+        )
+
+    assert transport.calls == []
+
+
+@pytest.mark.asyncio
 async def test_refresh_rotation_failure_publishes_only_new_g_app_state() -> None:
     transport = _FakeTransport(
         acquire_vehicles=[_response({}, status=401)],
@@ -1393,6 +1463,34 @@ def test_invalid_config_timeout_code_and_state_inputs_fail_before_transport() ->
         ChinaClientConfig(max_response_bytes=0)
     with pytest.raises(GwmConfigurationError):
         ChinaClient(ChinaClientConfig(), transport=_FakeTransport(), clock=object())  # type: ignore[arg-type]
+    with pytest.raises(GwmConfigurationError):
+        ChinaClient(
+            ChinaClientConfig(),
+            authenticated_state=_partial_state(),
+            transport=_FakeTransport(),
+        )
+
+
+@pytest.mark.asyncio
+async def test_prevalidated_state_handoff_starts_authenticated_without_login() -> None:
+    transport = _FakeTransport(
+        acquire_vehicles=[FIXTURE["responses"]["discovery"]],
+    )
+    client = ChinaClient(
+        ChinaClientConfig(),
+        authenticated_state=_complete_state(),
+        transport=transport,
+        clock=lambda: CLOCK,
+        salt_source=lambda: bytes.fromhex(FIXTURE["salt_hex"]),
+        nonce_source=lambda: FIXTURE["nonce"],
+        sequence_source=lambda: BEAN_COMMAND_ID,
+    )
+
+    assert client.authenticated
+    vehicles = await client.acquire_vehicles()
+
+    assert [vehicle.identifier.value for vehicle in vehicles][0] == VIN
+    assert [request.operation for request in transport.calls] == ["acquire_vehicles"]
 
 
 @pytest.mark.asyncio
@@ -1405,4 +1503,15 @@ async def test_invalid_auth_timeout_and_code_fail_without_http() -> None:
         await client.authenticate(_credentials(), verification_code="bad\ncode")
     with pytest.raises(GwmConfigurationError):
         await client.authenticate(_credentials(), verification_code="X" * 65)
+    with pytest.raises(GwmConfigurationError):
+        await client.authenticate(
+            _credentials(),
+            verification_code=CODE,
+            allow_sms_login=False,
+        )
+    with pytest.raises(GwmConfigurationError):
+        await client.authenticate(
+            _credentials(),
+            allow_sms_login="yes",  # type: ignore[arg-type]
+        )
     assert transport.calls == []
