@@ -7,19 +7,17 @@ from typing import Any
 from homeassistant.components.diagnostics import async_redact_data
 from homeassistant.core import HomeAssistant
 
-from . import GwmOraConfigEntry
+from . import GwmConfigEntry
 from .const import (
     CONF_ACCOUNT,
     CONF_PASSWORD,
     CONF_SECURITY_PIN,
-    CONF_TOKEN,
 )
 
 TO_REDACT = {
     CONF_ACCOUNT,
     CONF_PASSWORD,
     CONF_SECURITY_PIN,
-    CONF_TOKEN,
     "access_token",
     "account_binding",
     "auto_ai_gw_id",
@@ -66,7 +64,7 @@ TO_REDACT = {
 
 async def async_get_config_entry_diagnostics(
     hass: HomeAssistant,
-    entry: GwmOraConfigEntry,
+    entry: GwmConfigEntry,
 ) -> dict[str, Any]:
     """Return diagnostics for a config entry."""
     data = {

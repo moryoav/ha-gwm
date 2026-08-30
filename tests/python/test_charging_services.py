@@ -56,7 +56,7 @@ def test_charging_plan_active_state(response: dict, expected: bool) -> None:
 
 
 @pytest.mark.asyncio
-async def test_charging_service_resolves_a_direct_cloud_vehicle(tmp_path) -> None:
+async def test_charging_service_resolves_a_cloud_vehicle(tmp_path) -> None:
     calls: list[tuple[str, bool]] = []
 
     class Api:

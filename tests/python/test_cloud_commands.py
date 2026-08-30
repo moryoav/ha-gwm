@@ -1,4 +1,4 @@
-"""Direct climate orchestration, journal recovery, timeout, and isolation tests."""
+"""Cloud command orchestration, journal recovery, timeout, and isolation tests."""
 
 from __future__ import annotations
 
@@ -15,15 +15,15 @@ pytest.importorskip("homeassistant")
 
 from homeassistant.core import HomeAssistant
 
-from custom_components.gwm_ora.api import GwmOraApiError, GwmOraApiForbidden
 from custom_components.gwm_ora.cloud_auth import (
-    DirectCloudCredentials,
-    direct_entry_data,
-    direct_unique_id,
+    GwmCloudCredentials,
+    cloud_entry_data,
+    cloud_unique_id,
 )
-from custom_components.gwm_ora.cloud_commands import DirectClimateCommandApi
-from custom_components.gwm_ora.cloud_runtime import DirectClimateContext
-from custom_components.gwm_ora.cloud_storage import direct_cloud_state_store
+from custom_components.gwm_ora.cloud_commands import GwmCommandApi
+from custom_components.gwm_ora.cloud_runtime import GwmClimateContext
+from custom_components.gwm_ora.cloud_storage import cloud_state_store
+from custom_components.gwm_ora.errors import GwmCommandError, GwmCommandForbidden
 from gwm_client import (
     AnzAuthState,
     ChargingPlanCommand,
@@ -80,7 +80,7 @@ class _Cloud:
         identifier: VehicleIdentifier,
         *,
         include_status: bool,
-    ) -> DirectClimateContext:
+    ) -> GwmClimateContext:
         status = (
             CloudVehicleStatus(
                 items=(CloudStatusItem("2202001", "1" if self.currently_on else "0"),)
@@ -88,7 +88,7 @@ class _Cloud:
             if include_status
             else None
         )
-        return DirectClimateContext(
+        return GwmClimateContext(
             vehicle=CloudVehicle(identifier),
             basics=CloudVehicleBasics(CloudClimateConfiguration("22", "900")),
             status=status,
@@ -188,9 +188,9 @@ class _Cloud:
         self.charging_sent.append(command)
 
 
-def _credentials(region: str = "eu") -> DirectCloudCredentials:
+def _credentials(region: str = "eu") -> GwmCloudCredentials:
     country = {"eu": "DE", "aus": "AU", "rus": "RU"}[region]
-    return DirectCloudCredentials(
+    return GwmCloudCredentials(
         region,
         country,
         "private-account",
@@ -199,7 +199,7 @@ def _credentials(region: str = "eu") -> DirectCloudCredentials:
     )
 
 
-def _state(credentials: DirectCloudCredentials) -> Any:
+def _state(credentials: GwmCloudCredentials) -> Any:
     client_credentials = credentials.client_credentials()
     if credentials.region == "eu":
         return replace(
@@ -236,13 +236,13 @@ async def _api(
     enabled: bool = True,
     charging_enabled: bool = False,
     region: str = "eu",
-) -> tuple[DirectClimateCommandApi, Any, DirectCloudCredentials]:
+) -> tuple[GwmCommandApi, Any, GwmCloudCredentials]:
     credentials = _credentials(region)
     cloud.region = region
     hass = HomeAssistant(str(tmp_path))
-    store = direct_cloud_state_store(hass, direct_unique_id(credentials))
+    store = cloud_state_store(hass, cloud_unique_id(credentials))
     await store.async_save_auth_state(credentials, _state(credentials))
-    api = DirectClimateCommandApi(
+    api = GwmCommandApi(
         cloud,  # type: ignore[arg-type]
         store,
         credentials,
@@ -260,8 +260,8 @@ async def _china_api(
     clock: _Clock,
     *,
     enabled: bool = True,
-) -> tuple[DirectClimateCommandApi, Any, DirectCloudCredentials]:
-    credentials = DirectCloudCredentials(
+) -> tuple[GwmCommandApi, Any, GwmCloudCredentials]:
+    credentials = GwmCloudCredentials(
         "cn",
         "CN",
         "13800138000",
@@ -269,7 +269,7 @@ async def _china_api(
         _DEVICE_ID,
     )
     hass = HomeAssistant(str(tmp_path))
-    store = direct_cloud_state_store(hass, direct_unique_id(credentials))
+    store = cloud_state_store(hass, cloud_unique_id(credentials))
     await store.async_save_auth_state(
         credentials,
         ChinaAuthState.for_credentials(
@@ -277,7 +277,7 @@ async def _china_api(
         ),
     )
     cloud.region = "cn"
-    api = DirectClimateCommandApi(
+    api = GwmCommandApi(
         cloud,  # type: ignore[arg-type]
         store,
         credentials,
@@ -301,7 +301,7 @@ async def test_acceptance_is_journaled_before_polling_and_reaches_terminal_resul
     api, store, credentials = await _api(tmp_path, cloud, clock)
 
     accepted = await api.async_set_climate(_VIN, mode="cool", temperature=21)
-    journal = await store.async_get_command_journal(direct_entry_data(credentials))
+    journal = await store.async_get_command_journal(cloud_entry_data(credentials))
     assert accepted["state"] == "in_progress"
     assert len(journal) == 1
     assert journal[0].cloud_command_id == "provider-command-1"
@@ -311,13 +311,13 @@ async def test_acceptance_is_journaled_before_polling_and_reaches_terminal_resul
 
     pending = await api.async_get_command(str(accepted["id"]))
     assert pending["state"] == "in_progress"
-    assert (await store.async_get_command_journal(direct_entry_data(credentials)))[
+    assert (await store.async_get_command_journal(cloud_entry_data(credentials)))[
         0
     ].state == "polling"
     completed = await api.async_get_command(str(accepted["id"]))
     assert completed["state"] == "completed"
     assert "Success [0]" in str(completed["status"])
-    assert (await store.async_get_command_journal(direct_entry_data(credentials)))[
+    assert (await store.async_get_command_journal(cloud_entry_data(credentials)))[
         0
     ].state == "completed"
 
@@ -336,7 +336,7 @@ async def test_restart_restores_polling_without_resending_vehicle_operation(
     second_cloud.poll_results = [
         (RemoteCommandResultItem("provider-command-1", "0x04", "6", "Success"),)
     ]
-    second = DirectClimateCommandApi(
+    second = GwmCommandApi(
         second_cloud,  # type: ignore[arg-type]
         store,
         credentials,
@@ -344,7 +344,7 @@ async def test_restart_restores_polling_without_resending_vehicle_operation(
         security_pin="1234",
         clock=clock,
     )
-    restored = await second.async_restore(direct_entry_data(credentials))
+    restored = await second.async_restore(cloud_entry_data(credentials))
     assert restored[0]["id"] == accepted["id"]
     assert second_cloud.sent == []
     completed = await second.async_get_command(str(accepted["id"]))
@@ -363,7 +363,7 @@ async def test_timeout_is_persisted_without_an_extra_poll(tmp_path: Path) -> Non
     timed_out = await api.async_get_command(str(accepted["id"]))
     assert timed_out["state"] == "timeout"
     assert cloud.poll_results == []
-    assert (await store.async_get_command_journal(direct_entry_data(credentials)))[
+    assert (await store.async_get_command_journal(cloud_entry_data(credentials)))[
         0
     ].state == "failed"
 
@@ -378,12 +378,12 @@ async def test_rejection_and_disabled_mode_never_create_a_journal_entry(
     api, store, credentials = await _api(tmp_path, cloud, clock)
     with pytest.raises(GwmApiError):
         await api.async_set_climate(_VIN, mode="cool")
-    assert await store.async_get_command_journal(direct_entry_data(credentials)) == ()
+    assert await store.async_get_command_journal(cloud_entry_data(credentials)) == ()
 
     disabled, _store, _credentials_value = await _api(
         tmp_path / "disabled", _Cloud(), clock, enabled=False
     )
-    with pytest.raises(GwmOraApiForbidden):
+    with pytest.raises(GwmCommandForbidden):
         await disabled.async_set_climate(_VIN, mode="cool")
 
 
@@ -413,7 +413,7 @@ async def test_lock_and_window_acceptance_use_same_restart_safe_journal(
 
     locked = await first.async_lock(_VIN, "lock")
     closed = await first.async_close_windows(_VIN)
-    journal = await store.async_get_command_journal(direct_entry_data(credentials))
+    journal = await store.async_get_command_journal(cloud_entry_data(credentials))
 
     assert [entry.command_name for entry in journal] == ["Door lock", "Window close"]
     assert locked["state"] == closed["state"] == "in_progress"
@@ -432,7 +432,7 @@ async def test_lock_and_window_acceptance_use_same_restart_safe_journal(
             ),
         ),
     ]
-    second = DirectClimateCommandApi(
+    second = GwmCommandApi(
         second_cloud,  # type: ignore[arg-type]
         store,
         credentials,
@@ -440,7 +440,7 @@ async def test_lock_and_window_acceptance_use_same_restart_safe_journal(
         security_pin="1234",
         clock=clock,
     )
-    restored = await second.async_restore(direct_entry_data(credentials))
+    restored = await second.async_restore(cloud_entry_data(credentials))
 
     assert {item["id"] for item in restored} == {locked["id"], closed["id"]}
     assert second_cloud.lock_sent == second_cloud.windows_sent == []
@@ -457,17 +457,17 @@ async def test_lock_window_validation_rejection_and_disabled_mode_are_fail_close
     cloud = _Cloud()
     api, store, credentials = await _api(tmp_path, cloud, clock)
 
-    with pytest.raises(GwmOraApiError, match="action must be"):
+    with pytest.raises(GwmCommandError, match="action must be"):
         await api.async_lock(_VIN, "open")
-    with pytest.raises(GwmOraApiError, match="valid vehicle"):
+    with pytest.raises(GwmCommandError, match="valid vehicle"):
         await api.async_close_windows(" ")
-    assert await store.async_get_command_journal(direct_entry_data(credentials)) == ()
+    assert await store.async_get_command_journal(cloud_entry_data(credentials)) == ()
     assert cloud.lock_sent == cloud.windows_sent == []
 
     cloud.send_error = GwmApiError(operation="send_lock_command", api_code="607777")
     with pytest.raises(GwmApiError):
         await api.async_lock(_VIN, "unlock")
-    assert await store.async_get_command_journal(direct_entry_data(credentials)) == ()
+    assert await store.async_get_command_journal(cloud_entry_data(credentials)) == ()
 
     disabled, _store, _credentials_value = await _api(
         tmp_path / "disabled-lock",
@@ -475,7 +475,7 @@ async def test_lock_window_validation_rejection_and_disabled_mode_are_fail_close
         clock,
         enabled=False,
     )
-    with pytest.raises(GwmOraApiForbidden):
+    with pytest.raises(GwmCommandForbidden):
         await disabled.async_close_windows(_VIN)
 
 
@@ -504,7 +504,7 @@ async def test_charging_plan_write_read_and_clear_persist_exact_ownership(
         end_time=end,
         plan_type=0,
     ) == {}
-    owned = await store.async_get_owned_charging_plans(direct_entry_data(credentials))
+    owned = await store.async_get_owned_charging_plans(cloud_entry_data(credentials))
     assert len(owned) == 1
     assert owned[0].plan_id == 42
     assert owned[0].start_time_ms == start
@@ -519,7 +519,7 @@ async def test_charging_plan_write_read_and_clear_persist_exact_ownership(
         False,
     )
     assert await store.async_get_owned_charging_plans(
-        direct_entry_data(credentials)
+        cloud_entry_data(credentials)
     ) == ()
 
 
@@ -546,7 +546,7 @@ async def test_charging_opt_out_clears_exact_match_but_preserves_app_replacement
         start_time=start,
         end_time=end,
     )
-    disabled = DirectClimateCommandApi(
+    disabled = GwmCommandApi(
         cloud,  # type: ignore[arg-type]
         store,
         credentials,
@@ -556,10 +556,10 @@ async def test_charging_opt_out_clears_exact_match_but_preserves_app_replacement
         clock=clock,
     )
 
-    await disabled.async_cleanup_owned_charging_plans(direct_entry_data(credentials))
+    await disabled.async_cleanup_owned_charging_plans(cloud_entry_data(credentials))
     assert [command.enable for command in cloud.charging_sent] == [True, False]
     assert await store.async_get_owned_charging_plans(
-        direct_entry_data(credentials)
+        cloud_entry_data(credentials)
     ) == ()
 
     cloud.charging_info = ChargingPlanInfo(
@@ -575,11 +575,11 @@ async def test_charging_opt_out_clears_exact_match_but_preserves_app_replacement
         (ChargingPlanItem(99, "0", start + 1000, end + 1000, ""),)
     )
     before = len(cloud.charging_sent)
-    await disabled.async_cleanup_owned_charging_plans(direct_entry_data(credentials))
+    await disabled.async_cleanup_owned_charging_plans(cloud_entry_data(credentials))
 
     assert len(cloud.charging_sent) == before
     assert await store.async_get_owned_charging_plans(
-        direct_entry_data(credentials)
+        cloud_entry_data(credentials)
     ) == ()
 
 
@@ -590,7 +590,7 @@ async def test_charging_disabled_and_provider_rejection_are_fail_closed(
     clock = _Clock()
     cloud = _Cloud()
     disabled, _store, _credentials_value = await _api(tmp_path, cloud, clock)
-    with pytest.raises(GwmOraApiForbidden):
+    with pytest.raises(GwmCommandForbidden):
         await disabled.async_set_charging_plan(_VIN, enable=False)
     assert cloud.charging_sent == []
 
@@ -608,7 +608,7 @@ async def test_charging_disabled_and_provider_rejection_are_fail_closed(
         await enabled.async_set_charging_plan(_VIN, enable=False)
     assert cloud.charging_sent == []
     assert await provider_store.async_get_owned_charging_plans(
-        direct_entry_data(provider_credentials)
+        cloud_entry_data(provider_credentials)
     ) == ()
 
 
@@ -626,7 +626,7 @@ async def test_close_windows_timeout_is_terminal_without_an_extra_poll(
 
     assert timed_out["state"] == "timeout"
     assert cloud.poll_results == []
-    journal = await store.async_get_command_journal(direct_entry_data(credentials))
+    journal = await store.async_get_command_journal(cloud_entry_data(credentials))
     assert journal[0].state == "failed"
 
 
@@ -643,7 +643,7 @@ async def test_china_vehicle_control_is_no_pin_journaled_and_restart_safe(
         "remote_start",
         run_time_minutes=20,
     )
-    journal = await store.async_get_command_journal(direct_entry_data(credentials))
+    journal = await store.async_get_command_journal(cloud_entry_data(credentials))
     assert accepted["state"] == "in_progress"
     assert len(first_cloud.vehicle_controls_sent) == 1
     assert first_cloud.vehicle_controls_sent[0].run_time_minutes == 20
@@ -662,7 +662,7 @@ async def test_china_vehicle_control_is_no_pin_journaled_and_restart_safe(
             ),
         )
     ]
-    second = DirectClimateCommandApi(
+    second = GwmCommandApi(
         second_cloud,  # type: ignore[arg-type]
         store,
         credentials,
@@ -670,7 +670,7 @@ async def test_china_vehicle_control_is_no_pin_journaled_and_restart_safe(
         security_pin=None,
         clock=clock,
     )
-    restored = await second.async_restore(direct_entry_data(credentials))
+    restored = await second.async_restore(cloud_entry_data(credentials))
     assert restored[0]["id"] == accepted["id"]
     assert second_cloud.vehicle_controls_sent == []
     completed = await second.async_get_command(str(accepted["id"]))
@@ -686,10 +686,10 @@ async def test_china_vehicle_control_validation_rejection_and_region_gate_are_lo
     cloud = _Cloud()
     api, store, credentials = await _china_api(tmp_path, cloud, clock)
 
-    with pytest.raises(GwmOraApiError, match="Unsupported China vehicle control"):
+    with pytest.raises(GwmCommandError, match="Unsupported China vehicle control"):
         await api.async_vehicle_control(_VIN, "tailgate_open", run_time_minutes=15)
     assert cloud.vehicle_controls_sent == []
-    assert await store.async_get_command_journal(direct_entry_data(credentials)) == ()
+    assert await store.async_get_command_journal(cloud_entry_data(credentials)) == ()
 
     cloud.send_error = GwmApiError(
         operation="send_vehicle_control_command",
@@ -697,14 +697,14 @@ async def test_china_vehicle_control_validation_rejection_and_region_gate_are_lo
     )
     with pytest.raises(GwmApiError):
         await api.async_vehicle_control(_VIN, "horn")
-    assert await store.async_get_command_journal(direct_entry_data(credentials)) == ()
+    assert await store.async_get_command_journal(cloud_entry_data(credentials)) == ()
 
     overseas, _overseas_store, _overseas_credentials = await _api(
         tmp_path / "overseas-control",
         _Cloud(),
         clock,
     )
-    with pytest.raises(GwmOraApiForbidden, match="only for mainland China"):
+    with pytest.raises(GwmCommandForbidden, match="only for mainland China"):
         await overseas.async_vehicle_control(_VIN, "horn")
 
 
@@ -729,7 +729,7 @@ async def test_overseas_write_lifecycle_matrix_resumes_every_family_without_rese
         await first.async_close_windows(_VIN),
     )
     assert (
-        len(await store.async_get_command_journal(direct_entry_data(credentials))) == 3
+        len(await store.async_get_command_journal(cloud_entry_data(credentials))) == 3
     )
 
     second_cloud = _Cloud()
@@ -751,7 +751,7 @@ async def test_overseas_write_lifecycle_matrix_resumes_every_family_without_rese
         )
         for command_id, remote_type in command_contracts
     ]
-    second = DirectClimateCommandApi(
+    second = GwmCommandApi(
         second_cloud,  # type: ignore[arg-type]
         store,
         credentials,
@@ -760,7 +760,7 @@ async def test_overseas_write_lifecycle_matrix_resumes_every_family_without_rese
         clock=clock,
     )
 
-    restored = await second.async_restore(direct_entry_data(credentials))
+    restored = await second.async_restore(cloud_entry_data(credentials))
     assert {item["id"] for item in restored} == {item["id"] for item in accepted}
     assert second_cloud.sent == []
     assert second_cloud.lock_sent == []
@@ -775,7 +775,7 @@ async def test_overseas_write_lifecycle_matrix_resumes_every_family_without_rese
     assert {
         entry.state
         for entry in await store.async_get_command_journal(
-            direct_entry_data(credentials)
+            cloud_entry_data(credentials)
         )
     } == {"completed"}
 
@@ -797,7 +797,7 @@ async def test_china_no_pin_lifecycle_journals_heat_lock_window_and_extended_con
     assert [
         entry.command_name
         for entry in await store.async_get_command_journal(
-            direct_entry_data(credentials)
+            cloud_entry_data(credentials)
         )
     ] == [
         "A/C",
@@ -818,7 +818,7 @@ async def test_china_no_pin_lifecycle_journals_heat_lock_window_and_extended_con
         (RemoteCommandResultItem(command_id, None, "0", "Success"),)
         for command_id in command_ids
     ]
-    second = DirectClimateCommandApi(
+    second = GwmCommandApi(
         second_cloud,  # type: ignore[arg-type]
         store,
         credentials,
@@ -827,7 +827,7 @@ async def test_china_no_pin_lifecycle_journals_heat_lock_window_and_extended_con
         clock=clock,
     )
 
-    restored = await second.async_restore(direct_entry_data(credentials))
+    restored = await second.async_restore(cloud_entry_data(credentials))
     assert {item["id"] for item in restored} == {item["id"] for item in accepted}
     for item in accepted:
         assert (await second.async_get_command(str(item["id"])))["state"] == "completed"
@@ -846,8 +846,8 @@ async def test_command_context_region_mismatch_fails_before_any_write(
     _api_value, store, credentials = await _api(tmp_path, cloud, clock)
     cloud.region = "aus"
 
-    with pytest.raises(ValueError, match="direct_command_api_invalid"):
-        DirectClimateCommandApi(
+    with pytest.raises(ValueError, match="gwm_command_api_invalid"):
+        GwmCommandApi(
             cloud,  # type: ignore[arg-type]
             store,
             credentials,
@@ -886,7 +886,7 @@ async def test_cancellation_after_provider_acceptance_finishes_recovery_journal(
     with pytest.raises(asyncio.CancelledError):
         await task
 
-    journal = await store.async_get_command_journal(direct_entry_data(credentials))
+    journal = await store.async_get_command_journal(cloud_entry_data(credentials))
     assert len(cloud.lock_sent) == 1
     assert len(journal) == 1
     assert journal[0].cloud_command_id == "provider-command-lock"
@@ -923,9 +923,9 @@ async def test_cancellation_after_terminal_result_finishes_journal_transition(
     with pytest.raises(asyncio.CancelledError):
         await task
 
-    journal = await store.async_get_command_journal(direct_entry_data(credentials))
+    journal = await store.async_get_command_journal(cloud_entry_data(credentials))
     assert journal[0].state == "completed"
-    assert await api.async_restore(direct_entry_data(credentials)) == ()
+    assert await api.async_restore(cloud_entry_data(credentials)) == ()
 
 
 @pytest.mark.asyncio
@@ -966,7 +966,7 @@ async def test_charging_acceptance_finishes_ownership_save_before_cancellation(
     with pytest.raises(asyncio.CancelledError):
         await task
 
-    owned = await store.async_get_owned_charging_plans(direct_entry_data(credentials))
+    owned = await store.async_get_owned_charging_plans(cloud_entry_data(credentials))
     assert len(cloud.charging_sent) == 1
     assert len(owned) == 1
     assert owned[0].vehicle_id == _VIN

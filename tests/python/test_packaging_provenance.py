@@ -16,7 +16,7 @@ from gwm_client.crypto import load_certificate, recover_transformed_private_key
 
 ROOT = Path(__file__).resolve().parents[2]
 RESOURCE_DIRECTORY = ROOT / "custom_components" / "gwm_ora" / "resources"
-ADDON_RESOURCE_DIRECTORY = ROOT / "addons" / "gwm_ora" / "src" / "LibGwmApi" / "Resources"
+CLIENT_SOURCE_COMMIT = "0027f2b9e050103e0af8a8a6c0b6b122efd96a83"
 
 EXPECTED_FILES = {
     "gwm_general.cer": (1529, "24886bad04d8b26aa2aafd3fb22c74bd1f2859d81499a39c561df4930429a03d"),
@@ -40,7 +40,7 @@ def _canonical_resource_bytes(data: bytes) -> bytes:
     return data.replace(b"\r\n", b"\n")
 
 
-def test_integration_resources_match_the_provenance_inventory_and_addon_copy() -> None:
+def test_integration_resources_match_the_provenance_inventory() -> None:
     provenance = _load_provenance()
     records = {record["path"]: record for record in provenance["resources"]}
 
@@ -58,7 +58,6 @@ def test_integration_resources_match_the_provenance_inventory_and_addon_copy() -
         record = records[name]
         assert len(canonical_data) == expected_size == record["bytes"]
         assert hashlib.sha256(canonical_data).hexdigest() == expected_hash == record["sha256"]
-        assert canonical_data == _canonical_resource_bytes((ADDON_RESOURCE_DIRECTORY / name).read_bytes())
         if normalized_upstream_hash := record.get("normalized_upstream_sha256"):
             assert hashlib.sha256(canonical_data).hexdigest() == normalized_upstream_hash
 
@@ -108,7 +107,7 @@ def test_bootstrap_certificate_metadata_keys_and_renewal_controls_are_exact() ->
         assert bundle.count(b"-----BEGIN CERTIFICATE-----") == records[bundle_name]["certificate_count"]
 
 
-def test_packaging_decision_keeps_the_client_separate_and_activation_deferred() -> None:
+def test_packaging_decision_keeps_the_client_separate_and_activates_test_pin() -> None:
     project = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))["project"]
     manifest = json.loads(
         (ROOT / "custom_components" / "gwm_ora" / "manifest.json").read_text(encoding="utf-8")
@@ -124,11 +123,18 @@ def test_packaging_decision_keeps_the_client_separate_and_activation_deferred() 
         "cryptography>=46.0.2",
         "yarl>=1.22.0,<2",
     }
-    assert manifest["requirements"] == []
+    assert manifest["requirements"] == [
+        "gwm-client@https://github.com/moryoav/ha-gwm/archive/"
+        f"{CLIENT_SOURCE_COMMIT}.zip"
+    ]
+    assert manifest["version"] == "0.14.0"
+    assert manifest["integration_type"] == "hub"
+    assert manifest["loggers"] == ["gwm_client"]
     assert manifest["domain"] == "gwm_ora"
     assert _RESOURCE_DIRECTORY == RESOURCE_DIRECTORY
     assert (ROOT / "gwm_client" / "__init__.py").is_file()
     assert not (ROOT / "gwm_ora_client").exists()
+    assert not (ROOT / "addons").exists()
     assert not any(
         path.suffix.casefold() in {".cer", ".key", ".pem"}
         for path in (ROOT / "gwm_client").rglob("*")
@@ -143,8 +149,8 @@ def test_protocol_material_notice_is_shipped_with_the_hacs_integration() -> None
 
     assert integration_notice == root_notice
     assert "LicenseRef-GWM-Protocol-Materials" in root_notice
-    assert "planned `gwm-client` distribution" in root_notice
-    assert "I will not publish the client package or complete the integration-only release" in root_notice
+    assert "immutable source dependency" in root_notice
+    assert "I will not publish the client package or make a production release" in root_notice
 
 
 def test_new_client_name_has_only_explicit_legacy_compatibility_values() -> None:

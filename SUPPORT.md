@@ -8,7 +8,6 @@ Start with the project documentation:
 
 - `README.md` for installation, setup, entities, use cases, troubleshooting, releases, and security notes.
 - `custom_components/gwm_ora/README.md` for integration behavior.
-- `addons/gwm_ora/DOCS.md` for add-on configuration and operation.
 - `CHANGELOG.md` for released changes.
 
 ## Reporting Bugs
@@ -21,17 +20,17 @@ Please include:
 - Your Home Assistant version.
 - Your installation method.
 - Your architecture, such as `amd64`, `aarch64`, or `armv7`.
-- Whether the issue affects the add-on, the integration, or both.
+- Whether the issue affects the client, the integration flow, polling, entities, or commands.
 - Clear reproduction steps.
 - Relevant logs with sensitive information removed.
 
-Do not include GWM credentials, add-on API tokens, refresh tokens, security PINs, VINs, precise vehicle locations, private URLs, personal paths, or private Home Assistant configuration.
+Do not include GWM credentials, access or refresh tokens, security PINs, VINs, precise vehicle locations, private URLs, personal paths, or private Home Assistant configuration.
 
 ## Feature Requests
 
 Use the feature request issue template for new ideas or improvements.
 
-Please explain the Home Assistant workflow you want to improve and whether you think the change belongs in the add-on, the custom integration, or both.
+Please explain the Home Assistant workflow you want to improve and whether you think the change belongs in `gwm_client` or the custom integration.
 
 Remote-command requests must include a safety and privacy rationale.
 

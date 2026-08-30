@@ -2,28 +2,6 @@
   "config": {
     "step": {
       "user": {
-        "title": "设置 GWM",
-        "description": "将 Home Assistant 直接连接到您的 GWM 云账号，或在迁移期间继续使用配套加载项。",
-        "menu_options": {
-          "cloud": "GWM 云账号",
-          "addon": "配套加载项"
-        }
-      },
-      "addon": {
-        "title": "GWM 加载项",
-        "description": "连接到正在运行的 GWM 加载项。主要用于开发或非 Supervisor 安装。",
-        "data": {
-          "host": "主机",
-          "port": "端口",
-          "token": "API 令牌"
-        },
-        "data_description": {
-          "host": "加载项主机名或开发主机。",
-          "port": "加载项 API 端口，打包版默认 8099。",
-          "token": "加载项生成的 API 令牌。GWM 账号凭据不会填在这里。"
-        }
-      },
-      "cloud": {
         "title": "选择 GWM 云区域",
         "description": "选择官方 GWM 应用为此账号使用的区域。在完成单独的实时读取安全验证前，中国大陆区域暂不可在此选择。",
         "data": {
@@ -56,7 +34,7 @@
       },
       "session_reclaim": {
         "title": "允许 ANZ 会话登录",
-        "description": "澳大利亚和新西兰账号只允许一个活动会话。继续操作可能会使官方应用退出登录或替换加载项会话。建议使用专门共享给车辆的账号。",
+        "description": "澳大利亚和新西兰账号只允许一个活动会话。继续操作可能会使官方应用退出登录。建议使用专门共享给车辆的账号。",
         "data": {
           "allow_session_reclaim": "我已了解并希望继续"
         }
@@ -67,17 +45,9 @@
       },
       "reconfigure": {
         "title": "重新配置 GWM",
-        "description": "对于直连云条目，请选择替换账号的区域。对于加载项条目，请更新本地 API 连接。",
+        "description": "请选择替换账号的区域。在更改当前设置前需要先完成身份验证。",
         "data": {
-          "region": "云区域",
-          "host": "主机",
-          "port": "端口",
-          "token": "API 令牌"
-        },
-        "data_description": {
-          "host": "加载项主机名或开发主机。",
-          "port": "加载项 API 端口，打包版默认 8099。",
-          "token": "加载项生成的 API 令牌。GWM 账号凭据不会填在这里。"
+          "region": "云区域"
         }
       },
       "reconfigure_account": {
@@ -91,22 +61,10 @@
       },
       "reauth_confirm": {
         "title": "重新连接 GWM",
-        "description": "对于直连云条目，请输入当前密码并完成所需验证。对于加载项条目，请重启加载项或更新本地 API 信息。",
+        "description": "请输入当前密码并完成所需验证。",
         "data": {
-          "host": "主机",
-          "port": "端口",
-          "token": "API 令牌",
           "password": "密码"
-        },
-        "data_description": {
-          "host": "加载项主机名或开发主机。",
-          "port": "加载项 API 端口，打包版默认 8099。",
-          "token": "加载项生成的 API 令牌。GWM 账号凭据不会填在这里。"
         }
-      },
-      "hassio_confirm": {
-        "title": "发现 GWM 加载项",
-        "description": "设置发现的 GWM 加载项 {host}。"
       }
     },
     "error": {
@@ -117,14 +75,15 @@
       "rate_limited": "GWM 限制了请求频率，请稍后重试。",
       "service_error": "GWM 返回了不支持或意外的响应。",
       "local_configuration_error": "无法验证内置的区域安全材料。",
-      "unsupported_region": "此云区域暂不可用于直连设置。",
+      "unsupported_region": "此云区域暂不可用于设置。",
       "initialization_failed": "下游 GWM 服务仍无法初始化。",
       "session_reclaim_not_confirmed": "继续前请确认您了解 ANZ 单会话的影响。"
     },
     "abort": {
       "already_configured": "此 GWM 账号已配置。",
-      "china_live_validation_required": "在完成单独的实时读取安全验证前，中国大陆直连设置保持禁用。",
+      "china_live_validation_required": "在完成单独的实时读取安全验证前，中国大陆设置保持禁用。",
       "invalid_flow_state": "此设置续接状态已失效，请重新开始设置流程。",
+      "legacy_addon_entry": "旧的加载项条目无法转换。请将其删除，然后重新添加 GWM 并直接登录。",
       "risk_control_required": "GWM 要求完成风控验证。请先在官方应用中完成，然后重试。"
     }
   },
@@ -132,7 +91,7 @@
     "step": {
       "init": {
         "title": "GWM 选项",
-        "description": "选择直连云轮询间隔和明确的功能开关。在后续实现任务完成前，命令和充电控制仍不可用。",
+        "description": "选择云轮询间隔和明确的功能开关。",
         "data": {
           "poll_interval_seconds": "轮询间隔",
           "enable_remote_commands": "启用远程命令",
@@ -142,7 +101,7 @@
         },
         "data_description": {
           "poll_interval_seconds": "账号级云轮询之间的秒数（30–3600）。",
-          "enable_remote_commands": "明确选择启用；仅开放已通过纯集成迁移检查点的命令类别。",
+          "enable_remote_commands": "明确选择启用支持的远程命令控制。",
           "enable_charging_control": "定时充电的独立明确开关。",
           "security_pin": "中国大陆以外的远程命令需要此 PIN，诊断信息中会将其隐藏。",
           "log_level": "此集成的诊断日志详细程度。"
@@ -153,33 +112,24 @@
       "security_pin_required": "为此区域启用远程命令时必须提供车辆安全 PIN。"
     },
     "abort": {
-      "addon_options_managed": "配套加载项的选项仍需在加载项配置中管理。"
+      "legacy_addon_entry": "旧的加载项条目无法配置。请将其删除，然后重新添加 GWM。"
     }
   },
   "exceptions": {
-    "addon_auth_failed": {
-      "message": "GWM 加载项拒绝了已存储的 API 令牌。"
+    "cloud_auth_failed": {
+      "message": "GWM 拒绝了已存储的云身份验证。请重新认证集成。"
     },
-    "addon_request_failed": {
-      "message": "GWM 加载项无法完成请求。"
-    },
-    "addon_unavailable": {
-      "message": "GWM 加载项不可达。"
+    "cloud_request_failed": {
+      "message": "GWM 云无法完成请求。"
     },
     "remote_command_unavailable": {
-      "message": "远程命令不可用。请在加载项中启用远程命令并配置安全 PIN。"
+      "message": "远程命令不可用。请在集成选项中启用，并在需要时配置安全 PIN。"
     },
     "charging_control_unavailable": {
-      "message": "充电控制不可用。请在加载项中启用充电控制并重启。"
+      "message": "充电控制不可用。请在集成选项中启用。"
     },
     "invalid_climate_run_time": {
       "message": "空调运行时长必须是 5 到 30 分钟之间的整数。"
-    }
-  },
-  "issues": {
-    "addon_auth_failed": {
-      "title": "GWM 加载项认证失败",
-      "description": "集成可以访问 GWM 加载项，但加载项拒绝了已存储的 API 令牌。请先重启加载项让 Supervisor 重新发现。对于开发或非 Supervisor 安装，请使用重新配置输入当前的加载项 API 令牌。"
     }
   },
   "entity": {
@@ -315,7 +265,7 @@
   "services": {
     "set_charging_plan": {
       "name": "设置充电计划",
-      "description": "设置车辆的充电计划。车辆仅在时间窗内充电；未来开始的时间窗会暂停充电直到该时刻。需要在加载项中启用充电控制。",
+      "description": "设置车辆的充电计划。车辆仅在时间窗内充电；未来开始的时间窗会暂停充电直到该时刻。需要在集成选项中启用充电控制。",
       "fields": {
         "vin": { "name": "VIN", "description": "设备上显示的车辆 VIN（可读序列号）。" },
         "start_time": { "name": "开始时间", "description": "允许开始充电的时间。设为未来时间可暂停充电直到该时刻。" },

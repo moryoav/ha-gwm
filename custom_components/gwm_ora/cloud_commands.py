@@ -1,4 +1,4 @@
-"""Restart-safe direct-cloud command orchestration."""
+"""Restart-safe GWM cloud command orchestration."""
 
 from __future__ import annotations
 
@@ -30,28 +30,28 @@ from gwm_client import (
     valid_temperature,
 )
 
-from .api import GwmOraApiError, GwmOraApiForbidden
-from .cloud_auth import DirectCloudCredentials
-from .cloud_runtime import DirectCloudReadClient
+from .cloud_auth import GwmCloudCredentials
+from .cloud_runtime import GwmCloudClient
 from .cloud_storage import (
-    DirectCloudStateStore,
-    DirectCommandJournalEntry,
-    DirectOwnedChargingPlan,
+    GwmCloudStateStore,
+    GwmCommandJournalEntry,
+    GwmOwnedChargingPlan,
 )
+from .errors import GwmCommandError, GwmCommandForbidden
 
 _DEFAULT_RESULT_TIMEOUT = timedelta(seconds=90)
 _RUSSIA_RESULT_TIMEOUT = timedelta(seconds=300)
 _LOGGER = logging.getLogger(__name__)
 
 
-class DirectClimateCommandApi:
-    """Expose approved direct writes over the durable Task 14 journal."""
+class GwmCommandApi:
+    """Expose approved GWM writes over the durable command journal."""
 
     def __init__(
         self,
-        cloud: DirectCloudReadClient,
-        state_store: DirectCloudStateStore,
-        credentials: DirectCloudCredentials,
+        cloud: GwmCloudClient,
+        state_store: GwmCloudStateStore,
+        credentials: GwmCloudCredentials,
         *,
         enabled: bool,
         charging_enabled: bool = False,
@@ -59,15 +59,15 @@ class DirectClimateCommandApi:
         clock: Callable[[], datetime] | None = None,
     ) -> None:
         if (
-            type(state_store) is not DirectCloudStateStore
-            or type(credentials) is not DirectCloudCredentials
+            type(state_store) is not GwmCloudStateStore
+            or type(credentials) is not GwmCloudCredentials
             or getattr(cloud, "region", None) != credentials.region
             or type(enabled) is not bool
             or type(charging_enabled) is not bool
             or (security_pin is not None and not isinstance(security_pin, str))
             or (clock is not None and not callable(clock))
         ):
-            raise ValueError("direct_command_api_invalid")
+            raise ValueError("gwm_command_api_invalid")
         self._cloud = cloud
         self._state_store = state_store
         self._credentials = credentials
@@ -75,7 +75,7 @@ class DirectClimateCommandApi:
         self._charging_enabled = charging_enabled
         self._security_pin = security_pin.strip() if security_pin else ""
         self._clock = clock or (lambda: datetime.now(UTC))
-        self._commands: dict[str, DirectCommandJournalEntry] = {}
+        self._commands: dict[str, GwmCommandJournalEntry] = {}
         self._timeout_ids: set[str] = set()
 
     async def async_restore(
@@ -110,17 +110,17 @@ class DirectClimateCommandApi:
 
         self._ensure_available()
         if not isinstance(vin, str):
-            raise GwmOraApiError("A/C command requires a valid vehicle")
+            raise GwmCommandError("A/C command requires a valid vehicle")
         try:
             identifier = VehicleIdentifier(vin)
         except (TypeError, ValueError):
-            raise GwmOraApiError("A/C command requires a valid vehicle") from None
+            raise GwmCommandError("A/C command requires a valid vehicle") from None
         normalized_mode = mode.strip().lower() if isinstance(mode, str) else None
         allowed_modes = {None, "cool", "off"}
         if self._cloud.region == "cn":
             allowed_modes.add("heat")
         if normalized_mode not in allowed_modes:
-            raise GwmOraApiError(
+            raise GwmCommandError(
                 "A/C mode must be 'cool', 'heat', or 'off' in mainland China"
                 if self._cloud.region == "cn"
                 else "A/C mode must be 'cool' or 'off' in this region"
@@ -130,13 +130,13 @@ class DirectClimateCommandApi:
             or not isinstance(temperature, int)
             or not 16 <= temperature <= 32
         ):
-            raise GwmOraApiError("A/C temperature must be a whole number from 16 to 32")
+            raise GwmCommandError("A/C temperature must be a whole number from 16 to 32")
         if operation_time_minutes is not None and (
             isinstance(operation_time_minutes, bool)
             or not isinstance(operation_time_minutes, int)
             or not is_valid_operation_time(operation_time_minutes)
         ):
-            raise GwmOraApiError(
+            raise GwmCommandError(
                 "A/C run time must be a whole number from 5 to 30 minutes"
             )
         if (
@@ -144,7 +144,7 @@ class DirectClimateCommandApi:
             and temperature is None
             and operation_time_minutes is None
         ):
-            raise GwmOraApiError(
+            raise GwmCommandError(
                 "A/C command requires a mode, temperature, or run time"
             )
 
@@ -159,7 +159,7 @@ class DirectClimateCommandApi:
         if run_time_only:
             effective_temperature = valid_temperature(stored_temperature)
             if effective_temperature is None:
-                raise GwmOraApiError(
+                raise GwmCommandError(
                     "Current A/C temperature is unavailable; no settings were changed"
                 )
         else:
@@ -225,7 +225,7 @@ class DirectClimateCommandApi:
         identifier = _vehicle_identifier(vin, command_name="Door lock")
         normalized_action = action.strip().lower() if isinstance(action, str) else ""
         if normalized_action not in {"lock", "unlock"}:
-            raise GwmOraApiError("Door lock action must be 'lock' or 'unlock'")
+            raise GwmCommandError("Door lock action must be 'lock' or 'unlock'")
         command_name = "Door lock" if normalized_action == "lock" else "Door unlock"
         command = DoorLockCommand(identifier, normalized_action == "lock")
         if self._cloud.region == "cn":
@@ -275,13 +275,13 @@ class DirectClimateCommandApi:
                 run_time_minutes,
             )
         except ValueError:
-            raise GwmOraApiError(
+            raise GwmCommandError(
                 "Unsupported China vehicle control or remote-start run time"
             ) from None
         sender = getattr(self._cloud, "async_send_vehicle_control_command", None)
         if not callable(sender):
-            raise GwmOraApiForbidden(
-                "Direct China vehicle controls are not active for this entry"
+            raise GwmCommandForbidden(
+                "GWM China vehicle controls are not active for this entry"
             )
         acceptance = await sender(command)
         return await self._record_acceptance(
@@ -295,7 +295,7 @@ class DirectClimateCommandApi:
 
         entry = self._commands.get(command_id)
         if entry is None:
-            raise GwmOraApiError("Remote command was not found")
+            raise GwmCommandError("Remote command was not found")
         if entry.state in {"completed", "failed"}:
             return self._command_view(entry)
         now = self._now()
@@ -364,13 +364,13 @@ class DirectClimateCommandApi:
             try:
                 entry = await task
             except Exception as err:
-                raise GwmOraApiError(
+                raise GwmCommandError(
                     "GWM accepted the command but its recovery journal could not be saved; do not retry"
                 ) from err
             self._commands[entry.journal_id] = entry
             raise
         except Exception as err:
-            raise GwmOraApiError(
+            raise GwmCommandError(
                 "GWM accepted the command but its recovery journal could not be saved; do not retry"
             ) from err
         self._commands[entry.journal_id] = entry
@@ -378,11 +378,11 @@ class DirectClimateCommandApi:
 
     async def _durably_update_command(
         self,
-        entry: DirectCommandJournalEntry,
+        entry: GwmCommandJournalEntry,
         *,
         state: str,
         updated_at: datetime,
-    ) -> DirectCommandJournalEntry:
+    ) -> GwmCommandJournalEntry:
         """Finish a journal transition before propagating lifecycle cancellation."""
 
         task = asyncio.create_task(
@@ -399,13 +399,13 @@ class DirectClimateCommandApi:
             try:
                 updated = await task
             except Exception as err:
-                raise GwmOraApiError(
+                raise GwmCommandError(
                     "GWM command state changed but its recovery journal could not be updated; do not resend"
                 ) from err
             self._commands[updated.journal_id] = updated
             raise
         except Exception as err:
-            raise GwmOraApiError(
+            raise GwmCommandError(
                 "GWM command state changed but its recovery journal could not be updated; do not resend"
             ) from err
         self._commands[updated.journal_id] = updated
@@ -413,7 +413,7 @@ class DirectClimateCommandApi:
 
     async def _mark_timeout(
         self,
-        entry: DirectCommandJournalEntry,
+        entry: GwmCommandJournalEntry,
         now: datetime,
     ) -> dict[str, object]:
         entry = await self._durably_update_command(
@@ -430,7 +430,7 @@ class DirectClimateCommandApi:
 
     def _command_view(
         self,
-        entry: DirectCommandJournalEntry,
+        entry: GwmCommandJournalEntry,
         *,
         state: str | None = None,
         status: str | None = None,
@@ -467,17 +467,17 @@ class DirectClimateCommandApi:
 
     def _ensure_available(self) -> None:
         if not self._enabled:
-            raise GwmOraApiForbidden("Direct-cloud remote commands are disabled")
+            raise GwmCommandForbidden("GWM cloud remote commands are disabled")
         if self._cloud.region != "cn" and not self._security_pin:
-            raise GwmOraApiForbidden(
-                "Direct-cloud remote commands require a security PIN"
+            raise GwmCommandForbidden(
+                "GWM cloud remote commands require a security PIN"
             )
 
     def _ensure_china_vehicle_control_available(self) -> None:
         if not self._enabled:
-            raise GwmOraApiForbidden("Direct-cloud remote commands are disabled")
+            raise GwmCommandForbidden("GWM cloud remote commands are disabled")
         if self._cloud.region != "cn":
-            raise GwmOraApiForbidden(
+            raise GwmCommandForbidden(
                 "These vehicle controls are available only for mainland China"
             )
 
@@ -488,7 +488,7 @@ class DirectClimateCommandApi:
             or value.tzinfo is None
             or value.utcoffset() is None
         ):
-            raise GwmOraApiError("Direct command clock is invalid")
+            raise GwmCommandError("GWM command clock is invalid")
         return value.astimezone(UTC)
 
     async def async_get_charging_plan(
@@ -525,7 +525,7 @@ class DirectClimateCommandApi:
                 weeks=weeks,
             )
         except (TypeError, ValueError):
-            raise GwmOraApiError("Charging plan requires a valid window and options") from None
+            raise GwmCommandError("Charging plan requires a valid window and options") from None
         await self._cloud.async_set_charging_plan(command)
         if not enable:
             await self._durably_remove_owned_plan(identifier.value)
@@ -533,7 +533,7 @@ class DirectClimateCommandApi:
 
         assert start_time is not None
         assert end_time is not None
-        owned = DirectOwnedChargingPlan(
+        owned = GwmOwnedChargingPlan(
             vehicle_id=identifier.value,
             plan_id=None,
             plan_type=plan_type or 0,
@@ -554,7 +554,7 @@ class DirectClimateCommandApi:
             )
             if matching is not None:
                 await self._durably_save_owned_plan(
-                    DirectOwnedChargingPlan(
+                    GwmOwnedChargingPlan(
                         vehicle_id=owned.vehicle_id,
                         plan_id=matching.plan_id,
                         plan_type=owned.plan_type,
@@ -613,9 +613,9 @@ class DirectClimateCommandApi:
 
     def _ensure_charging_available(self) -> None:
         if not self._charging_enabled:
-            raise GwmOraApiForbidden("Direct-cloud charging control is disabled")
+            raise GwmCommandForbidden("GWM cloud charging control is disabled")
 
-    async def _durably_save_owned_plan(self, plan: DirectOwnedChargingPlan) -> None:
+    async def _durably_save_owned_plan(self, plan: GwmOwnedChargingPlan) -> None:
         task = asyncio.create_task(
             self._state_store.async_set_owned_charging_plan(self._credentials, plan)
         )
@@ -625,7 +625,7 @@ class DirectClimateCommandApi:
             await task
             raise
         except Exception as err:
-            raise GwmOraApiError(
+            raise GwmCommandError(
                 "GWM accepted the charging plan but ownership could not be saved; do not retry"
             ) from err
 
@@ -642,7 +642,7 @@ class DirectClimateCommandApi:
             await task
             raise
         except Exception as err:
-            raise GwmOraApiError(
+            raise GwmCommandError(
                 "GWM cleared the charging plan but ownership could not be updated; do not retry"
             ) from err
 
@@ -654,7 +654,7 @@ def _climate_is_on(status: object) -> bool:
 
 def _charging_plan_matches(
     candidate: ChargingPlanItem,
-    owned: DirectOwnedChargingPlan,
+    owned: GwmOwnedChargingPlan,
 ) -> bool:
     return (
         candidate.active
@@ -674,11 +674,11 @@ def _security_password_hash(pin: str) -> str:
 
 def _vehicle_identifier(vin: object, *, command_name: str) -> VehicleIdentifier:
     if not isinstance(vin, str):
-        raise GwmOraApiError(f"{command_name} command requires a valid vehicle")
+        raise GwmCommandError(f"{command_name} command requires a valid vehicle")
     try:
         return VehicleIdentifier(vin)
     except (TypeError, ValueError):
-        raise GwmOraApiError(
+        raise GwmCommandError(
             f"{command_name} command requires a valid vehicle"
         ) from None
 
@@ -692,7 +692,7 @@ def _expected_remote_type(command_name: str) -> str:
         return "0x08"
     if command_name in _CHINA_VEHICLE_CONTROL_NAMES.values():
         return "china"
-    raise GwmOraApiError(
+    raise GwmCommandError(
         "Remote command journal contains an unsupported command family"
     )
 
@@ -722,4 +722,4 @@ _CHINA_VEHICLE_CONTROL_NAMES = {
 }
 
 
-__all__ = ["DirectClimateCommandApi"]
+__all__ = ["GwmCommandApi"]

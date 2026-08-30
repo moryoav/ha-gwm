@@ -10,20 +10,22 @@ from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .api import GwmOraApiAuthError, GwmOraApiError, GwmOraApiForbidden, GwmOraApiUnavailable
+from gwm_client import GwmAuthenticationError, GwmClientError
+
 from .const import DOMAIN
-from .coordinator import GwmOraDataUpdateCoordinator
+from .coordinator import GwmDataUpdateCoordinator
+from .errors import GwmCommandError, GwmCommandForbidden
 
 if TYPE_CHECKING:
-    from . import GwmOraConfigEntry
+    from . import GwmConfigEntry
 
 
-class GwmOraEntity(CoordinatorEntity[GwmOraDataUpdateCoordinator]):
+class GwmEntity(CoordinatorEntity[GwmDataUpdateCoordinator]):
     """Base entity bound to one GWM vehicle."""
 
     _attr_has_entity_name = True
 
-    def __init__(self, coordinator: GwmOraDataUpdateCoordinator, vin: str) -> None:
+    def __init__(self, coordinator: GwmDataUpdateCoordinator, vin: str) -> None:
         super().__init__(coordinator)
         self.vin = vin
 
@@ -58,29 +60,27 @@ class GwmOraEntity(CoordinatorEntity[GwmOraDataUpdateCoordinator]):
 
     @property
     def climate_commands_available(self) -> bool:
-        """Return the climate-specific capability with add-on compatibility."""
+        """Return the climate-specific capability."""
 
         vehicle = self.vehicle or {}
         capabilities = vehicle.get("capabilities") or {}
-        return bool(capabilities.get("climate_commands", capabilities.get("remote_commands")))
+        return capabilities.get("climate_commands") is True
 
     @property
     def lock_window_commands_available(self) -> bool:
-        """Return the lock/window capability with add-on compatibility."""
+        """Return the lock/window capability."""
 
         vehicle = self.vehicle or {}
         capabilities = vehicle.get("capabilities") or {}
-        return bool(capabilities.get("lock_window_commands", capabilities.get("remote_commands")))
+        return capabilities.get("lock_window_commands") is True
 
     @property
     def china_vehicle_commands_available(self) -> bool:
-        """Return the extended-China capability with add-on compatibility."""
+        """Return the extended-China capability."""
 
         vehicle = self.vehicle or {}
         capabilities = vehicle.get("capabilities") or {}
-        return bool(
-            capabilities.get("china_vehicle_commands", capabilities.get("remote_commands"))
-        )
+        return capabilities.get("china_vehicle_commands") is True
 
     @property
     def vehicle_platform(self) -> str:
@@ -97,19 +97,15 @@ class GwmOraEntity(CoordinatorEntity[GwmOraDataUpdateCoordinator]):
         """Return whether charging control is available for this vehicle."""
         return _vehicle_charging_control_available(
             self.vehicle,
-            self.coordinator.data,
         )
 
 
 def _vehicle_charging_control_available(
     vehicle: dict[str, Any] | None,
-    coordinator_data: dict[str, Any] | None,
 ) -> bool:
-    """Return the per-vehicle capability with old add-on fallback."""
+    """Return the per-vehicle charging capability."""
     capabilities = (vehicle or {}).get("capabilities") or {}
-    if "charging_control" in capabilities:
-        return bool(capabilities["charging_control"])
-    return bool((coordinator_data or {}).get("charging_control_enabled"))
+    return capabilities.get("charging_control") is True
 
 
 def vehicle_value(vehicle: dict[str, Any] | None, key: str) -> Any:
@@ -120,16 +116,16 @@ def vehicle_value(vehicle: dict[str, Any] | None, key: str) -> Any:
 
 
 def setup_vehicle_entities(
-    entry: GwmOraConfigEntry,
+    entry: GwmConfigEntry,
     async_add_entities: AddEntitiesCallback,
-    factory: Callable[[dict[str, Any]], Iterable[GwmOraEntity]],
+    factory: Callable[[dict[str, Any]], Iterable[GwmEntity]],
 ) -> None:
     """Add entities for all current and newly discovered vehicles."""
     coordinator = entry.runtime_data.coordinator
     known_vins: set[str] = set()
 
     def add_new_vehicle_entities() -> None:
-        entities: list[GwmOraEntity] = []
+        entities: list[GwmEntity] = []
         for vehicle in coordinator.vehicles:
             vin = vehicle.get("vin")
             if not vin or vin in known_vins:
@@ -143,31 +139,26 @@ def setup_vehicle_entities(
     entry.async_on_unload(coordinator.async_add_listener(add_new_vehicle_entities))
 
 
-async def async_call_addon_api(
+async def async_call_gwm_api(
     call,
     *,
     forbidden_translation_key: str = "remote_command_unavailable",
 ):
-    """Call the add-on API and raise translated Home Assistant errors."""
+    """Call the GWM client and raise translated Home Assistant errors."""
     try:
         return await call
-    except GwmOraApiAuthError as err:
+    except GwmAuthenticationError as err:
         raise HomeAssistantError(
             translation_domain=DOMAIN,
-            translation_key="addon_auth_failed",
+            translation_key="cloud_auth_failed",
         ) from err
-    except GwmOraApiForbidden as err:
+    except GwmCommandForbidden as err:
         raise HomeAssistantError(
             translation_domain=DOMAIN,
             translation_key=forbidden_translation_key,
         ) from err
-    except GwmOraApiUnavailable as err:
+    except (GwmCommandError, GwmClientError) as err:
         raise HomeAssistantError(
             translation_domain=DOMAIN,
-            translation_key="addon_unavailable",
-        ) from err
-    except GwmOraApiError as err:
-        raise HomeAssistantError(
-            translation_domain=DOMAIN,
-            translation_key="addon_request_failed",
+            translation_key="cloud_request_failed",
         ) from err

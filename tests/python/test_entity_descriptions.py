@@ -296,12 +296,12 @@ def test_beantech_controls_only_expose_mapped_capabilities() -> None:
     assert navinfo_actions == {action for action, _ in CHINA_REMOTE_BUTTONS}
     assert not _vehicle_charging_control_available(
         {"capabilities": {"charging_control": False}},
-        {"charging_control_enabled": True},
     )
     assert _vehicle_charging_control_available(
         {"capabilities": {"charging_control": True}},
-        {"charging_control_enabled": True},
     )
+
+
 def test_window_entities_keep_unique_ids_but_use_market_safe_values() -> None:
     pytest.importorskip("homeassistant")
     from custom_components.gwm_ora.binary_sensor import BINARY_SENSORS
@@ -355,9 +355,9 @@ def test_climate_run_time_number_metadata() -> None:
     from homeassistant.helpers.entity import EntityCategory
 
     from custom_components.gwm_ora.const import PLATFORMS
-    from custom_components.gwm_ora.number import GwmOraClimateRunTimeNumber
+    from custom_components.gwm_ora.number import GwmClimateRunTimeNumber
 
-    entity = object.__new__(GwmOraClimateRunTimeNumber)
+    entity = object.__new__(GwmClimateRunTimeNumber)
 
     assert Platform.NUMBER in PLATFORMS
     assert Platform.SWITCH in PLATFORMS
@@ -376,9 +376,9 @@ async def test_climate_run_time_rejects_fractional_values() -> None:
     pytest.importorskip("homeassistant")
     from homeassistant.exceptions import HomeAssistantError
 
-    from custom_components.gwm_ora.number import GwmOraClimateRunTimeNumber
+    from custom_components.gwm_ora.number import GwmClimateRunTimeNumber
 
-    entity = object.__new__(GwmOraClimateRunTimeNumber)
+    entity = object.__new__(GwmClimateRunTimeNumber)
 
     with pytest.raises(HomeAssistantError) as error:
         await entity.async_set_native_value(5.9)

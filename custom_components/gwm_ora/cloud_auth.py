@@ -1,4 +1,4 @@
-"""Direct-cloud authentication boundary for native Home Assistant flows.
+"""GWM cloud authentication boundary for native Home Assistant flows.
 
 Every call owns and closes a short-lived protocol client. Immutable results are
 published to the Home Assistant storage boundary by the caller; this module
@@ -67,7 +67,7 @@ _RESOURCE_DIRECTORY = Path(__file__).resolve().parent / "resources"
 
 
 @dataclass(frozen=True, slots=True, repr=False)
-class DirectCloudCredentials:
+class GwmCloudCredentials:
     """Normalized account configuration plus one flow-local device identity."""
 
     region: str
@@ -132,7 +132,7 @@ class DirectCloudCredentials:
         return self.client_credentials().account_binding
 
 
-class DirectCloudAuthenticator:
+class GwmCloudAuthenticator:
     """Run one finite regional authentication attempt with owned resources."""
 
     def __init__(
@@ -148,7 +148,7 @@ class DirectCloudAuthenticator:
 
     async def async_authenticate(
         self,
-        credentials: DirectCloudCredentials,
+        credentials: GwmCloudCredentials,
         *,
         state: CloudAuthState | None = None,
         verification_code: str | None = None,
@@ -158,7 +158,7 @@ class DirectCloudAuthenticator:
         """Authenticate once and close the temporary protocol client."""
 
         if (
-            type(credentials) is not DirectCloudCredentials
+            type(credentials) is not GwmCloudCredentials
             or type(allow_session_reclaim) is not bool
             or type(allow_password_login) is not bool
             or (allow_session_reclaim and not allow_password_login)
@@ -243,7 +243,7 @@ def generate_device_id() -> str:
     return secrets.token_hex(16)
 
 
-def direct_entry_data(credentials: DirectCloudCredentials) -> dict[str, object]:
+def cloud_entry_data(credentials: GwmCloudCredentials) -> dict[str, object]:
     """Return normalized user configuration without transient auth state."""
 
     data: dict[str, object] = {
@@ -257,14 +257,14 @@ def direct_entry_data(credentials: DirectCloudCredentials) -> dict[str, object]:
     return data
 
 
-def direct_unique_id(credentials: DirectCloudCredentials) -> str:
+def cloud_unique_id(credentials: GwmCloudCredentials) -> str:
     """Return a domain-separated pseudonymous ID for one region/account pair."""
 
     return f"cloud:{credentials.region}:{credentials.account_binding}"
 
 
-def direct_entry_title(region: str) -> str:
-    """Return a non-personal title for one direct-cloud entry."""
+def cloud_entry_title(region: str) -> str:
+    """Return a non-personal title for one GWM cloud entry."""
 
     names = {
         REGION_EU: "GWM Europe",
@@ -312,10 +312,10 @@ def _load_bootstrap_material(region: str) -> BootstrapMaterial:
 __all__ = [
     "CloudAuthenticationResult",
     "CloudAuthState",
-    "DirectCloudAuthenticator",
-    "DirectCloudCredentials",
-    "direct_entry_data",
-    "direct_entry_title",
-    "direct_unique_id",
+    "GwmCloudAuthenticator",
+    "GwmCloudCredentials",
+    "cloud_entry_data",
+    "cloud_entry_title",
+    "cloud_unique_id",
     "generate_device_id",
 ]

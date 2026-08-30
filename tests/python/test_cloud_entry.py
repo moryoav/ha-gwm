@@ -1,4 +1,4 @@
-"""Direct-entry lifecycle and diagnostics tests for the staged HA path."""
+"""Cloud-entry lifecycle and diagnostics tests for the staged HA path."""
 
 from __future__ import annotations
 
@@ -22,15 +22,15 @@ from custom_components.gwm_ora import (
     async_unload_entry,
 )
 from custom_components.gwm_ora.cloud_auth import (
-    DirectCloudCredentials,
-    direct_unique_id,
+    GwmCloudCredentials,
+    cloud_unique_id,
 )
 from custom_components.gwm_ora.cloud_runtime import (
-    DirectCloudBootstrap,
-    consume_direct_cloud_bootstrap,
-    stage_direct_cloud_bootstrap,
+    GwmCloudBootstrap,
+    consume_cloud_bootstrap,
+    stage_cloud_bootstrap,
 )
-from custom_components.gwm_ora.cloud_storage import direct_cloud_state_store
+from custom_components.gwm_ora.cloud_storage import cloud_state_store
 from custom_components.gwm_ora.const import (
     CONF_ACCOUNT,
     CONF_CONNECTION_TYPE,
@@ -56,7 +56,7 @@ from gwm_client import (
 _DEVICE_ID = "0123456789abcdef0123456789abcdef"
 
 
-def _direct_entry(
+def _cloud_entry(
     *,
     data_updates: dict[str, Any] | None = None,
     options: dict[str, Any] | None = None,
@@ -69,7 +69,7 @@ def _direct_entry(
         CONF_PASSWORD: "private-password",
         **(data_updates or {}),
     }
-    credentials = DirectCloudCredentials(
+    credentials = GwmCloudCredentials(
         "eu",
         "DE",
         str(data[CONF_ACCOUNT]),
@@ -80,19 +80,19 @@ def _direct_entry(
         data=data,
         discovery_keys=MappingProxyType({}),
         domain=DOMAIN,
-        entry_id="synthetic-direct-entry",
+        entry_id="synthetic-cloud-entry",
         minor_version=1,
         options=options or {},
         source="user",
         subentries_data=None,
         title="GWM Europe",
-        unique_id=direct_unique_id(credentials),
+        unique_id=cloud_unique_id(credentials),
         version=1,
     )
 
 
-def _bootstrap(entry: ConfigEntry, token: str = "synthetic-access-token") -> DirectCloudBootstrap:
-    credentials = DirectCloudCredentials(
+def _bootstrap(entry: ConfigEntry, token: str = "synthetic-access-token") -> GwmCloudBootstrap:
+    credentials = GwmCloudCredentials(
         "eu",
         "DE",
         str(entry.data[CONF_ACCOUNT]),
@@ -107,7 +107,7 @@ def _bootstrap(entry: ConfigEntry, token: str = "synthetic-access-token") -> Dir
         device_id=_DEVICE_ID,
         access_token=token,
     )
-    return DirectCloudBootstrap(
+    return GwmCloudBootstrap(
         region="eu",
         account_binding=credentials.account_binding,
         state=state,
@@ -121,10 +121,10 @@ def _bootstrap(entry: ConfigEntry, token: str = "synthetic-access-token") -> Dir
 
 
 @pytest.mark.asyncio
-async def test_direct_entry_without_memory_handoff_requests_reauthentication(
+async def test_cloud_entry_without_memory_handoff_requests_reauthentication(
     tmp_path: Any,
 ) -> None:
-    entry = _direct_entry()
+    entry = _cloud_entry()
     hass = HomeAssistant(str(tmp_path))
 
     with pytest.raises(ConfigEntryAuthFailed):
@@ -132,11 +132,20 @@ async def test_direct_entry_without_memory_handoff_requests_reauthentication(
 
 
 @pytest.mark.asyncio
-async def test_direct_entry_setup_and_unload_own_runtime_lifecycle(
+async def test_legacy_addon_entry_requires_fresh_setup(tmp_path: Any) -> None:
+    entry = _cloud_entry(data_updates={CONF_CONNECTION_TYPE: "addon"})
+    hass = HomeAssistant(str(tmp_path))
+
+    with pytest.raises(ConfigEntryAuthFailed, match="retired add-on entry"):
+        await async_setup_entry(hass, entry)
+
+
+@pytest.mark.asyncio
+async def test_cloud_entry_setup_and_unload_own_runtime_lifecycle(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Any,
 ) -> None:
-    entry = _direct_entry(
+    entry = _cloud_entry(
         options={
             CONF_POLL_INTERVAL_SECONDS: 180,
             CONF_ENABLE_CHARGING_CONTROL: True,
@@ -144,7 +153,7 @@ async def test_direct_entry_setup_and_unload_own_runtime_lifecycle(
     )
     hass = HomeAssistant(str(tmp_path))
     bootstrap = _bootstrap(entry)
-    stage_direct_cloud_bootstrap(hass, entry.unique_id or "", bootstrap)
+    stage_cloud_bootstrap(hass, entry.unique_id or "", bootstrap)
     shutdown_order: list[str] = []
     forwarded: list[tuple[str, ...]] = []
     unloaded: list[tuple[str, ...]] = []
@@ -166,7 +175,7 @@ async def test_direct_entry_setup_and_unload_own_runtime_lifecycle(
         def __init__(self, *args: Any, **kwargs: Any) -> None:
             assert kwargs["update_interval_seconds"] == 180
             assert kwargs["config_entry"] is entry
-            assert kwargs["direct_client"] is cloud
+            assert kwargs["cloud_client"] is cloud
             self.data = {"region": "eu", "vehicles": []}
             self.cancelled = False
 
@@ -177,16 +186,16 @@ async def test_direct_entry_setup_and_unload_own_runtime_lifecycle(
             shutdown_order.append("commands")
             self.cancelled = True
 
-    def direct_runtime(*args: Any, **kwargs: Any) -> Cloud:
+    def cloud_runtime(*args: Any, **kwargs: Any) -> Cloud:
         assert kwargs["charging_control_enabled"] is True
         return cloud
 
     monkeypatch.setattr(
-        gwm_ora.DirectCloudReadClient,
+        gwm_ora.GwmCloudClient,
         "from_entry_data",
-        classmethod(lambda cls, *args, **kwargs: direct_runtime(*args, **kwargs)),
+        classmethod(lambda cls, *args, **kwargs: cloud_runtime(*args, **kwargs)),
     )
-    monkeypatch.setattr(gwm_ora, "GwmOraDataUpdateCoordinator", Coordinator)
+    monkeypatch.setattr(gwm_ora, "GwmDataUpdateCoordinator", Coordinator)
     monkeypatch.setattr(gwm_ora, "_async_register_services", lambda hass: None)
 
     class ConfigEntries:
@@ -217,7 +226,7 @@ async def test_direct_entry_setup_and_unload_own_runtime_lifecycle(
     assert cloud.closed
     assert entry.runtime_data.coordinator.cancelled
     assert shutdown_order == ["commands", "transport"]
-    assert consume_direct_cloud_bootstrap(hass, entry.unique_id) is bootstrap
+    assert consume_cloud_bootstrap(hass, entry.unique_id) is bootstrap
 
 
 @pytest.mark.asyncio
@@ -225,10 +234,10 @@ async def test_transient_first_refresh_failure_restages_handoff_for_retry(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Any,
 ) -> None:
-    entry = _direct_entry()
+    entry = _cloud_entry()
     hass = HomeAssistant(str(tmp_path))
     bootstrap = _bootstrap(entry)
-    stage_direct_cloud_bootstrap(hass, entry.unique_id or "", bootstrap)
+    stage_cloud_bootstrap(hass, entry.unique_id or "", bootstrap)
     shutdown_order: list[str] = []
 
     class Cloud:
@@ -255,18 +264,18 @@ async def test_transient_first_refresh_failure_restages_handoff_for_retry(
             shutdown_order.append("commands")
 
     monkeypatch.setattr(
-        gwm_ora.DirectCloudReadClient,
+        gwm_ora.GwmCloudClient,
         "from_entry_data",
         classmethod(lambda cls, *args, **kwargs: cloud),
     )
-    monkeypatch.setattr(gwm_ora, "GwmOraDataUpdateCoordinator", Coordinator)
+    monkeypatch.setattr(gwm_ora, "GwmDataUpdateCoordinator", Coordinator)
 
     with pytest.raises(ConfigEntryNotReady):
         await async_setup_entry(hass, entry)
 
     assert cloud.closed
     assert shutdown_order == ["commands", "transport"]
-    assert consume_direct_cloud_bootstrap(hass, entry.unique_id) is bootstrap
+    assert consume_cloud_bootstrap(hass, entry.unique_id) is bootstrap
 
 
 @pytest.mark.asyncio
@@ -274,17 +283,17 @@ async def test_process_restart_resumes_and_rotates_durable_session_without_login
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Any,
 ) -> None:
-    entry = _direct_entry()
+    entry = _cloud_entry()
     initial = _bootstrap(entry, "initial-access-token")
     first_hass = HomeAssistant(str(tmp_path))
-    credentials = DirectCloudCredentials(
+    credentials = GwmCloudCredentials(
         "eu",
         "DE",
         str(entry.data[CONF_ACCOUNT]),
         str(entry.data[CONF_PASSWORD]),
         _DEVICE_ID,
     )
-    await direct_cloud_state_store(
+    await cloud_state_store(
         first_hass,
         entry.unique_id or "",
     ).async_save_auth_state(credentials, initial.state)
@@ -294,7 +303,7 @@ async def test_process_restart_resumes_and_rotates_durable_session_without_login
     class Authenticator:
         async def async_authenticate(
             self,
-            supplied: DirectCloudCredentials,
+            supplied: GwmCloudCredentials,
             **kwargs: Any,
         ) -> object:
             assert supplied.device_id == _DEVICE_ID
@@ -316,7 +325,7 @@ async def test_process_restart_resumes_and_rotates_durable_session_without_login
         data = {"region": "eu", "vehicles": []}
 
         def __init__(self, *args: Any, **kwargs: Any) -> None:
-            assert kwargs["direct_client"] is cloud
+            assert kwargs["cloud_client"] is cloud
 
         async def async_config_entry_first_refresh(self) -> None:
             return None
@@ -327,19 +336,19 @@ async def test_process_restart_resumes_and_rotates_durable_session_without_login
 
     restarted_hass = HomeAssistant(str(tmp_path))
     restarted_hass.config_entries = ConfigEntries()  # type: ignore[assignment]
-    monkeypatch.setattr(gwm_ora, "DirectCloudAuthenticator", Authenticator)
+    monkeypatch.setattr(gwm_ora, "GwmCloudAuthenticator", Authenticator)
     monkeypatch.setattr(
-        gwm_ora.DirectCloudReadClient,
+        gwm_ora.GwmCloudClient,
         "from_entry_data",
         classmethod(lambda cls, *args, **kwargs: cloud),
     )
-    monkeypatch.setattr(gwm_ora, "GwmOraDataUpdateCoordinator", Coordinator)
+    monkeypatch.setattr(gwm_ora, "GwmDataUpdateCoordinator", Coordinator)
     monkeypatch.setattr(gwm_ora, "_async_register_services", lambda hass: None)
 
     assert await async_setup_entry(restarted_hass, entry)
 
     third_hass = HomeAssistant(str(tmp_path))
-    restored = await direct_cloud_state_store(
+    restored = await cloud_state_store(
         third_hass,
         entry.unique_id or "",
     ).async_load_auth_state(dict(entry.data))
@@ -361,9 +370,9 @@ async def test_restart_retires_rejected_state_but_preserves_transient_state(
     error: Exception,
     expected: type[Exception],
 ) -> None:
-    entry = _direct_entry()
+    entry = _cloud_entry()
     initial = _bootstrap(entry, "initial-access-token")
-    credentials = DirectCloudCredentials(
+    credentials = GwmCloudCredentials(
         "eu",
         "DE",
         str(entry.data[CONF_ACCOUNT]),
@@ -371,7 +380,7 @@ async def test_restart_retires_rejected_state_but_preserves_transient_state(
         _DEVICE_ID,
     )
     first_hass = HomeAssistant(str(tmp_path))
-    await direct_cloud_state_store(
+    await cloud_state_store(
         first_hass,
         entry.unique_id or "",
     ).async_save_auth_state(credentials, initial.state)
@@ -382,13 +391,13 @@ async def test_restart_retires_rejected_state_but_preserves_transient_state(
             raise error
 
     restarted_hass = HomeAssistant(str(tmp_path))
-    monkeypatch.setattr(gwm_ora, "DirectCloudAuthenticator", Authenticator)
+    monkeypatch.setattr(gwm_ora, "GwmCloudAuthenticator", Authenticator)
 
     with pytest.raises(expected):
         await async_setup_entry(restarted_hass, entry)
 
     third_hass = HomeAssistant(str(tmp_path))
-    restored = await direct_cloud_state_store(
+    restored = await cloud_state_store(
         third_hass,
         entry.unique_id or "",
     ).async_load_auth_state(dict(entry.data))
@@ -399,10 +408,10 @@ async def test_restart_retires_rejected_state_but_preserves_transient_state(
 
 
 @pytest.mark.asyncio
-async def test_removing_direct_entry_removes_its_private_state(tmp_path: Any) -> None:
-    entry = _direct_entry()
+async def test_removing_cloud_entry_removes_its_private_state(tmp_path: Any) -> None:
+    entry = _cloud_entry()
     bootstrap = _bootstrap(entry)
-    credentials = DirectCloudCredentials(
+    credentials = GwmCloudCredentials(
         "eu",
         "DE",
         str(entry.data[CONF_ACCOUNT]),
@@ -410,7 +419,7 @@ async def test_removing_direct_entry_removes_its_private_state(tmp_path: Any) ->
         _DEVICE_ID,
     )
     hass = HomeAssistant(str(tmp_path))
-    await direct_cloud_state_store(
+    await cloud_state_store(
         hass,
         entry.unique_id or "",
     ).async_save_auth_state(credentials, bootstrap.state)
@@ -423,7 +432,7 @@ async def test_removing_direct_entry_removes_its_private_state(tmp_path: Any) ->
 
 
 @pytest.mark.asyncio
-async def test_direct_diagnostics_redact_current_and_future_account_state() -> None:
+async def test_cloud_diagnostics_redact_current_and_future_account_state() -> None:
     secrets = {
         CONF_SECURITY_PIN: "private-pin",
         "access_token": "private-access-token",
@@ -437,7 +446,7 @@ async def test_direct_diagnostics_redact_current_and_future_account_state() -> N
         "vin": "private-vin",
         "location": "private-location",
     }
-    entry = _direct_entry(data_updates=secrets, options={CONF_SECURITY_PIN: "private-pin"})
+    entry = _cloud_entry(data_updates=secrets, options={CONF_SECURITY_PIN: "private-pin"})
     entry.runtime_data = SimpleNamespace(
         coordinator=SimpleNamespace(data={"vehicles": [secrets]}),
         state_store={

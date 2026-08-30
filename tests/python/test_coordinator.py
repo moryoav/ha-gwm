@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -12,15 +13,14 @@ from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers.update_coordinator import UpdateFailed
 
-from custom_components.gwm_ora.cloud_commands import DirectClimateCommandApi
-from custom_components.gwm_ora.cloud_runtime import DirectReadOnlyCommandApi
-from custom_components.gwm_ora.coordinator import GwmOraDataUpdateCoordinator
+from custom_components.gwm_ora.cloud_commands import GwmCommandApi
+from custom_components.gwm_ora.coordinator import GwmDataUpdateCoordinator
 from gwm_client import GwmAuthenticationError, GwmNetworkError
 
 
-def _coordinator_with(vehicles: list[dict]) -> GwmOraDataUpdateCoordinator:
+def _coordinator_with(vehicles: list[dict]) -> GwmDataUpdateCoordinator:
     # Bypass __init__ (needs a real hass/api); resolve_vehicle only reads .data.
-    coordinator = GwmOraDataUpdateCoordinator.__new__(GwmOraDataUpdateCoordinator)
+    coordinator = GwmDataUpdateCoordinator.__new__(GwmDataUpdateCoordinator)
     coordinator.data = {"vehicles": vehicles}
     coordinator._charging_plan_active = {}
     return coordinator
@@ -31,7 +31,7 @@ def test_resolve_vehicle_matches_encoded_vin_or_display_serial() -> None:
         [{"vin": "ENCODED123", "serial_number": "LGWTEST00XX000001"}]
     )
 
-    # The encoded VIN the add-on keys on.
+    # The encoded VIN used by the cloud API.
     assert coordinator.resolve_vehicle("ENCODED123")["serial_number"] == "LGWTEST00XX000001"
     # The display VIN / device serial the user sees and services.yaml documents.
     assert coordinator.resolve_vehicle("LGWTEST00XX000001")["vin"] == "ENCODED123"
@@ -63,15 +63,15 @@ def test_charging_plan_state_is_kept_per_vehicle() -> None:
 
 
 @pytest.mark.asyncio
-async def test_direct_coordinator_uses_configured_account_interval() -> None:
-    class DirectClient:
+async def test_cloud_coordinator_uses_configured_account_interval() -> None:
+    class CloudClient:
         async def async_get_vehicle_data(self) -> dict:
             return {"region": "eu", "vehicles": []}
 
-    coordinator = GwmOraDataUpdateCoordinator(
+    coordinator = GwmDataUpdateCoordinator(
         HomeAssistant("synthetic-config"),
-        DirectReadOnlyCommandApi(),
-        direct_client=DirectClient(),  # type: ignore[arg-type]
+        AsyncMock(),
+        cloud_client=CloudClient(),  # type: ignore[arg-type]
         update_interval_seconds=120,
     )
 
@@ -80,23 +80,23 @@ async def test_direct_coordinator_uses_configured_account_interval() -> None:
 
 
 @pytest.mark.asyncio
-async def test_direct_coordinator_runs_owned_charging_cleanup_after_each_refresh() -> None:
+async def test_cloud_coordinator_runs_owned_charging_cleanup_after_each_refresh() -> None:
     calls: list[dict[str, object]] = []
 
-    class DirectClient:
+    class CloudClient:
         async def async_get_vehicle_data(self) -> dict[str, object]:
             return {"region": "eu", "vehicles": []}
 
-    api = object.__new__(DirectClimateCommandApi)
+    api = object.__new__(GwmCommandApi)
 
     async def cleanup(entry_data: dict[str, object]) -> None:
         calls.append(entry_data)
 
     api.async_cleanup_owned_charging_plans = cleanup  # type: ignore[method-assign]
-    coordinator = GwmOraDataUpdateCoordinator(
+    coordinator = GwmDataUpdateCoordinator(
         HomeAssistant("synthetic-config"),
         api,
-        direct_client=DirectClient(),  # type: ignore[arg-type]
+        cloud_client=CloudClient(),  # type: ignore[arg-type]
     )
     coordinator.config_entry = type("Entry", (), {"data": {"region": "eu"}})()
 
@@ -119,11 +119,11 @@ async def test_direct_coordinator_runs_owned_charging_cleanup_after_each_refresh
         (GwmNetworkError(operation="acquire_vehicles"), UpdateFailed),
     ],
 )
-async def test_direct_coordinator_classifies_refresh_failures(
+async def test_cloud_coordinator_classifies_refresh_failures(
     error: Exception,
     expected: type[Exception],
 ) -> None:
-    class DirectClient:
+    class CloudClient:
         retired = False
 
         async def async_get_vehicle_data(self) -> dict:
@@ -132,17 +132,17 @@ async def test_direct_coordinator_classifies_refresh_failures(
         async def async_authentication_rejected(self) -> None:
             self.retired = True
 
-    direct_client = DirectClient()
+    cloud_client = CloudClient()
 
-    coordinator = GwmOraDataUpdateCoordinator(
+    coordinator = GwmDataUpdateCoordinator(
         HomeAssistant("synthetic-config"),
-        DirectReadOnlyCommandApi(),
-        direct_client=direct_client,  # type: ignore[arg-type]
+        AsyncMock(),
+        cloud_client=cloud_client,  # type: ignore[arg-type]
     )
 
     with pytest.raises(expected):
         await coordinator._async_update_data()
-    assert direct_client.retired is isinstance(error, GwmAuthenticationError)
+    assert cloud_client.retired is isinstance(error, GwmAuthenticationError)
 
 
 @pytest.mark.asyncio
@@ -163,10 +163,10 @@ async def test_command_polling_tasks_are_cancelled_and_joined_before_shutdown(
         "custom_components.gwm_ora.coordinator.asyncio.sleep",
         blocked_sleep,
     )
-    coordinator = GwmOraDataUpdateCoordinator(
+    coordinator = GwmDataUpdateCoordinator(
         HomeAssistant("synthetic-config"),
-        DirectReadOnlyCommandApi(),
-        direct_client=object(),  # type: ignore[arg-type]
+        AsyncMock(),
+        cloud_client=object(),  # type: ignore[arg-type]
     )
     coordinator.data = {"region": "eu", "vehicles": []}
     coordinator.async_track_command(

@@ -1,4 +1,4 @@
-"""Offline tests for the Home Assistant direct-cloud authentication adapter."""
+"""Offline tests for the Home Assistant GWM cloud authentication adapter."""
 
 from __future__ import annotations
 
@@ -9,12 +9,12 @@ import pytest
 pytest.importorskip("homeassistant")
 
 from custom_components.gwm_ora.cloud_auth import (
-    DirectCloudAuthenticator,
-    DirectCloudCredentials,
+    GwmCloudAuthenticator,
+    GwmCloudCredentials,
     _load_bootstrap_material,
-    direct_entry_data,
-    direct_entry_title,
-    direct_unique_id,
+    cloud_entry_data,
+    cloud_entry_title,
+    cloud_unique_id,
 )
 from custom_components.gwm_ora.const import (
     CONF_ACCOUNT,
@@ -44,25 +44,25 @@ _DEVICE_ID = "0123456789abcdef0123456789abcdef"
         ("cn", "ignored", "synthetic-cn-account", None, "CN"),
     ],
 )
-def test_direct_credentials_normalize_without_secret_repr(
+def test_cloud_credentials_normalize_without_secret_repr(
     region: str,
     country: str,
     account: str,
     password: str | None,
     expected_country: str,
 ) -> None:
-    credentials = DirectCloudCredentials(region, country, account, password, _DEVICE_ID)
+    credentials = GwmCloudCredentials(region, country, account, password, _DEVICE_ID)
 
     assert credentials.country == expected_country
     assert credentials.account == account.strip()
-    assert repr(credentials).startswith("<custom_components.gwm_ora.cloud_auth.DirectCloudCredentials")
+    assert repr(credentials).startswith("<custom_components.gwm_ora.cloud_auth.GwmCloudCredentials")
     assert account.strip() not in repr(credentials)
     assert password is None or password not in repr(credentials)
     assert len(credentials.account_binding) == 64
 
 
 def test_entry_contract_has_pseudonymous_unique_id_and_no_transient_state() -> None:
-    credentials = DirectCloudCredentials(
+    credentials = GwmCloudCredentials(
         "eu",
         "DE",
         "account@example.invalid",
@@ -70,8 +70,8 @@ def test_entry_contract_has_pseudonymous_unique_id_and_no_transient_state() -> N
         _DEVICE_ID,
     )
 
-    data = direct_entry_data(credentials)
-    unique_id = direct_unique_id(credentials)
+    data = cloud_entry_data(credentials)
+    unique_id = cloud_unique_id(credentials)
 
     assert data == {
         CONF_CONNECTION_TYPE: CONNECTION_TYPE_CLOUD,
@@ -93,7 +93,7 @@ def test_entry_contract_has_pseudonymous_unique_id_and_no_transient_state() -> N
             "device_id",
         }
     )
-    assert direct_entry_title("eu") == "GWM Europe"
+    assert cloud_entry_title("eu") == "GWM Europe"
 
 
 def test_bundled_bootstrap_loader_is_region_scoped_and_offline() -> None:
@@ -163,8 +163,8 @@ async def test_overseas_attempt_dispatches_and_always_closes(
         clients.append(client)
         return client
 
-    authenticator = DirectCloudAuthenticator(overseas_client_factory=factory)
-    credentials = DirectCloudCredentials(region, country, account, password, _DEVICE_ID)
+    authenticator = GwmCloudAuthenticator(overseas_client_factory=factory)
+    credentials = GwmCloudCredentials(region, country, account, password, _DEVICE_ID)
 
     result = await authenticator.async_authenticate(
         credentials,
@@ -192,8 +192,8 @@ async def test_resume_only_flag_reaches_overseas_client(region: str) -> None:
         clients.append(client)
         return client
 
-    authenticator = DirectCloudAuthenticator(overseas_client_factory=factory)
-    credentials = DirectCloudCredentials(
+    authenticator = GwmCloudAuthenticator(overseas_client_factory=factory)
+    credentials = GwmCloudCredentials(
         region,
         "DE" if region == "eu" else "RU",
         "private-account",
@@ -224,11 +224,11 @@ async def test_china_attempt_dispatches_without_loading_overseas_material() -> N
     def forbidden_loader(region: str) -> None:
         pytest.fail(f"overseas resources loaded for {region}")
 
-    authenticator = DirectCloudAuthenticator(
+    authenticator = GwmCloudAuthenticator(
         china_client_factory=factory,
         resource_loader=forbidden_loader,
     )
-    credentials = DirectCloudCredentials(
+    credentials = GwmCloudCredentials(
         "cn",
         "CN",
         "synthetic-cn-account",
@@ -256,8 +256,8 @@ async def test_client_is_closed_when_authentication_fails() -> None:
         clients.append(client)
         return client
 
-    authenticator = DirectCloudAuthenticator(overseas_client_factory=factory)
-    credentials = DirectCloudCredentials(
+    authenticator = GwmCloudAuthenticator(overseas_client_factory=factory)
+    credentials = GwmCloudCredentials(
         "aus",
         "AU",
         "account@example.invalid",

@@ -6,16 +6,16 @@ This document is the durable plan, behavior contract, decision log, and test led
 
 - Working branch: `feature/integration-only`
 - Branch point: `1184737` (`Update README GWM logo to SVG`)
-- Current checkpoint: Task 22 complete with its naming correction; the brand-neutral `gwm-client` 0.1.0 distribution, integration-local resource boundary, provenance inventory, renewal controls, and archive checks are now explicit, while publication and manifest activation remain on hold
-- Next checkpoint: Task 23 - implement the approved existing-installation migration path (not yet approved)
+- Current checkpoint: Task 24 complete; the integration-only branch is ready for manual installation and controlled live testing in Europe, Australia and New Zealand, or Russia
+- Next checkpoint: manually install this branch, then run a separately approved live authentication and read-only test with command options disabled
 - Synchronized `main`: `7b599cb` (`v0.13.0`) through a two-parent merge without rebasing or selective cherry-picks
-- Task 22 resolves the technical packaging choice without publishing or activating it. Direct China remains hidden behind Gate A-CN, the add-on remains supported, no installation was migrated, no live request or vehicle operation was made, and unresolved protocol-material permission and replacement conditions remain release holds
+- Task 24 activates an immutable source dependency for branch testing and removes the add-on, local proxy, and .NET trees. Direct China remains hidden behind Gate A-CN, no credentials or state are migrated, no live request or vehicle operation is included, and unresolved protocol-material permission and replacement conditions remain production release holds
 
 Work proceeds one explicitly approved task at a time. At the end of every task, update this document, run the checks appropriate to that checkpoint, create one focused commit, push it to `feature/integration-only`, report the result, and stop. Do not begin the next task without a new user green light.
 
 ## Working Agreement
 
-- Keep the existing add-on path functional until the final cutover.
+- Keep the retired add-on available in Git history as a rollback reference, but do not carry its runtime or credentials into the integration-only branch.
 - Prefer targeted tests at ordinary checkpoints and full suites at the major gates below.
 - Never commit account credentials, verification codes, tokens, certificates issued to a user, private keys, VINs, locations, or unsanitized cloud responses.
 - Live read-only tests require explicit approval for the corresponding task.
@@ -26,7 +26,7 @@ Work proceeds one explicitly approved task at a time. At the end of every task, 
 
 ## Architecture
 
-### Current architecture
+### Legacy architecture before Task 24
 
 ```text
 GWM cloud
@@ -50,12 +50,12 @@ Home Assistant custom integration
     - Home Assistant devices, entities, actions, and diagnostics
 ```
 
-The add-on polls GWM at a configurable interval of 30–3600 seconds, with a 60-second default. The integration independently polls the add-on cache every 30 seconds. Relevant entry points are:
+The add-on polled GWM at a configurable interval of 30–3600 seconds, with a 60-second default. The integration independently polled the add-on cache every 30 seconds. Historical entry points, available in Git history before Task 24, were:
 
-- Add-on startup and local API: [`Program.cs`](../addons/gwm_ora/src/GwmOra.Addon/Program.cs)
-- Add-on cloud polling: [`VehiclePollingWorker.cs`](../addons/gwm_ora/src/GwmOra.Addon/Gwm/VehiclePollingWorker.cs)
-- Add-on state: [`AddonState.cs`](../addons/gwm_ora/src/GwmOra.Addon/Configuration/AddonState.cs)
-- Integration local client: [`api.py`](../custom_components/gwm_ora/api.py)
+- Add-on startup and local API: `addons/gwm_ora/src/GwmOra.Addon/Program.cs`
+- Add-on cloud polling: `addons/gwm_ora/src/GwmOra.Addon/Gwm/VehiclePollingWorker.cs`
+- Add-on state: `addons/gwm_ora/src/GwmOra.Addon/Configuration/AddonState.cs`
+- Integration local client: `custom_components/gwm_ora/api.py`
 - Integration coordinator: [`coordinator.py`](../custom_components/gwm_ora/coordinator.py)
 
 ### Target architecture
@@ -109,7 +109,7 @@ That HTTP contract is a migration reference, not part of the final architecture.
 
 ## Behavior-Parity Contract
 
-The add-on must not be retired until the Python path preserves the behaviors below or an intentional change is documented and approved.
+Task 24 retires the add-on only after the Python path preserves the behaviors below or an intentional change is documented and approved.
 
 ### Supported regions
 
@@ -139,7 +139,7 @@ The target replaces add-on configuration-and-restart steps with native config, v
 
 ### Persistent state
 
-The current add-on persists:
+The retired add-on persisted:
 
 - Stable generated device ID.
 - Access and refresh tokens.
@@ -155,7 +155,7 @@ State writes must remain serialized and crash-safe. Changing the region, country
 
 ### Vehicle discovery and normalized snapshots
 
-The integration must continue to discover multiple vehicles dynamically and identify them by VIN. Existing entity code consumes the normalized snapshot contract defined in [`ApiModels.cs`](../addons/gwm_ora/src/GwmOra.Addon/Models/ApiModels.cs), including:
+The integration must continue to discover multiple vehicles dynamically and identify them by VIN. Existing entity code consumes the normalized snapshot contract historically defined in `addons/gwm_ora/src/GwmOra.Addon/Models/ApiModels.cs`, including:
 
 - Identity, manufacturer, model, serial number, and location.
 - Acquisition, vehicle-update, and local-refresh timestamps.
@@ -238,7 +238,7 @@ After Task 3, Python must reproduce the offline signing/certificate vectors and 
 
 ### Gate A-CN — China transport and production-read feasibility (offline NavInfo portions passed 2026-08-28; direct-Python live activation prerequisite pending)
 
-After Task 8, Python must reproduce all three China crypto/signing families and complete a bounded end-to-end synthetic-service discovery/status round trip using the selected transport. Released `main` v0.13.0 adds contributed, live-tested BeanTech status reading to the C# add-on, which establishes useful route/schema evidence but does not validate the independent Python transport. Task 16 must reproduce both NavInfo/AutoAI and BeanTech status paths offline. Before `cn` can be enabled in a direct Home Assistant flow or the add-on can be retired for a China user, a sanitized live read-only validation of the direct Python path must also pass on each platform claimed ready, using either an existing session or a separately approved SMS-login procedure. Lack of suitable China access does not block work for the other regions, but it does block claiming China cutover readiness for that platform.
+After Task 8, Python must reproduce all three China crypto/signing families and complete a bounded end-to-end synthetic-service discovery/status round trip using the selected transport. Released `main` v0.13.0 adds contributed, live-tested BeanTech status reading to the C# add-on, which establishes useful route/schema evidence but does not validate the independent Python transport. Task 16 must reproduce both NavInfo/AutoAI and BeanTech status paths offline. Before `cn` can be enabled in the standalone Home Assistant flow, a sanitized live read-only validation of the Python path must also pass on each platform claimed ready, using either an existing session or a separately approved SMS-login procedure. Lack of suitable China access does not block branch testing for the other regions, but it does block claiming China readiness.
 
 ### Gate B — Read-only integration (passed 2026-08-28)
 
@@ -250,7 +250,7 @@ After Task 21, commands and charging control pass the complete fixture, lifecycl
 
 ### Gate D — Cutover readiness
 
-After Task 24, packaging, installation migration, documentation, complete tests, and fresh-install validation must pass before the add-on is removed from the supported architecture. Gate A-CN must also be fully passed for each China platform included in that cutover.
+After Task 24, packaging, explicit fresh-entry cutover behavior, documentation, complete offline tests, and isolated dependency installation must pass before this branch is ready for manual installation. Existing add-on entries are not converted. Gate A-CN must pass before any China platform is included, so China remains hidden while the other regions enter live testing.
 
 ## Roadmap
 
@@ -276,8 +276,8 @@ After Task 24, packaging, installation migration, documentation, complete tests,
 - [x] Task 20 - Add charging-control parity, including NavInfo China weekly schedules while keeping unsupported BeanTech charging unavailable.
 - [x] Task 21 - Complete four-region, two-China-platform hardening and the lifecycle/write parity matrix.
 - [x] Task 22 - Resolve packaging, dependency, licensing, certificate, and protocol-material provenance.
-- [ ] Task 23 — Implement the approved existing-installation migration path.
-- [ ] Task 24 — Remove add-on/proxy code and complete final validation and documentation.
+- [x] Task 23 — Resolve the existing-installation path by requiring removal, a new integration entry, and fresh authentication. Do not import add-on credentials or state.
+- [x] Task 24 — Remove add-on/proxy code and complete final validation and documentation.
 
 The changed checkpoints stay intentionally narrow:
 
@@ -294,7 +294,9 @@ The changed checkpoints stay intentionally narrow:
 - Task 21 closes the offline Gate C matrix without opening Gate A-CN. EU, ANZ, and Russia share one cancellation-safe journal lifecycle while retaining separate route and result contracts. NavInfo and BeanTech keep their exact platform capabilities and local rejection boundaries. Accepted commands and observed state transitions finish durable persistence before cancellation propagates, unload joins polling tasks before transport close, and every command context must match its account region. No live operation is included.
 - Task 22 selects a separately versioned Python client and makes the HACS integration self-contained for its protocol resources. The local package build contains only the HA-independent client and its legal notices, while the six shared bootstrap files stay outside the client archives with exact provenance and renewal controls. Publication, the integration manifest dependency, existing-install migration, add-on removal, direct China activation, and live traffic remain outside this checkpoint.
 - The Task 22 naming correction uses `gwm-client` and `gwm_client` for the unpublished multi-brand client. Existing `gwm_ora` Home Assistant and add-on identifiers remain compatibility contracts, not vehicle-scope claims. I defer renaming surviving internal `GwmOra*` Python symbols until Task 24 removes the proxy path, so the cleanup happens once without changing the external domain or action namespace.
-- Tasks 17 through 24 preserve the original command, charging, hardening, packaging, migration, and cutover progression. I keep the platform capability explicit: BeanTech supports lock/unlock, close windows, remote start/stop, horn, flash, and close sunroof. It does not support the climate entity, climate run-time number, tailgate operations, other sunroof positions, combined horn/lights, or charging schedules. Task 19 keeps these experimental controls separate from the already-supported command families and from direct China activation.
+- Task 23 intentionally performs no credential or state migration. A previous add-on entry fails with clear removal and re-add guidance, and the normal user flow starts with region selection and fresh authentication.
+- Task 24 removes the Docker, .NET, Supervisor, and local proxy surfaces, activates the immutable `gwm-client` source archive for branch testing, and completes brand-neutral internal Python naming. The public `gwm_ora` domain, action namespace, storage compatibility keys, and protocol-derived names remain stable where changing them would break persisted development state or wire fidelity.
+- Tasks 17 through 22 and Task 24 preserve the original command, charging, hardening, packaging, and cutover progression. I keep the platform capability explicit: BeanTech supports lock/unlock, close windows, remote start/stop, horn, flash, and close sunroof. It does not support the climate entity, climate run-time number, tailgate operations, other sunroof positions, combined horn/lights, or charging schedules. Task 19 keeps these experimental controls separate from the already-supported command families and from direct China activation.
 
 ## Decision Log
 
@@ -362,6 +364,9 @@ The changed checkpoints stay intentionally narrow:
 | D-060 | 2026-08-30 | I keep shared GWM bootstrap material in the HACS integration and exclude it from the Python client archives. | HACS must deliver a self-contained `custom_components/gwm_ora` tree, while the reusable client accepts caller-supplied material and does not need to redistribute certificates or transformed keys. The add-on and integration copies remain byte-identical until the add-on is removed, and automated archive checks reject protocol files and unrelated repository trees. |
 | D-061 | 2026-08-30 | I make protocol-material provenance, permission, and certificate renewal explicit release controls. | Exact hashes, source evidence, certificate identities, and 90-day renewal deadlines are machine-readable and tested. The project will not fetch replacement identities at runtime, and package publication or final cutover stays blocked until redistribution is authorized or the affected material is replaced through a documented authorized path. |
 | D-062 | 2026-08-30 | I name the unpublished distribution `gwm-client` and its import package `gwm_client`, while preserving external `gwm_ora` compatibility identifiers. | The standalone client covers compatible GWM vehicles across brands and regions, so an ORA-specific new name is misleading. No published package or released import needs migration. The Home Assistant domain, action namespace, add-on slug, discovery identifier, persisted hash domains, and proven wire values cannot be renamed cosmetically without breaking installations, stored state, or protocol fidelity. Historical ORA model evidence and `ora2mqtt` attribution remain factual. |
+| D-063 | 2026-08-30 | I do not migrate existing add-on credentials, tokens, certificates, or state. | The user accepts a one-time fresh integration setup, which removes a sensitive migration path and avoids carrying the retired local proxy contract into the final architecture. |
+| D-064 | 2026-08-30 | I pin branch testing to the immutable Task 22 `gwm-client` source archive. | Home Assistant can install the independent client from a fixed HTTPS archive without requiring Git on the host. Production still requires a separately approved package publication and version pin. |
+| D-065 | 2026-08-30 | I remove the add-on, .NET solution and tests, Supervisor workflows, and local integration proxy in Task 24. | The direct client and Home Assistant lifecycle now own the required read and write contracts, and retaining the second runtime would make the integration-only branch ambiguous and harder to test. |
 
 ## Post-Branch Main Drift Review
 
@@ -1469,9 +1474,34 @@ Delivered:
 - I kept `custom_components/gwm_ora/manifest.json` at `requirements: []`. I did not reserve or publish the package name, and no released installation path changes in this task.
 - The complete Python suite passes 1,100 tests and the client-only suite passes 963 tests against the exact declared lower dependency bounds. The unchanged add-on suite passes 153 .NET tests. Repository-wide Ruff, strict mypy across all 25 client source files, Python 3.13 compilation, local `gwm-client` wheel/source builds, Twine checks, archive verification, and isolated `gwm_client` import all pass. The obsolete import is absent. The one Python deprecation warning and existing .NET nullable-annotation warnings are unchanged baselines.
 
+### Task 23 - Fresh-entry cutover decision
+
+Status: resolved on 2026-08-30 by explicit user decision; no credential or state migration was implemented.
+
+Delivered:
+
+- I require existing users to remove the previous add-on based integration entry and add GWM again through the native setup flow.
+- I do not read, export, convert, or import an add-on password, token, certificate, device identity, charging record, command journal, or cached vehicle state.
+- I make setup, reauthentication, reconfiguration, and options handling for a legacy entry stop with clear remove-and-add guidance instead of attempting a partial conversion.
+- I start a normal new setup at region selection and perform fresh account authentication inside Home Assistant.
+
+### Task 24 - Integration-only cutover cleanup
+
+Status: complete on 2026-08-30; the branch passed offline validation and isolated dependency installation. I did not install it on a Home Assistant host, authenticate to a live account, read a live vehicle, publish a package, or send a vehicle command.
+
+Delivered:
+
+- I removed the Docker add-on, .NET solution and tests, Supervisor workflows, local bearer-token proxy client, duplicate cache polling, and retired add-on documentation assets from this branch.
+- I made setup and runtime cloud-only. The integration owns authentication, account-bound state, coordinated polling, restart-safe command reconciliation, entities, services, unloading, and redaction.
+- I changed surviving Python types to brand-neutral GWM names. I retained `gwm_ora` only where it is an external Home Assistant domain, action namespace, storage compatibility key, or factual historical name.
+- I set the integration version to 0.14.0 and pinned `gwm-client` to the immutable Task 22 commit archive for branch testing. I did not publish the package or enable mainland China.
+- I added fresh-entry installation, safety, troubleshooting, package-boundary, and production-release-hold documentation. CI now runs the Python validation jobs on this feature branch as well as `main`.
+- The complete Python suite passes 1,088 tests. The Home Assistant-side suite passes 125 tests and the client-only suite passes 963 tests. Repository-wide Ruff, strict mypy across all 25 client source files, and Python 3.13 compilation pass.
+- A clean external build produces the 0.1.0 wheel and source archive. Twine and the narrow archive verifier pass. A clean external directory installs the exact manifest source archive and imports the copied integration against that installed package rather than the repository client source.
+
 ### Next checkpoint (requires explicit approval)
 
-Task 23 will decide and implement the existing-installation migration path. It must preserve the supported add-on rollback path and account-bound state rules, and it will not remove the add-on, publish or activate the client package, activate direct China, or make a live cloud or vehicle request without separate approval.
+Install `feature/integration-only` on the selected Home Assistant test system and complete a live authentication plus read-only polling test with remote commands and charging control disabled. Any live climate, lock, window, extended China, or charging operation still requires a separate immediate approval.
 
 ## Open Risks and Questions
 
@@ -1493,6 +1523,5 @@ Task 23 will decide and implement the existing-installation migration path. It m
 - Russia application-level token-expiry and wrong/expired verification-code values lack sanitized evidence. Exact `110641` is therefore limited to the password-login challenge, submitted-code application failures remain unknown, and only HTTP 401/403 can retire or reject authentication state.
 - The exact bootstrap inventory, renewal process, and archive boundary are now controlled, but permission or an authorized replacement is still required for the shared identities before package publication and final cutover.
 - The Task 22 provenance audit records unresolved permission and source-history gaps for app-derived protocol material and the RSA recovery implementation. These remain release holds; the audit is not legal clearance.
-- Whether existing users perform one fresh authentication or use a temporary secured state-export path.
 - Blocking certificate/key workers finish protected temporary-file cleanup before propagating cancellation, so a cancelled authentication may return after its nominal deadline even though no network stage may continue past that deadline.
 - I still need live confirmation that each regional and platform provider returns every command identifier needed by the Task 14 journal before I can claim release or cutover confidence. Tasks 17 through 21 prove their command, charging, and lifecycle contracts offline only.

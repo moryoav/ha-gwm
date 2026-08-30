@@ -6,6 +6,22 @@ This project follows semantic versioning. HACS uses the latest GitHub release ta
 
 ## [Unreleased]
 
+### Added
+
+- Added the standalone Home Assistant setup flow for Europe, Australia and New Zealand, and Russia.
+- Added an immutable `gwm-client` source dependency for testing this branch before the client is published separately.
+
+### Changed
+
+- Changed the integration to authenticate, poll, and send enabled commands directly through the GWM cloud client.
+- Existing add-on based entries now require removal and a new GWM setup. Credentials, tokens, certificates, and add-on state are not imported.
+- Renamed the reusable Python package and surviving internal Python types to brand-neutral GWM names while preserving the public `gwm_ora` Home Assistant domain and action namespace.
+- Kept mainland China out of the setup selector until its separate direct-client live-read gate passes.
+
+### Removed
+
+- Removed the Docker add-on, .NET solution and tests, Supervisor discovery, local proxy API, and add-on build workflows from the integration-only branch.
+
 ## [0.13.0] - 2026-08-28
 
 ### Added

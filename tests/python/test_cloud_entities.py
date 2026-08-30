@@ -1,4 +1,4 @@
-"""Existing entity-platform behavior on direct normalized snapshots."""
+"""Existing entity-platform behavior on cloud normalized snapshots."""
 
 from __future__ import annotations
 
@@ -12,21 +12,20 @@ pytest.importorskip("homeassistant")
 from homeassistant.core import HomeAssistant
 
 from custom_components.gwm_ora.button import (
-    GwmOraChinaRemoteButton,
-    GwmOraCloseWindowsButton,
+    GwmChinaRemoteButton,
+    GwmCloseWindowsButton,
 )
-from custom_components.gwm_ora.climate import GwmOraClimate
-from custom_components.gwm_ora.cloud_runtime import DirectReadOnlyCommandApi
-from custom_components.gwm_ora.coordinator import GwmOraDataUpdateCoordinator
+from custom_components.gwm_ora.climate import GwmClimate
+from custom_components.gwm_ora.coordinator import GwmDataUpdateCoordinator
 from custom_components.gwm_ora.entity import setup_vehicle_entities
-from custom_components.gwm_ora.lock import GwmOraDoorLock
-from custom_components.gwm_ora.number import GwmOraClimateRunTimeNumber
+from custom_components.gwm_ora.lock import GwmDoorLock
+from custom_components.gwm_ora.number import GwmClimateRunTimeNumber
 from custom_components.gwm_ora.sensor import (
     SENSORS,
-    GwmOraSensor,
+    GwmSensor,
     _sensor_descriptions_for_vehicle,
 )
-from custom_components.gwm_ora.switch import GwmOraChargingScheduleSwitch
+from custom_components.gwm_ora.switch import GwmChargingScheduleSwitch
 
 
 def _vehicle(
@@ -62,16 +61,16 @@ def _vehicle(
 
 
 @pytest.mark.asyncio
-async def test_existing_platform_adds_new_direct_vehicles_without_removing_old_entities() -> None:
-    coordinator = GwmOraDataUpdateCoordinator(
+async def test_existing_platform_adds_new_cloud_vehicles_without_removing_old_entities() -> None:
+    coordinator = GwmDataUpdateCoordinator(
         HomeAssistant("synthetic-config"),
-        DirectReadOnlyCommandApi(),
-        direct_client=SimpleNamespace(),  # type: ignore[arg-type]
+        SimpleNamespace(),
+        cloud_client=SimpleNamespace(),  # type: ignore[arg-type]
     )
     coordinator.async_set_updated_data(
         {"region": "eu", "vehicles": [_vehicle("SYNTHETIC-A", 80)]}
     )
-    added: list[GwmOraSensor] = []
+    added: list[GwmSensor] = []
     soc_description = next(description for description in SENSORS if description.key == "soc")
     entry = SimpleNamespace(
         runtime_data=SimpleNamespace(coordinator=coordinator),
@@ -82,7 +81,7 @@ async def test_existing_platform_adds_new_direct_vehicles_without_removing_old_e
         entry,  # type: ignore[arg-type]
         lambda entities: added.extend(entities),  # type: ignore[arg-type]
         lambda vehicle: (
-            GwmOraSensor(coordinator, vehicle["vin"], soc_description),
+            GwmSensor(coordinator, vehicle["vin"], soc_description),
         ),
     )
 
@@ -90,8 +89,8 @@ async def test_existing_platform_adds_new_direct_vehicles_without_removing_old_e
     first = added[0]
     assert first.native_value == 80
     assert first.available
-    assert not GwmOraClimate(
-        DirectReadOnlyCommandApi(),
+    assert not GwmClimate(
+        SimpleNamespace(),
         coordinator,
         "SYNTHETIC-A",
     ).available
@@ -121,11 +120,11 @@ async def test_existing_platform_adds_new_direct_vehicles_without_removing_old_e
 
 
 @pytest.mark.asyncio
-async def test_direct_coordinator_keeps_mixed_china_platform_entities_isolated() -> None:
-    coordinator = GwmOraDataUpdateCoordinator(
+async def test_cloud_coordinator_keeps_mixed_china_platform_entities_isolated() -> None:
+    coordinator = GwmDataUpdateCoordinator(
         HomeAssistant("synthetic-config"),
-        DirectReadOnlyCommandApi(),
-        direct_client=SimpleNamespace(),  # type: ignore[arg-type]
+        SimpleNamespace(),
+        cloud_client=SimpleNamespace(),  # type: ignore[arg-type]
     )
     coordinator.async_set_updated_data(
         {
@@ -143,7 +142,7 @@ async def test_direct_coordinator_keeps_mixed_china_platform_entities_isolated()
             ],
         }
     )
-    added: list[GwmOraSensor] = []
+    added: list[GwmSensor] = []
     entry = SimpleNamespace(
         runtime_data=SimpleNamespace(coordinator=coordinator),
         async_on_unload=lambda callback: None,
@@ -153,7 +152,7 @@ async def test_direct_coordinator_keeps_mixed_china_platform_entities_isolated()
         entry,  # type: ignore[arg-type]
         lambda entities: added.extend(entities),  # type: ignore[arg-type]
         lambda vehicle: (
-            GwmOraSensor(coordinator, vehicle["vin"], description)
+            GwmSensor(coordinator, vehicle["vin"], description)
             for description in _sensor_descriptions_for_vehicle(
                 vehicle,
                 coordinator.region,
@@ -175,10 +174,10 @@ async def test_direct_coordinator_keeps_mixed_china_platform_entities_isolated()
 
 @pytest.mark.asyncio
 async def test_task17_capability_exposes_only_climate_and_keeps_beantech_hidden() -> None:
-    coordinator = GwmOraDataUpdateCoordinator(
+    coordinator = GwmDataUpdateCoordinator(
         HomeAssistant("synthetic-config"),
-        DirectReadOnlyCommandApi(),
-        direct_client=SimpleNamespace(),  # type: ignore[arg-type]
+        SimpleNamespace(),
+        cloud_client=SimpleNamespace(),  # type: ignore[arg-type]
     )
     coordinator.async_set_updated_data(
         {
@@ -186,11 +185,11 @@ async def test_task17_capability_exposes_only_climate_and_keeps_beantech_hidden(
             "vehicles": [_vehicle("SYNTHETIC-A", 80, climate_commands=True)],
         }
     )
-    assert GwmOraClimate(DirectReadOnlyCommandApi(), coordinator, "SYNTHETIC-A").available
-    assert GwmOraClimateRunTimeNumber(
-        DirectReadOnlyCommandApi(), coordinator, "SYNTHETIC-A"
+    assert GwmClimate(SimpleNamespace(), coordinator, "SYNTHETIC-A").available
+    assert GwmClimateRunTimeNumber(
+        SimpleNamespace(), coordinator, "SYNTHETIC-A"
     ).available
-    assert not GwmOraDoorLock(DirectReadOnlyCommandApi(), coordinator, "SYNTHETIC-A").available
+    assert not GwmDoorLock(SimpleNamespace(), coordinator, "SYNTHETIC-A").available
 
     coordinator.async_set_updated_data(
         {
@@ -205,21 +204,21 @@ async def test_task17_capability_exposes_only_climate_and_keeps_beantech_hidden(
             ],
         }
     )
-    assert not GwmOraClimate(
-        DirectReadOnlyCommandApi(), coordinator, "SYNTHETIC-BEANTECH"
+    assert not GwmClimate(
+        SimpleNamespace(), coordinator, "SYNTHETIC-BEANTECH"
     ).available
-    assert not GwmOraClimateRunTimeNumber(
-        DirectReadOnlyCommandApi(), coordinator, "SYNTHETIC-BEANTECH"
+    assert not GwmClimateRunTimeNumber(
+        SimpleNamespace(), coordinator, "SYNTHETIC-BEANTECH"
     ).available
 
 
 @pytest.mark.asyncio
 async def test_task18_capability_exposes_lock_window_without_task19_buttons() -> None:
-    api = DirectReadOnlyCommandApi()
-    coordinator = GwmOraDataUpdateCoordinator(
+    api = SimpleNamespace()
+    coordinator = GwmDataUpdateCoordinator(
         HomeAssistant("synthetic-config"),
         api,
-        direct_client=SimpleNamespace(),  # type: ignore[arg-type]
+        cloud_client=SimpleNamespace(),  # type: ignore[arg-type]
     )
     coordinator.async_set_updated_data(
         {
@@ -235,25 +234,25 @@ async def test_task18_capability_exposes_lock_window_without_task19_buttons() ->
         }
     )
 
-    assert GwmOraDoorLock(api, coordinator, "SYNTHETIC-A").available
-    assert GwmOraCloseWindowsButton(api, coordinator, "SYNTHETIC-A").available
-    assert not GwmOraChinaRemoteButton(
+    assert GwmDoorLock(api, coordinator, "SYNTHETIC-A").available
+    assert GwmCloseWindowsButton(api, coordinator, "SYNTHETIC-A").available
+    assert not GwmChinaRemoteButton(
         api,
         coordinator,
         "SYNTHETIC-A",
         "remote_start",
         "remote_start",
     ).available
-    assert not GwmOraDoorLock(api, coordinator, "MISSING").available
+    assert not GwmDoorLock(api, coordinator, "MISSING").available
 
 
 @pytest.mark.asyncio
 async def test_task19_china_buttons_are_capability_and_platform_filtered() -> None:
-    api = DirectReadOnlyCommandApi()
-    coordinator = GwmOraDataUpdateCoordinator(
+    api = SimpleNamespace()
+    coordinator = GwmDataUpdateCoordinator(
         HomeAssistant("synthetic-config"),
         api,
-        direct_client=SimpleNamespace(),  # type: ignore[arg-type]
+        cloud_client=SimpleNamespace(),  # type: ignore[arg-type]
     )
     coordinator.async_set_updated_data(
         {
@@ -281,28 +280,28 @@ async def test_task19_china_buttons_are_capability_and_platform_filtered() -> No
         }
     )
 
-    assert GwmOraChinaRemoteButton(
+    assert GwmChinaRemoteButton(
         api,
         coordinator,
         "SYNTHETIC-NAVINFO",
         "tailgate_open",
         "open_tailgate",
     ).available
-    assert GwmOraChinaRemoteButton(
+    assert GwmChinaRemoteButton(
         api,
         coordinator,
         "SYNTHETIC-BEANTECH",
         "remote_start",
         "remote_start",
     ).available
-    assert not GwmOraChinaRemoteButton(
+    assert not GwmChinaRemoteButton(
         api,
         coordinator,
         "SYNTHETIC-BEANTECH",
         "tailgate_open",
         "open_tailgate",
     ).available
-    assert not GwmOraChinaRemoteButton(
+    assert not GwmChinaRemoteButton(
         api,
         coordinator,
         "SYNTHETIC-UNKNOWN",
@@ -313,11 +312,11 @@ async def test_task19_china_buttons_are_capability_and_platform_filtered() -> No
 
 @pytest.mark.asyncio
 async def test_task20_capability_exposes_existing_charging_switch_only_when_enabled() -> None:
-    api = DirectReadOnlyCommandApi()
-    coordinator = GwmOraDataUpdateCoordinator(
+    api = SimpleNamespace()
+    coordinator = GwmDataUpdateCoordinator(
         HomeAssistant("synthetic-config"),
         api,
-        direct_client=SimpleNamespace(),  # type: ignore[arg-type]
+        cloud_client=SimpleNamespace(),  # type: ignore[arg-type]
     )
     coordinator.async_set_updated_data(
         {
@@ -330,5 +329,5 @@ async def test_task20_capability_exposes_existing_charging_switch_only_when_enab
         }
     )
 
-    assert GwmOraChargingScheduleSwitch(api, coordinator, "SYNTHETIC-A").available
-    assert not GwmOraChargingScheduleSwitch(api, coordinator, "SYNTHETIC-B").available
+    assert GwmChargingScheduleSwitch(api, coordinator, "SYNTHETIC-A").available
+    assert not GwmChargingScheduleSwitch(api, coordinator, "SYNTHETIC-B").available

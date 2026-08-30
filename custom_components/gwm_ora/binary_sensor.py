@@ -15,8 +15,8 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from . import GwmOraConfigEntry
-from .entity import GwmOraEntity, setup_vehicle_entities, vehicle_value
+from . import GwmConfigEntry
+from .entity import GwmEntity, setup_vehicle_entities, vehicle_value
 
 PARALLEL_UPDATES = 0
 
@@ -39,7 +39,7 @@ BEANTECH_BINARY_SENSOR_KEYS = {
 
 
 @dataclass(frozen=True, kw_only=True)
-class GwmOraBinarySensorEntityDescription(BinarySensorEntityDescription):
+class GwmBinarySensorEntityDescription(BinarySensorEntityDescription):
     """Describes a GWM binary sensor."""
 
     value_fn: Callable[[dict[str, Any] | None], bool | None]
@@ -56,25 +56,25 @@ def _bool_value(*keys: str) -> Callable[[dict[str, Any] | None], bool | None]:
     return value_fn
 
 
-BINARY_SENSORS: tuple[GwmOraBinarySensorEntityDescription, ...] = (
-    GwmOraBinarySensorEntityDescription(
+BINARY_SENSORS: tuple[GwmBinarySensorEntityDescription, ...] = (
+    GwmBinarySensorEntityDescription(
         key="charging_active",
         translation_key="charging_active",
         device_class=BinarySensorDeviceClass.BATTERY_CHARGING,
         value_fn=_bool_value("charging_active"),
     ),
-    GwmOraBinarySensorEntityDescription(
+    GwmBinarySensorEntityDescription(
         key="charge_plug_connected",
         translation_key="charge_plug",
         device_class=BinarySensorDeviceClass.PLUG,
         value_fn=_bool_value("charge_plug_connected"),
     ),
-    GwmOraBinarySensorEntityDescription(
+    GwmBinarySensorEntityDescription(
         key="ac_active",
         translation_key="ac_active",
         value_fn=_bool_value("ac_active"),
     ),
-    GwmOraBinarySensorEntityDescription(
+    GwmBinarySensorEntityDescription(
         key="lock_open",
         translation_key="lock_open",
         device_class=BinarySensorDeviceClass.LOCK,
@@ -82,179 +82,179 @@ BINARY_SENSORS: tuple[GwmOraBinarySensorEntityDescription, ...] = (
             None if vehicle_value(vehicle, "locked") is None else not vehicle_value(vehicle, "locked")
         ),
     ),
-    GwmOraBinarySensorEntityDescription(
+    GwmBinarySensorEntityDescription(
         key="window_front_left_open",
         translation_key="window_front_driver",
         device_class=BinarySensorDeviceClass.WINDOW,
         value_fn=_bool_value("window_front_driver_open", "window_front_left_open"),
     ),
-    GwmOraBinarySensorEntityDescription(
+    GwmBinarySensorEntityDescription(
         key="window_front_right_open",
         translation_key="window_front_passenger",
         device_class=BinarySensorDeviceClass.WINDOW,
         value_fn=_bool_value("window_front_passenger_open", "window_front_right_open"),
     ),
-    GwmOraBinarySensorEntityDescription(
+    GwmBinarySensorEntityDescription(
         key="window_rear_left_open",
         translation_key="window_rear_passenger_side",
         device_class=BinarySensorDeviceClass.WINDOW,
         value_fn=_bool_value("window_rear_passenger_side_open", "window_rear_left_open"),
     ),
-    GwmOraBinarySensorEntityDescription(
+    GwmBinarySensorEntityDescription(
         key="window_rear_right_open",
         translation_key="window_rear_driver_side",
         device_class=BinarySensorDeviceClass.WINDOW,
         value_fn=_bool_value("window_rear_driver_side_open", "window_rear_right_open"),
     ),
-    GwmOraBinarySensorEntityDescription(
+    GwmBinarySensorEntityDescription(
         key="door_front_driver_open",
         translation_key="door_front_driver",
         device_class=BinarySensorDeviceClass.DOOR,
         value_fn=_bool_value("door_front_driver_open"),
     ),
-    GwmOraBinarySensorEntityDescription(
+    GwmBinarySensorEntityDescription(
         key="door_front_passenger_open",
         translation_key="door_front_passenger",
         device_class=BinarySensorDeviceClass.DOOR,
         value_fn=_bool_value("door_front_passenger_open"),
     ),
-    GwmOraBinarySensorEntityDescription(
+    GwmBinarySensorEntityDescription(
         key="door_rear_driver_side_open",
         translation_key="door_rear_driver_side",
         device_class=BinarySensorDeviceClass.DOOR,
         value_fn=_bool_value("door_rear_driver_side_open"),
     ),
-    GwmOraBinarySensorEntityDescription(
+    GwmBinarySensorEntityDescription(
         key="door_rear_passenger_side_open",
         translation_key="door_rear_passenger_side",
         device_class=BinarySensorDeviceClass.DOOR,
         value_fn=_bool_value("door_rear_passenger_side_open"),
     ),
-    GwmOraBinarySensorEntityDescription(
+    GwmBinarySensorEntityDescription(
         key="trunk_open",
         translation_key="trunk",
         device_class=BinarySensorDeviceClass.DOOR,
         value_fn=_bool_value("trunk_open"),
     ),
-    GwmOraBinarySensorEntityDescription(
+    GwmBinarySensorEntityDescription(
         key="air_circulation",
         translation_key="air_circulation",
         value_fn=_bool_value("air_circulation"),
     ),
-    GwmOraBinarySensorEntityDescription(
+    GwmBinarySensorEntityDescription(
         key="front_defroster",
         translation_key="front_defroster",
         value_fn=_bool_value("front_defroster"),
     ),
-    GwmOraBinarySensorEntityDescription(
+    GwmBinarySensorEntityDescription(
         key="rear_defroster",
         translation_key="rear_defroster",
         value_fn=_bool_value("rear_defroster"),
     ),
-    GwmOraBinarySensorEntityDescription(
+    GwmBinarySensorEntityDescription(
         key="steering_wheel_heater_active",
         translation_key="steering_wheel_heater",
         entity_registry_enabled_default=False,
         value_fn=_bool_value("steering_wheel_heater_active"),
     ),
-    GwmOraBinarySensorEntityDescription(
+    GwmBinarySensorEntityDescription(
         key="front_windscreen_heater_active",
         translation_key="front_windscreen_heater",
         entity_registry_enabled_default=False,
         value_fn=_bool_value("front_windscreen_heater_active"),
     ),
-    GwmOraBinarySensorEntityDescription(
+    GwmBinarySensorEntityDescription(
         key="gps_authorized",
         translation_key="gps_authorized",
         entity_category=EntityCategory.DIAGNOSTIC,
         entity_registry_enabled_default=False,
         value_fn=_bool_value("gps_authorized"),
     ),
-    GwmOraBinarySensorEntityDescription(
+    GwmBinarySensorEntityDescription(
         key="near_beam_active",
         translation_key="near_beam",
         device_class=BinarySensorDeviceClass.LIGHT,
         value_fn=_bool_value("near_beam_active"),
     ),
-    GwmOraBinarySensorEntityDescription(
+    GwmBinarySensorEntityDescription(
         key="far_beam_active",
         translation_key="far_beam",
         device_class=BinarySensorDeviceClass.LIGHT,
         value_fn=_bool_value("far_beam_active"),
     ),
-    GwmOraBinarySensorEntityDescription(
+    GwmBinarySensorEntityDescription(
         key="left_turn_lamp_active",
         translation_key="left_turn_lamp",
         device_class=BinarySensorDeviceClass.LIGHT,
         value_fn=_bool_value("left_turn_lamp_active"),
     ),
-    GwmOraBinarySensorEntityDescription(
+    GwmBinarySensorEntityDescription(
         key="right_turn_lamp_active",
         translation_key="right_turn_lamp",
         device_class=BinarySensorDeviceClass.LIGHT,
         value_fn=_bool_value("right_turn_lamp_active"),
     ),
-    GwmOraBinarySensorEntityDescription(
+    GwmBinarySensorEntityDescription(
         key="oil_alarm_active",
         translation_key="oil_alarm",
         device_class=BinarySensorDeviceClass.PROBLEM,
         value_fn=_bool_value("oil_alarm_active"),
     ),
-    GwmOraBinarySensorEntityDescription(
+    GwmBinarySensorEntityDescription(
         key="engine_door_open",
         translation_key="engine_door",
         device_class=BinarySensorDeviceClass.DOOR,
         value_fn=_bool_value("engine_door_open"),
     ),
-    GwmOraBinarySensorEntityDescription(
+    GwmBinarySensorEntityDescription(
         key="back_door_open",
         translation_key="back_door",
         device_class=BinarySensorDeviceClass.DOOR,
         value_fn=_bool_value("back_door_open"),
     ),
-    GwmOraBinarySensorEntityDescription(
+    GwmBinarySensorEntityDescription(
         key="ac_auto_mode_active",
         translation_key="ac_auto_mode",
         entity_category=EntityCategory.DIAGNOSTIC,
         entity_registry_enabled_default=False,
         value_fn=_bool_value("ac_auto_mode_active"),
     ),
-    GwmOraBinarySensorEntityDescription(
+    GwmBinarySensorEntityDescription(
         key="air_clean_active",
         translation_key="air_clean",
         entity_category=EntityCategory.DIAGNOSTIC,
         entity_registry_enabled_default=False,
         value_fn=_bool_value("air_clean_active"),
     ),
-    GwmOraBinarySensorEntityDescription(
+    GwmBinarySensorEntityDescription(
         key="cabin_clean_active",
         translation_key="cabin_clean",
         entity_category=EntityCategory.DIAGNOSTIC,
         entity_registry_enabled_default=False,
         value_fn=_bool_value("cabin_clean_active"),
     ),
-    GwmOraBinarySensorEntityDescription(
+    GwmBinarySensorEntityDescription(
         key="tire_pressure_indicator_front_left",
         translation_key="tire_pressure_indicator_front_left",
         device_class=BinarySensorDeviceClass.PROBLEM,
         entity_registry_enabled_default=False,
         value_fn=_bool_value("tire_pressure_indicator_front_left"),
     ),
-    GwmOraBinarySensorEntityDescription(
+    GwmBinarySensorEntityDescription(
         key="tire_pressure_indicator_front_right",
         translation_key="tire_pressure_indicator_front_right",
         device_class=BinarySensorDeviceClass.PROBLEM,
         entity_registry_enabled_default=False,
         value_fn=_bool_value("tire_pressure_indicator_front_right"),
     ),
-    GwmOraBinarySensorEntityDescription(
+    GwmBinarySensorEntityDescription(
         key="tire_pressure_indicator_rear_left",
         translation_key="tire_pressure_indicator_rear_left",
         device_class=BinarySensorDeviceClass.PROBLEM,
         entity_registry_enabled_default=False,
         value_fn=_bool_value("tire_pressure_indicator_rear_left"),
     ),
-    GwmOraBinarySensorEntityDescription(
+    GwmBinarySensorEntityDescription(
         key="tire_pressure_indicator_rear_right",
         translation_key="tire_pressure_indicator_rear_right",
         device_class=BinarySensorDeviceClass.PROBLEM,
@@ -267,7 +267,7 @@ BINARY_SENSORS: tuple[GwmOraBinarySensorEntityDescription, ...] = (
 def _binary_sensor_descriptions_for_vehicle(
     vehicle: dict[str, Any],
     region: str,
-) -> tuple[GwmOraBinarySensorEntityDescription, ...]:
+) -> tuple[GwmBinarySensorEntityDescription, ...]:
     """Return descriptions supported by the vehicle backend."""
     if str(region or "").lower() == "cn" and str(vehicle.get("platform") or "").lower() == "beantech":
         return BINARY_SENSORS
@@ -280,7 +280,7 @@ def _binary_sensor_descriptions_for_vehicle(
 
 async def async_setup_entry(
     hass: HomeAssistant,
-    entry: GwmOraConfigEntry,
+    entry: GwmConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up GWM binary sensors."""
@@ -288,7 +288,7 @@ async def async_setup_entry(
         entry,
         async_add_entities,
         lambda vehicle: (
-            GwmOraBinarySensor(entry.runtime_data.coordinator, vehicle["vin"], description)
+            GwmBinarySensor(entry.runtime_data.coordinator, vehicle["vin"], description)
             for description in _binary_sensor_descriptions_for_vehicle(
                 vehicle, entry.runtime_data.coordinator.region
             )
@@ -296,16 +296,16 @@ async def async_setup_entry(
     )
 
 
-class GwmOraBinarySensor(GwmOraEntity, BinarySensorEntity):
+class GwmBinarySensor(GwmEntity, BinarySensorEntity):
     """A GWM binary sensor."""
 
-    entity_description: GwmOraBinarySensorEntityDescription
+    entity_description: GwmBinarySensorEntityDescription
 
     def __init__(
         self,
         coordinator,
         vin: str,
-        description: GwmOraBinarySensorEntityDescription,
+        description: GwmBinarySensorEntityDescription,
     ) -> None:
         super().__init__(coordinator, vin)
         self.entity_description = description

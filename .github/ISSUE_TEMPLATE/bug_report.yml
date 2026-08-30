@@ -7,13 +7,13 @@ body:
   - type: markdown
     attributes:
       value: |
-        Thanks for reporting a bug. Remove GWM credentials, add-on API tokens, refresh tokens, security PINs, VINs, exact vehicle locations, private URLs, and personal Home Assistant configuration before submitting.
+        Thanks for reporting a bug. Remove GWM credentials, access and refresh tokens, security PINs, VINs, exact vehicle locations, private URLs, and personal Home Assistant configuration before submitting.
 
   - type: input
     id: version
     attributes:
       label: GWM for Home Assistant version
-      description: Include the integration/add-on version or commit if known.
+      description: Include the integration version or commit if known.
       placeholder: "Example: 0.2.0"
     validations:
       required: true
@@ -31,7 +31,7 @@ body:
     attributes:
       label: Installation method
       options:
-        - HACS custom integration and add-on repository
+        - HACS custom integration
         - Manual custom integration install
         - Development branch
         - Other
@@ -43,14 +43,13 @@ body:
     attributes:
       label: Affected area
       options:
-        - Add-on service
-        - GWM API client
+        - GWM client library
         - Custom integration
         - Config flow or setup
         - Entities or device model
         - Diagnostics or repairs
         - Remote commands
-        - Add-on packaging or images
+        - Integration packaging or dependencies
         - Documentation
         - Not sure
     validations:
@@ -82,9 +81,9 @@ body:
       label: Steps to reproduce
       description: List the exact steps that trigger the issue.
       placeholder: |
-        1. Start add-on...
-        2. Add integration...
-        3. See error...
+        1. Add or reload the integration...
+        2. Wait for the operation...
+        3. See the error...
     validations:
       required: true
 
@@ -108,7 +107,7 @@ body:
     id: logs
     attributes:
       label: Relevant logs
-      description: Paste relevant Home Assistant or add-on logs after removing sensitive information.
+      description: Paste relevant Home Assistant logs after removing sensitive information.
       render: text
 
   - type: textarea
@@ -122,7 +121,7 @@ body:
     attributes:
       label: Pre-submission checks
       options:
-        - label: I removed GWM credentials, add-on API tokens, refresh tokens, security PINs, VINs, exact vehicle locations, private URLs, and personal Home Assistant configuration.
+        - label: I removed GWM credentials, access and refresh tokens, security PINs, VINs, exact vehicle locations, private URLs, and personal Home Assistant configuration.
           required: true
         - label: I checked the existing issues for a similar report.
           required: true

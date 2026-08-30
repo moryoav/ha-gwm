@@ -11,16 +11,16 @@ from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from . import GwmOraConfigEntry
+from . import GwmConfigEntry
 from .const import DOMAIN
-from .entity import GwmOraEntity, async_call_addon_api, setup_vehicle_entities
+from .entity import GwmEntity, async_call_gwm_api, setup_vehicle_entities
 
 PARALLEL_UPDATES = 0
 
 
 async def async_setup_entry(
     hass: HomeAssistant,
-    entry: GwmOraConfigEntry,
+    entry: GwmConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up GWM number entities."""
@@ -28,7 +28,7 @@ async def async_setup_entry(
         entry,
         async_add_entities,
         lambda vehicle: (
-            GwmOraClimateRunTimeNumber(
+            GwmClimateRunTimeNumber(
                 entry.runtime_data.api,
                 entry.runtime_data.coordinator,
                 vehicle["vin"],
@@ -37,7 +37,7 @@ async def async_setup_entry(
     )
 
 
-class GwmOraClimateRunTimeNumber(GwmOraEntity, NumberEntity):
+class GwmClimateRunTimeNumber(GwmEntity, NumberEntity):
     """GWM climate run-time setting."""
 
     _attr_translation_key = "climate_run_time"
@@ -78,7 +78,7 @@ class GwmOraClimateRunTimeNumber(GwmOraEntity, NumberEntity):
                 translation_key="invalid_climate_run_time",
             )
 
-        command = await async_call_addon_api(
+        command = await async_call_gwm_api(
             self._api.async_set_climate(self.vin, operation_time_minutes=int(value))
         )
         self.coordinator.async_track_command(command)

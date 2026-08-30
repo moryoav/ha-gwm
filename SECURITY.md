@@ -1,6 +1,6 @@
 # Security Policy
 
-GWM for Home Assistant handles GWM account credentials, access and refresh tokens, a generated add-on API token, vehicle location, and optional remote vehicle commands. Please treat security and privacy issues with care.
+GWM for Home Assistant handles GWM account credentials, access and refresh tokens, a generated device identity, vehicle location, and optional remote vehicle commands. Please treat security and privacy issues with care.
 
 ## Supported Versions
 
@@ -22,7 +22,7 @@ When reporting a vulnerability privately, include as much of the following as yo
 
 - A clear description of the issue.
 - The affected version or commit.
-- Whether the issue affects the add-on, the custom integration, or both.
+- Whether the issue affects `gwm_client`, the Home Assistant integration, or both.
 - Steps to reproduce in a safe test environment.
 - The expected impact.
 - Any relevant logs with secrets, VINs, and private configuration removed.
@@ -32,14 +32,11 @@ When reporting a vulnerability privately, include as much of the following as yo
 
 Please use extra care when changing or reviewing:
 
-- GWM username, password, security PIN, access token, refresh token, or generated API token handling.
+- GWM username, password, security PIN, access token, refresh token, or device identity handling.
 - Bundled bootstrap certificates, transformed private keys, app-derived signing values, and their provenance records.
-- `/data/options.json` and `/data/state.json` storage.
-- Add-on API authorization.
-- Supervisor discovery payloads.
+- Account-bound Home Assistant private storage and restart recovery.
 - Home Assistant config flow, reauth, reconfigure, repairs, and diagnostics.
 - Remote climate, lock, unlock, and close-window commands.
-- Add-on networking, container permissions, and exposed ports.
 - Logs and diagnostics containing raw GWM API payloads, VINs, or precise locations.
 
 I do not accept replacement protocol material through a public vulnerability report or issue. Contact me privately and follow the evidence controls in [Third-Party and Protocol Material Notice](THIRD_PARTY_NOTICES.md).

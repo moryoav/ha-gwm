@@ -2,11 +2,11 @@
 
 This repository tracks Home Assistant Integration Quality Scale progress in `custom_components/gwm_ora/quality_scale.yaml`.
 
-The goal is Gold-level behavior for users even while this remains a custom integration distributed through HACS and a companion Home Assistant add-on.
+The goal is Gold-level behavior for users while this remains a custom integration distributed through HACS.
 
 ## Current Position
 
-- Bronze: implemented or exempted.
+- Bronze: implemented or exempted except production dependency transparency. The live-testing branch uses an immutable source archive until the client is approved and published through public CI.
 - Silver: implemented except measured >95% Python module coverage.
 - Gold: implemented or documented, with one safety exemption for automatic stale-device deletion.
 - Platinum: partly implemented; strict typing enforcement is still future work.
@@ -43,6 +43,7 @@ Instead:
 
 ## Remaining Work
 
+- Publish the approved `gwm-client` package through public CI and replace the branch archive requirement with an exact PyPI version pin.
 - Add Home Assistant fixture-based tests for config flow, reauth, reconfigure, repairs, diagnostics, and every platform.
 - Enforce measured Python coverage above 95%.
 - Enable strict Python type checking.

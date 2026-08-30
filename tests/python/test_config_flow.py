@@ -13,12 +13,11 @@ pytest.importorskip("pytest_asyncio")
 pytest.importorskip("homeassistant")
 
 from homeassistant.config_entries import ConfigEntry, ConfigFlowResult
-from homeassistant.const import CONF_HOST, CONF_PORT
 from homeassistant.data_entry_flow import FlowResultType
 
 from custom_components.gwm_ora import config_flow
-from custom_components.gwm_ora.cloud_auth import direct_unique_id
-from custom_components.gwm_ora.cloud_runtime import consume_direct_cloud_bootstrap
+from custom_components.gwm_ora.cloud_auth import cloud_unique_id
+from custom_components.gwm_ora.cloud_runtime import consume_cloud_bootstrap
 from custom_components.gwm_ora.const import (
     CONF_ACCOUNT,
     CONF_ALLOW_SESSION_RECLAIM,
@@ -31,9 +30,7 @@ from custom_components.gwm_ora.const import (
     CONF_POLL_INTERVAL_SECONDS,
     CONF_REGION,
     CONF_SECURITY_PIN,
-    CONF_TOKEN,
     CONF_VERIFICATION_CODE,
-    CONNECTION_TYPE_ADDON,
     CONNECTION_TYPE_CLOUD,
     DOMAIN,
 )
@@ -63,7 +60,7 @@ _DEVICE_ID = "0123456789abcdef0123456789abcdef"
 
 
 @pytest.fixture(autouse=True)
-def _memory_direct_state_store(monkeypatch: pytest.MonkeyPatch) -> None:
+def _memory_cloud_state_store(monkeypatch: pytest.MonkeyPatch) -> None:
     """Keep config-flow unit tests independent of Home Assistant disk I/O."""
 
     stores: dict[str, object] = {}
@@ -90,7 +87,7 @@ def _memory_direct_state_store(monkeypatch: pytest.MonkeyPatch) -> None:
     def get_store(hass: object, unique_id: str) -> StateStore:
         assert hass is not None
         if hasattr(hass, "data"):
-            hass.data["_test_direct_state_stores"] = stores  # type: ignore[attr-defined]
+            hass.data["_test_cloud_state_stores"] = stores  # type: ignore[attr-defined]
         store = stores.setdefault(unique_id, StateStore())
         assert isinstance(store, StateStore)
         return store
@@ -98,24 +95,17 @@ def _memory_direct_state_store(monkeypatch: pytest.MonkeyPatch) -> None:
     async def remove_store(hass: object, unique_id: str | None) -> None:
         assert hass is not None
         if hasattr(hass, "data"):
-            hass.data.setdefault("_test_removed_direct_states", []).append(  # type: ignore[attr-defined]
+            hass.data.setdefault("_test_removed_cloud_states", []).append(  # type: ignore[attr-defined]
                 unique_id
             )
         if unique_id is not None:
             stores.pop(unique_id, None)
 
-    monkeypatch.setattr(config_flow, "direct_cloud_state_store", get_store)
-    monkeypatch.setattr(config_flow, "async_remove_direct_cloud_state", remove_store)
+    monkeypatch.setattr(config_flow, "cloud_state_store", get_store)
+    monkeypatch.setattr(config_flow, "async_remove_cloud_state", remove_store)
 
 
-def _set_flow_hass(flow: Any) -> None:
-    try:
-        flow.hass = object()
-    except AttributeError:
-        flow._hass = object()
-
-
-def _authenticated(credentials: config_flow.DirectCloudCredentials) -> object:
+def _authenticated(credentials: config_flow.GwmCloudCredentials) -> object:
     """Build a valid regional authenticated result without network access."""
 
     regional = credentials.client_credentials()
@@ -196,14 +186,14 @@ def _entry(
 ) -> ConfigEntry:
     unique_id = "synthetic-unique-id"
     if all(key in data for key in (CONF_REGION, CONF_COUNTRY, CONF_ACCOUNT, CONF_PASSWORD)):
-        credentials = config_flow.DirectCloudCredentials(
+        credentials = config_flow.GwmCloudCredentials(
             str(data[CONF_REGION]),
             str(data[CONF_COUNTRY]),
             str(data[CONF_ACCOUNT]),
             str(data[CONF_PASSWORD]),
             _DEVICE_ID,
         )
-        unique_id = direct_unique_id(credentials)
+        unique_id = cloud_unique_id(credentials)
     return ConfigEntry(
         data=data,
         discovery_keys=MappingProxyType({}),
@@ -222,8 +212,8 @@ def _entry(
 def _prepare_user_flow(
     monkeypatch: pytest.MonkeyPatch,
     authenticator: object,
-) -> config_flow.GwmOraConfigFlow:
-    flow = config_flow.GwmOraConfigFlow()
+) -> config_flow.GwmConfigFlow:
+    flow = config_flow.GwmConfigFlow()
     flow.hass = _Hass()  # type: ignore[assignment]
     flow.context = {}
     flow._cloud_authenticator = authenticator  # type: ignore[assignment]
@@ -237,50 +227,6 @@ def _prepare_user_flow(
 
 
 @pytest.mark.asyncio
-async def test_validate_success(monkeypatch: pytest.MonkeyPatch) -> None:
-    class Client:
-        async def async_health(self) -> dict[str, Any]:
-            return {"status": "ok"}
-
-    monkeypatch.setattr(config_flow, "async_get_clientsession", lambda hass: object())
-    monkeypatch.setattr(config_flow, "GwmOraApiClient", lambda *args: Client())
-
-    flow = config_flow.GwmOraConfigFlow()
-    _set_flow_hass(flow)
-
-    assert await flow._async_validate({CONF_HOST: "addon", CONF_PORT: 8099, CONF_TOKEN: "token"}) == ""
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize(
-    ("error_name", "expected"),
-    [
-        ("GwmOraApiAuthError", "invalid_auth"),
-        ("GwmOraApiUnavailable", "cannot_connect"),
-        ("GwmOraApiError", "cannot_connect"),
-    ],
-)
-async def test_validate_errors(
-    monkeypatch: pytest.MonkeyPatch,
-    error_name: str,
-    expected: str,
-) -> None:
-    error_cls = getattr(config_flow, error_name)
-
-    class Client:
-        async def async_health(self) -> dict[str, Any]:
-            raise error_cls("boom")
-
-    monkeypatch.setattr(config_flow, "async_get_clientsession", lambda hass: object())
-    monkeypatch.setattr(config_flow, "GwmOraApiClient", lambda *args: Client())
-
-    flow = config_flow.GwmOraConfigFlow()
-    _set_flow_hass(flow)
-
-    assert await flow._async_validate({CONF_HOST: "addon", CONF_PORT: 8099, CONF_TOKEN: "token"}) == expected
-
-
-@pytest.mark.asyncio
 async def test_user_eu_verification_creates_config_only_entry(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -290,7 +236,7 @@ async def test_user_eu_verification_creates_config_only_entry(
 
         async def async_authenticate(
             self,
-            credentials: config_flow.DirectCloudCredentials,
+            credentials: config_flow.GwmCloudCredentials,
             **kwargs: Any,
         ) -> object:
             self.calls.append(kwargs)
@@ -306,9 +252,10 @@ async def test_user_eu_verification_creates_config_only_entry(
     authenticator = Authenticator()
     flow = _prepare_user_flow(monkeypatch, authenticator)
 
-    menu = await flow.async_step_user()
-    assert menu["type"] is FlowResultType.MENU
-    account = await flow.async_step_cloud({CONF_REGION: "eu"})
+    region = await flow.async_step_user()
+    assert region["type"] is FlowResultType.FORM
+    assert region["step_id"] == "user"
+    account = await flow.async_step_user({CONF_REGION: "eu"})
     assert account["step_id"] == "account"
     verification = await flow.async_step_account(
         {
@@ -331,11 +278,11 @@ async def test_user_eu_verification_creates_config_only_entry(
         CONF_PASSWORD: "password",
     }
     assert flow.context["unique_id"].startswith("cloud:eu:")
-    assert consume_direct_cloud_bootstrap(
+    assert consume_cloud_bootstrap(
         flow.hass,
         flow.context["unique_id"],
     ) is not None
-    stores = flow.hass.data["_test_direct_state_stores"]
+    stores = flow.hass.data["_test_cloud_state_stores"]
     assert len(stores[flow.context["unique_id"]].saved) == 2
     assert authenticator.calls[1]["verification_code"] == "123456"
     assert set(result["data"]).isdisjoint(
@@ -353,7 +300,7 @@ async def test_anz_reclaim_requires_explicit_unchecked_consent(
 
         async def async_authenticate(
             self,
-            credentials: config_flow.DirectCloudCredentials,
+            credentials: config_flow.GwmCloudCredentials,
             **kwargs: Any,
         ) -> object:
             allow = kwargs["allow_session_reclaim"]
@@ -370,7 +317,7 @@ async def test_anz_reclaim_requires_explicit_unchecked_consent(
 
     authenticator = Authenticator()
     flow = _prepare_user_flow(monkeypatch, authenticator)
-    await flow.async_step_cloud({CONF_REGION: "aus"})
+    await flow.async_step_user({CONF_REGION: "aus"})
     reclaim = await flow.async_step_account(
         {
             CONF_COUNTRY: "NZ",
@@ -390,7 +337,7 @@ async def test_anz_reclaim_requires_explicit_unchecked_consent(
     result = await flow.async_step_session_reclaim({CONF_ALLOW_SESSION_RECLAIM: True})
     assert result["type"] is FlowResultType.CREATE_ENTRY
     assert authenticator.calls == [False, True]
-    assert consume_direct_cloud_bootstrap(flow.hass, flow.context["unique_id"]) is not None
+    assert consume_cloud_bootstrap(flow.hass, flow.context["unique_id"]) is not None
 
 
 @pytest.mark.asyncio
@@ -400,13 +347,13 @@ async def test_russia_authentication_can_complete_without_verification(
     class Authenticator:
         async def async_authenticate(
             self,
-            credentials: config_flow.DirectCloudCredentials,
+            credentials: config_flow.GwmCloudCredentials,
             **kwargs: Any,
         ) -> object:
             return _authenticated(credentials)
 
     flow = _prepare_user_flow(monkeypatch, Authenticator())
-    await flow.async_step_cloud({CONF_REGION: "rus"})
+    await flow.async_step_user({CONF_REGION: "rus"})
     result = await flow.async_step_account(
         {CONF_ACCOUNT: "synthetic-account", CONF_PASSWORD: "password"}
     )
@@ -414,7 +361,7 @@ async def test_russia_authentication_can_complete_without_verification(
     assert result["type"] is FlowResultType.CREATE_ENTRY
     assert result["data"][CONF_COUNTRY] == "RU"
     assert result["title"] == "GWM Russia"
-    assert consume_direct_cloud_bootstrap(flow.hass, flow.context["unique_id"]) is not None
+    assert consume_cloud_bootstrap(flow.hass, flow.context["unique_id"]) is not None
 
 
 @pytest.mark.asyncio
@@ -422,7 +369,7 @@ async def test_restarted_flow_resumes_persisted_device_bound_continuation(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     persisted_device = "f" * 32
-    persisted_credentials = config_flow.DirectCloudCredentials(
+    persisted_credentials = config_flow.GwmCloudCredentials(
         "aus",
         "AU",
         "account@example.invalid",
@@ -439,7 +386,7 @@ async def test_restarted_flow_resumes_persisted_device_bound_continuation(
     class Authenticator:
         async def async_authenticate(
             self,
-            credentials: config_flow.DirectCloudCredentials,
+            credentials: config_flow.GwmCloudCredentials,
             **kwargs: Any,
         ) -> object:
             assert credentials.device_id == persisted_device
@@ -447,11 +394,11 @@ async def test_restarted_flow_resumes_persisted_device_bound_continuation(
             return _authenticated(credentials)
 
     flow = _prepare_user_flow(monkeypatch, Authenticator())
-    unique_id = direct_unique_id(persisted_credentials)
-    store = config_flow.direct_cloud_state_store(flow.hass, unique_id)
+    unique_id = cloud_unique_id(persisted_credentials)
+    store = config_flow.cloud_state_store(flow.hass, unique_id)
     store.loaded = persisted_state
 
-    await flow.async_step_cloud({CONF_REGION: "aus"})
+    await flow.async_step_user({CONF_REGION: "aus"})
     result = await flow.async_step_account(
         {
             CONF_COUNTRY: "AU",
@@ -466,13 +413,13 @@ async def test_restarted_flow_resumes_persisted_device_bound_continuation(
 
 @pytest.mark.asyncio
 async def test_china_is_gated_but_risk_result_has_finite_internal_route() -> None:
-    flow = config_flow.GwmOraConfigFlow()
+    flow = config_flow.GwmConfigFlow()
     flow.hass = _Hass()  # type: ignore[assignment]
-    gated = await flow.async_step_cloud({CONF_REGION: "cn"})
+    gated = await flow.async_step_user({CONF_REGION: "cn"})
     assert gated["type"] is FlowResultType.ABORT
     assert gated["reason"] == "china_live_validation_required"
 
-    credentials = config_flow.DirectCloudCredentials(
+    credentials = config_flow.GwmCloudCredentials(
         "cn",
         "CN",
         "synthetic-cn-account",
@@ -481,7 +428,7 @@ async def test_china_is_gated_but_risk_result_has_finite_internal_route() -> Non
     )
     regional = credentials.client_credentials()
     state = ChinaAuthState.for_credentials(regional)
-    flow._direct_credentials = credentials
+    flow._cloud_credentials = credentials
     result = await flow._async_route_authentication(ChinaRiskControlRequired(state))
     assert result["type"] is FlowResultType.ABORT
     assert result["reason"] == "risk_control_required"
@@ -504,7 +451,7 @@ async def test_china_is_gated_but_risk_result_has_finite_internal_route() -> Non
         (GwmApiError(operation="login", api_code="999999"), None, "service_error"),
     ],
 )
-async def test_direct_error_taxonomy(
+async def test_cloud_error_taxonomy(
     error: Exception,
     verification_code: str | None,
     expected: str,
@@ -513,9 +460,9 @@ async def test_direct_error_taxonomy(
         async def async_authenticate(self, *args: Any, **kwargs: Any) -> object:
             raise error
 
-    flow = config_flow.GwmOraConfigFlow()
+    flow = config_flow.GwmConfigFlow()
     flow._cloud_authenticator = Authenticator()  # type: ignore[assignment]
-    flow._direct_credentials = config_flow.DirectCloudCredentials(
+    flow._cloud_credentials = config_flow.GwmCloudCredentials(
         "eu",
         "DE",
         "account@example.invalid",
@@ -530,7 +477,7 @@ async def test_direct_error_taxonomy(
 
 
 @pytest.mark.asyncio
-async def test_direct_reauth_updates_password_only_after_authentication(
+async def test_cloud_reauth_updates_password_only_after_authentication(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     entry = _entry(
@@ -547,13 +494,13 @@ async def test_direct_reauth_updates_password_only_after_authentication(
     class Authenticator:
         async def async_authenticate(
             self,
-            credentials: config_flow.DirectCloudCredentials,
+            credentials: config_flow.GwmCloudCredentials,
             **kwargs: Any,
         ) -> object:
             assert credentials.password == "new-password"
             return _authenticated(credentials)
 
-    flow = config_flow.GwmOraConfigFlow()
+    flow = config_flow.GwmConfigFlow()
     flow.hass = _Hass(entry)  # type: ignore[assignment]
     flow.context = {"source": "reauth", "entry_id": entry.entry_id}
     flow._cloud_authenticator = Authenticator()  # type: ignore[assignment]
@@ -573,13 +520,13 @@ async def test_direct_reauth_updates_password_only_after_authentication(
     assert result["reason"] == "reauth_successful"
     assert updates[0]["data"][CONF_PASSWORD] == "new-password"
     assert updates[0]["data"][CONF_ACCOUNT] == entry.data[CONF_ACCOUNT]
-    assert consume_direct_cloud_bootstrap(flow.hass, entry.unique_id) is not None
-    stores = flow.hass.data["_test_direct_state_stores"]
+    assert consume_cloud_bootstrap(flow.hass, entry.unique_id) is not None
+    stores = flow.hass.data["_test_cloud_state_stores"]
     assert len(stores[entry.unique_id].saved) == 1
 
 
 @pytest.mark.asyncio
-async def test_direct_reconfigure_authenticates_before_replacing_entry(
+async def test_cloud_reconfigure_authenticates_before_replacing_entry(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     entry = _entry(
@@ -596,13 +543,13 @@ async def test_direct_reconfigure_authenticates_before_replacing_entry(
     class Authenticator:
         async def async_authenticate(
             self,
-            credentials: config_flow.DirectCloudCredentials,
+            credentials: config_flow.GwmCloudCredentials,
             **kwargs: Any,
         ) -> object:
             assert credentials.region == "rus"
             return _authenticated(credentials)
 
-    flow = config_flow.GwmOraConfigFlow()
+    flow = config_flow.GwmConfigFlow()
     flow.hass = _Hass(entry)  # type: ignore[assignment]
     flow.context = {"source": "reconfigure", "entry_id": entry.entry_id}
     flow._cloud_authenticator = Authenticator()  # type: ignore[assignment]
@@ -625,17 +572,17 @@ async def test_direct_reconfigure_authenticates_before_replacing_entry(
     assert updates[0]["data"][CONF_REGION] == "rus"
     assert updates[0]["data"][CONF_ACCOUNT] == "replacement"
     assert updates[0]["unique_id"].startswith("cloud:rus:")
-    assert consume_direct_cloud_bootstrap(flow.hass, updates[0]["unique_id"]) is not None
-    assert flow.hass.data["_test_removed_direct_states"] == [entry.unique_id]
+    assert consume_cloud_bootstrap(flow.hass, updates[0]["unique_id"]) is not None
+    assert flow.hass.data["_test_removed_cloud_states"] == [entry.unique_id]
 
 
 @pytest.mark.asyncio
-async def test_direct_options_make_pin_write_only_and_enforce_opt_in() -> None:
+async def test_cloud_options_make_pin_write_only_and_enforce_opt_in() -> None:
     entry = _entry(
         data={CONF_CONNECTION_TYPE: CONNECTION_TYPE_CLOUD, CONF_REGION: "eu"},
         options={CONF_SECURITY_PIN: "existing-pin"},
     )
-    flow = config_flow.GwmOraOptionsFlow()
+    flow = config_flow.GwmOptionsFlow()
     flow.hass = _Hass(entry)  # type: ignore[assignment]
     flow.handler = entry.entry_id
 
@@ -674,7 +621,7 @@ async def test_direct_options_make_pin_write_only_and_enforce_opt_in() -> None:
     new_entry = _entry(
         data={CONF_CONNECTION_TYPE: CONNECTION_TYPE_CLOUD, CONF_REGION: "eu"}
     )
-    required_flow = config_flow.GwmOraOptionsFlow()
+    required_flow = config_flow.GwmOptionsFlow()
     required_flow.hass = _Hass(new_entry)  # type: ignore[assignment]
     required_flow.handler = new_entry.entry_id
     required = await required_flow.async_step_init(
@@ -690,15 +637,13 @@ async def test_direct_options_make_pin_write_only_and_enforce_opt_in() -> None:
 
 
 @pytest.mark.asyncio
-async def test_addon_options_remain_managed_by_addon() -> None:
-    entry = _entry(
-        data={CONF_CONNECTION_TYPE: CONNECTION_TYPE_ADDON, CONF_HOST: "addon"}
-    )
-    flow = config_flow.GwmOraOptionsFlow()
+async def test_legacy_addon_options_require_a_fresh_entry() -> None:
+    entry = _entry(data={CONF_CONNECTION_TYPE: "addon"})
+    flow = config_flow.GwmOptionsFlow()
     flow.hass = _Hass(entry)  # type: ignore[assignment]
     flow.handler = entry.entry_id
 
     result = await flow.async_step_init()
 
     assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "addon_options_managed"
+    assert result["reason"] == "legacy_addon_entry"

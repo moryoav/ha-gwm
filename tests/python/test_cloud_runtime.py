@@ -1,4 +1,4 @@
-"""Offline tests for the direct-cloud read runtime and bounded handoff."""
+"""Offline tests for the GWM cloud read runtime and bounded handoff."""
 
 from __future__ import annotations
 
@@ -12,18 +12,16 @@ pytest.importorskip("homeassistant")
 
 from homeassistant.core import HomeAssistant
 
-from custom_components.gwm_ora.api import GwmOraApiForbidden
 from custom_components.gwm_ora.cloud_auth import (
-    DirectCloudCredentials,
-    direct_entry_data,
-    direct_unique_id,
+    GwmCloudCredentials,
+    cloud_entry_data,
+    cloud_unique_id,
 )
 from custom_components.gwm_ora.cloud_runtime import (
-    DirectCloudBootstrap,
-    DirectCloudReadClient,
-    DirectReadOnlyCommandApi,
-    consume_direct_cloud_bootstrap,
-    stage_direct_cloud_bootstrap,
+    GwmCloudBootstrap,
+    GwmCloudClient,
+    consume_cloud_bootstrap,
+    stage_cloud_bootstrap,
 )
 from gwm_client import (
     AnzAuthenticated,
@@ -46,8 +44,8 @@ _DEVICE_ID = "0123456789abcdef0123456789abcdef"
 _REFRESHED_AT = datetime(2026, 8, 28, 12, 0, tzinfo=UTC)
 
 
-def _bootstrap() -> tuple[DirectCloudCredentials, DirectCloudBootstrap]:
-    credentials = DirectCloudCredentials(
+def _bootstrap() -> tuple[GwmCloudCredentials, GwmCloudBootstrap]:
+    credentials = GwmCloudCredentials(
         "aus",
         "AU",
         "account@example.invalid",
@@ -65,7 +63,7 @@ def _bootstrap() -> tuple[DirectCloudCredentials, DirectCloudBootstrap]:
         "synthetic-access-token",
         ssl.create_default_context(),
     )
-    return credentials, DirectCloudBootstrap.from_authentication(
+    return credentials, GwmCloudBootstrap.from_authentication(
         credentials,
         AnzAuthenticated(state, session),
     )
@@ -145,15 +143,15 @@ class _ReadClient:
 async def test_handoff_is_one_shot_and_validates_entry_identity() -> None:
     credentials, bootstrap = _bootstrap()
     hass = HomeAssistant("synthetic-config")
-    unique_id = direct_unique_id(credentials)
+    unique_id = cloud_unique_id(credentials)
 
-    stage_direct_cloud_bootstrap(hass, unique_id, bootstrap)
-    consumed = consume_direct_cloud_bootstrap(hass, unique_id)
+    stage_cloud_bootstrap(hass, unique_id, bootstrap)
+    consumed = consume_cloud_bootstrap(hass, unique_id)
 
     assert consumed is bootstrap
-    assert consume_direct_cloud_bootstrap(hass, unique_id) is None
-    runtime = DirectCloudReadClient.from_entry_data(
-        direct_entry_data(credentials),
+    assert consume_cloud_bootstrap(hass, unique_id) is None
+    runtime = GwmCloudClient.from_entry_data(
+        cloud_entry_data(credentials),
         unique_id,
         bootstrap,
     )
@@ -166,8 +164,8 @@ def test_handoff_rejects_a_different_entry_unique_id() -> None:
     credentials, bootstrap = _bootstrap()
 
     with pytest.raises(GwmConfigurationError):
-        DirectCloudReadClient.from_entry_data(
-            direct_entry_data(credentials),
+        GwmCloudClient.from_entry_data(
+            cloud_entry_data(credentials),
             "cloud:aus:different-account",
             bootstrap,
         )
@@ -176,7 +174,7 @@ def test_handoff_rejects_a_different_entry_unique_id() -> None:
 @pytest.mark.asyncio
 async def test_multi_vehicle_refresh_maps_snapshots_and_anz_optional_basics() -> None:
     client = _ReadClient()
-    runtime = DirectCloudReadClient("aus", client, clock=lambda: _REFRESHED_AT)
+    runtime = GwmCloudClient("aus", client, clock=lambda: _REFRESHED_AT)
 
     result = await runtime.async_get_vehicle_data()
 
@@ -202,7 +200,7 @@ async def test_multi_vehicle_refresh_maps_snapshots_and_anz_optional_basics() ->
 @pytest.mark.asyncio
 async def test_optional_basics_is_not_hidden_outside_anz() -> None:
     client = _ReadClient()
-    runtime = DirectCloudReadClient("eu", client, clock=lambda: _REFRESHED_AT)
+    runtime = GwmCloudClient("eu", client, clock=lambda: _REFRESHED_AT)
 
     with pytest.raises(GwmOptionalEndpointError):
         await runtime.async_get_vehicle_data()
@@ -211,7 +209,7 @@ async def test_optional_basics_is_not_hidden_outside_anz() -> None:
 @pytest.mark.asyncio
 async def test_charging_capability_and_typed_delegation_follow_independent_opt_in() -> None:
     client = _ReadClient()
-    runtime = DirectCloudReadClient(
+    runtime = GwmCloudClient(
         "aus",
         client,
         clock=lambda: _REFRESHED_AT,
@@ -241,20 +239,10 @@ async def test_refresh_is_atomic_when_any_vehicle_read_fails() -> None:
         return client.statuses[identifier.value]
 
     client.get_last_status = failed_status  # type: ignore[method-assign]
-    runtime = DirectCloudReadClient("aus", client, clock=lambda: _REFRESHED_AT)
+    runtime = GwmCloudClient("aus", client, clock=lambda: _REFRESHED_AT)
 
     with pytest.raises(GwmNetworkError):
         await runtime.async_get_vehicle_data()
-
-
-@pytest.mark.asyncio
-async def test_read_only_command_boundary_fails_closed() -> None:
-    api = DirectReadOnlyCommandApi()
-
-    with pytest.raises(GwmOraApiForbidden):
-        await api.async_set_climate("SYNTHETIC-VEHICLE-A", mode="cool")
-    with pytest.raises(GwmOraApiForbidden):
-        await api.async_set_charging_plan("SYNTHETIC-VEHICLE-A", enable=True)
 
 
 @pytest.mark.asyncio
@@ -268,15 +256,15 @@ async def test_rejected_runtime_revision_cannot_be_restaged() -> None:
             self.cleared = data
 
     state_store = StateStore()
-    runtime = DirectCloudReadClient(
+    runtime = GwmCloudClient(
         "aus",
         _ReadClient(),
         bootstrap=bootstrap,
         state_store=state_store,
-        entry_data=direct_entry_data(credentials),
+        entry_data=cloud_entry_data(credentials),
     )
 
     await runtime.async_authentication_rejected()
 
     assert runtime.reusable_bootstrap is None
-    assert state_store.cleared == direct_entry_data(credentials)
+    assert state_store.cleared == cloud_entry_data(credentials)

@@ -14,8 +14,8 @@ from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.util import dt as dt_util
 
-from . import GwmOraConfigEntry
-from .entity import GwmOraEntity, setup_vehicle_entities, vehicle_value
+from . import GwmConfigEntry
+from .entity import GwmEntity, setup_vehicle_entities, vehicle_value
 
 PARALLEL_UPDATES = 0
 
@@ -45,7 +45,7 @@ BEANTECH_SENSOR_KEYS = {
 
 
 @dataclass(frozen=True, kw_only=True)
-class GwmOraSensorEntityDescription(SensorEntityDescription):
+class GwmSensorEntityDescription(SensorEntityDescription):
     """Describes a GWM sensor."""
 
     value_fn: Callable[[dict[str, Any] | None], Any]
@@ -91,8 +91,8 @@ def _timestamp(key: str) -> Callable[[dict[str, Any] | None], datetime | None]:
     return read
 
 
-SENSORS: tuple[GwmOraSensorEntityDescription, ...] = (
-    GwmOraSensorEntityDescription(
+SENSORS: tuple[GwmSensorEntityDescription, ...] = (
+    GwmSensorEntityDescription(
         key="soc",
         translation_key="soc",
         device_class=SensorDeviceClass.BATTERY,
@@ -100,7 +100,7 @@ SENSORS: tuple[GwmOraSensorEntityDescription, ...] = (
         state_class=SensorStateClass.MEASUREMENT,
         value_fn=_value("soc"),
     ),
-    GwmOraSensorEntityDescription(
+    GwmSensorEntityDescription(
         key="range_km",
         translation_key="range",
         device_class=SensorDeviceClass.DISTANCE,
@@ -108,7 +108,7 @@ SENSORS: tuple[GwmOraSensorEntityDescription, ...] = (
         state_class=SensorStateClass.MEASUREMENT,
         value_fn=_value("range_km"),
     ),
-    GwmOraSensorEntityDescription(
+    GwmSensorEntityDescription(
         key="fuel_level_l",
         translation_key="fuel_level",
         device_class=SensorDeviceClass.VOLUME_STORAGE,
@@ -117,7 +117,7 @@ SENSORS: tuple[GwmOraSensorEntityDescription, ...] = (
         entity_registry_enabled_default=False,
         value_fn=_value("fuel_level_l"),
     ),
-    GwmOraSensorEntityDescription(
+    GwmSensorEntityDescription(
         key="fuel_range_km",
         translation_key="fuel_range",
         device_class=SensorDeviceClass.DISTANCE,
@@ -126,7 +126,7 @@ SENSORS: tuple[GwmOraSensorEntityDescription, ...] = (
         entity_registry_enabled_default=False,
         value_fn=_value("fuel_range_km"),
     ),
-    GwmOraSensorEntityDescription(
+    GwmSensorEntityDescription(
         key="odometer_km",
         translation_key="odometer",
         device_class=SensorDeviceClass.DISTANCE,
@@ -134,7 +134,7 @@ SENSORS: tuple[GwmOraSensorEntityDescription, ...] = (
         state_class=SensorStateClass.TOTAL_INCREASING,
         value_fn=_value("odometer_km"),
     ),
-    GwmOraSensorEntityDescription(
+    GwmSensorEntityDescription(
         key="remaining_charging_time_min",
         translation_key="remaining_charging_time",
         device_class=SensorDeviceClass.DURATION,
@@ -142,21 +142,21 @@ SENSORS: tuple[GwmOraSensorEntityDescription, ...] = (
         state_class=SensorStateClass.MEASUREMENT,
         value_fn=_value("remaining_charging_time_min"),
     ),
-    GwmOraSensorEntityDescription(
+    GwmSensorEntityDescription(
         key="charging_status",
         translation_key="charging_status",
         device_class=SensorDeviceClass.ENUM,
         options=CHARGING_STATUS_OPTIONS,
         value_fn=_value("charging_status"),
     ),
-    GwmOraSensorEntityDescription(
+    GwmSensorEntityDescription(
         key="soce",
         translation_key="soce",
         native_unit_of_measurement=PERCENTAGE,
         state_class=SensorStateClass.MEASUREMENT,
         value_fn=_value("soce"),
     ),
-    GwmOraSensorEntityDescription(
+    GwmSensorEntityDescription(
         key="interior_temperature_c",
         translation_key="interior_temperature",
         device_class=SensorDeviceClass.TEMPERATURE,
@@ -164,7 +164,7 @@ SENSORS: tuple[GwmOraSensorEntityDescription, ...] = (
         state_class=SensorStateClass.MEASUREMENT,
         value_fn=_value("interior_temperature_c"),
     ),
-    GwmOraSensorEntityDescription(
+    GwmSensorEntityDescription(
         key="tire_pressure_front_left_kpa",
         translation_key="tire_pressure_front_left",
         device_class=SensorDeviceClass.PRESSURE,
@@ -172,7 +172,7 @@ SENSORS: tuple[GwmOraSensorEntityDescription, ...] = (
         state_class=SensorStateClass.MEASUREMENT,
         value_fn=_value("tire_pressure_front_left_kpa"),
     ),
-    GwmOraSensorEntityDescription(
+    GwmSensorEntityDescription(
         key="tire_pressure_front_right_kpa",
         translation_key="tire_pressure_front_right",
         device_class=SensorDeviceClass.PRESSURE,
@@ -180,7 +180,7 @@ SENSORS: tuple[GwmOraSensorEntityDescription, ...] = (
         state_class=SensorStateClass.MEASUREMENT,
         value_fn=_value("tire_pressure_front_right_kpa"),
     ),
-    GwmOraSensorEntityDescription(
+    GwmSensorEntityDescription(
         key="tire_pressure_rear_left_kpa",
         translation_key="tire_pressure_rear_left",
         device_class=SensorDeviceClass.PRESSURE,
@@ -188,7 +188,7 @@ SENSORS: tuple[GwmOraSensorEntityDescription, ...] = (
         state_class=SensorStateClass.MEASUREMENT,
         value_fn=_value("tire_pressure_rear_left_kpa"),
     ),
-    GwmOraSensorEntityDescription(
+    GwmSensorEntityDescription(
         key="tire_pressure_rear_right_kpa",
         translation_key="tire_pressure_rear_right",
         device_class=SensorDeviceClass.PRESSURE,
@@ -196,7 +196,7 @@ SENSORS: tuple[GwmOraSensorEntityDescription, ...] = (
         state_class=SensorStateClass.MEASUREMENT,
         value_fn=_value("tire_pressure_rear_right_kpa"),
     ),
-    GwmOraSensorEntityDescription(
+    GwmSensorEntityDescription(
         key="tire_temperature_front_left_c",
         translation_key="tire_temperature_front_left",
         device_class=SensorDeviceClass.TEMPERATURE,
@@ -204,7 +204,7 @@ SENSORS: tuple[GwmOraSensorEntityDescription, ...] = (
         state_class=SensorStateClass.MEASUREMENT,
         value_fn=_value("tire_temperature_front_left_c"),
     ),
-    GwmOraSensorEntityDescription(
+    GwmSensorEntityDescription(
         key="tire_temperature_front_right_c",
         translation_key="tire_temperature_front_right",
         device_class=SensorDeviceClass.TEMPERATURE,
@@ -212,7 +212,7 @@ SENSORS: tuple[GwmOraSensorEntityDescription, ...] = (
         state_class=SensorStateClass.MEASUREMENT,
         value_fn=_value("tire_temperature_front_right_c"),
     ),
-    GwmOraSensorEntityDescription(
+    GwmSensorEntityDescription(
         key="tire_temperature_rear_left_c",
         translation_key="tire_temperature_rear_left",
         device_class=SensorDeviceClass.TEMPERATURE,
@@ -220,7 +220,7 @@ SENSORS: tuple[GwmOraSensorEntityDescription, ...] = (
         state_class=SensorStateClass.MEASUREMENT,
         value_fn=_value("tire_temperature_rear_left_c"),
     ),
-    GwmOraSensorEntityDescription(
+    GwmSensorEntityDescription(
         key="tire_temperature_rear_right_c",
         translation_key="tire_temperature_rear_right",
         device_class=SensorDeviceClass.TEMPERATURE,
@@ -228,141 +228,141 @@ SENSORS: tuple[GwmOraSensorEntityDescription, ...] = (
         state_class=SensorStateClass.MEASUREMENT,
         value_fn=_value("tire_temperature_rear_right_c"),
     ),
-    GwmOraSensorEntityDescription(
+    GwmSensorEntityDescription(
         key="tire_pressure_state_front_left",
         translation_key="tire_pressure_state_front_left",
         entity_category=EntityCategory.DIAGNOSTIC,
         entity_registry_enabled_default=False,
         value_fn=_value("tire_pressure_state_front_left"),
     ),
-    GwmOraSensorEntityDescription(
+    GwmSensorEntityDescription(
         key="tire_pressure_state_front_right",
         translation_key="tire_pressure_state_front_right",
         entity_category=EntityCategory.DIAGNOSTIC,
         entity_registry_enabled_default=False,
         value_fn=_value("tire_pressure_state_front_right"),
     ),
-    GwmOraSensorEntityDescription(
+    GwmSensorEntityDescription(
         key="tire_pressure_state_rear_left",
         translation_key="tire_pressure_state_rear_left",
         entity_category=EntityCategory.DIAGNOSTIC,
         entity_registry_enabled_default=False,
         value_fn=_value("tire_pressure_state_rear_left"),
     ),
-    GwmOraSensorEntityDescription(
+    GwmSensorEntityDescription(
         key="tire_pressure_state_rear_right",
         translation_key="tire_pressure_state_rear_right",
         entity_category=EntityCategory.DIAGNOSTIC,
         entity_registry_enabled_default=False,
         value_fn=_value("tire_pressure_state_rear_right"),
     ),
-    GwmOraSensorEntityDescription(
+    GwmSensorEntityDescription(
         key="tire_temperature_state_front_left",
         translation_key="tire_temperature_state_front_left",
         entity_category=EntityCategory.DIAGNOSTIC,
         entity_registry_enabled_default=False,
         value_fn=_value("tire_temperature_state_front_left"),
     ),
-    GwmOraSensorEntityDescription(
+    GwmSensorEntityDescription(
         key="tire_temperature_state_front_right",
         translation_key="tire_temperature_state_front_right",
         entity_category=EntityCategory.DIAGNOSTIC,
         entity_registry_enabled_default=False,
         value_fn=_value("tire_temperature_state_front_right"),
     ),
-    GwmOraSensorEntityDescription(
+    GwmSensorEntityDescription(
         key="tire_temperature_state_rear_left",
         translation_key="tire_temperature_state_rear_left",
         entity_category=EntityCategory.DIAGNOSTIC,
         entity_registry_enabled_default=False,
         value_fn=_value("tire_temperature_state_rear_left"),
     ),
-    GwmOraSensorEntityDescription(
+    GwmSensorEntityDescription(
         key="tire_temperature_state_rear_right",
         translation_key="tire_temperature_state_rear_right",
         entity_category=EntityCategory.DIAGNOSTIC,
         entity_registry_enabled_default=False,
         value_fn=_value("tire_temperature_state_rear_right"),
     ),
-    GwmOraSensorEntityDescription(
+    GwmSensorEntityDescription(
         key="window_learn_front_left",
         translation_key="window_learn_front_left",
         entity_category=EntityCategory.DIAGNOSTIC,
         entity_registry_enabled_default=False,
         value_fn=_value("window_learn_front_left"),
     ),
-    GwmOraSensorEntityDescription(
+    GwmSensorEntityDescription(
         key="window_learn_front_right",
         translation_key="window_learn_front_right",
         entity_category=EntityCategory.DIAGNOSTIC,
         entity_registry_enabled_default=False,
         value_fn=_value("window_learn_front_right"),
     ),
-    GwmOraSensorEntityDescription(
+    GwmSensorEntityDescription(
         key="window_learn_rear_left",
         translation_key="window_learn_rear_left",
         entity_category=EntityCategory.DIAGNOSTIC,
         entity_registry_enabled_default=False,
         value_fn=_value("window_learn_rear_left"),
     ),
-    GwmOraSensorEntityDescription(
+    GwmSensorEntityDescription(
         key="window_learn_rear_right",
         translation_key="window_learn_rear_right",
         entity_category=EntityCategory.DIAGNOSTIC,
         entity_registry_enabled_default=False,
         value_fn=_value("window_learn_rear_right"),
     ),
-    GwmOraSensorEntityDescription(
+    GwmSensorEntityDescription(
         key="rear_left_seat_heater_level",
         translation_key="rear_left_seat_heater_level",
         entity_registry_enabled_default=False,
         value_fn=_value("rear_left_seat_heater_level"),
     ),
-    GwmOraSensorEntityDescription(
+    GwmSensorEntityDescription(
         key="rear_right_seat_heater_level",
         translation_key="rear_right_seat_heater_level",
         entity_registry_enabled_default=False,
         value_fn=_value("rear_right_seat_heater_level"),
     ),
-    GwmOraSensorEntityDescription(
+    GwmSensorEntityDescription(
         key="engine_state_code",
         translation_key="engine_state_code",
         entity_category=EntityCategory.DIAGNOSTIC,
         entity_registry_enabled_default=False,
         value_fn=_value("engine_state_code"),
     ),
-    GwmOraSensorEntityDescription(
+    GwmSensorEntityDescription(
         key="front_driver_seat_heater_level",
         translation_key="front_driver_seat_heater_level",
         entity_registry_enabled_default=False,
         value_fn=_value("front_driver_seat_heater_level"),
     ),
-    GwmOraSensorEntityDescription(
+    GwmSensorEntityDescription(
         key="front_passenger_seat_heater_level",
         translation_key="front_passenger_seat_heater_level",
         entity_registry_enabled_default=False,
         value_fn=_value("front_passenger_seat_heater_level"),
     ),
-    GwmOraSensorEntityDescription(
+    GwmSensorEntityDescription(
         key="front_driver_seat_vent_level",
         translation_key="front_driver_seat_vent_level",
         entity_registry_enabled_default=False,
         value_fn=_value("front_driver_seat_vent_level"),
     ),
-    GwmOraSensorEntityDescription(
+    GwmSensorEntityDescription(
         key="front_passenger_seat_vent_level",
         translation_key="front_passenger_seat_vent_level",
         entity_registry_enabled_default=False,
         value_fn=_value("front_passenger_seat_vent_level"),
     ),
-    GwmOraSensorEntityDescription(
+    GwmSensorEntityDescription(
         key="sunroof_position_code",
         translation_key="sunroof_position_code",
         entity_category=EntityCategory.DIAGNOSTIC,
         entity_registry_enabled_default=False,
         value_fn=_value("sunroof_position_code"),
     ),
-    GwmOraSensorEntityDescription(
+    GwmSensorEntityDescription(
         key="acquisition_time",
         translation_key="acquisition_time",
         device_class=SensorDeviceClass.TIMESTAMP,
@@ -370,7 +370,7 @@ SENSORS: tuple[GwmOraSensorEntityDescription, ...] = (
         entity_registry_enabled_default=False,
         value_fn=_timestamp("acquisition_time"),
     ),
-    GwmOraSensorEntityDescription(
+    GwmSensorEntityDescription(
         key="update_time",
         translation_key="update_time",
         device_class=SensorDeviceClass.TIMESTAMP,
@@ -378,13 +378,13 @@ SENSORS: tuple[GwmOraSensorEntityDescription, ...] = (
         entity_registry_enabled_default=False,
         value_fn=_timestamp("update_time"),
     ),
-    GwmOraSensorEntityDescription(
+    GwmSensorEntityDescription(
         key="command_status",
         translation_key="command_status",
         entity_category=EntityCategory.DIAGNOSTIC,
         value_fn=lambda vehicle: None if vehicle is None else vehicle.get("command_status"),
     ),
-    GwmOraSensorEntityDescription(
+    GwmSensorEntityDescription(
         key="charge_soc",
         translation_key="charge_soc",
         native_unit_of_measurement=PERCENTAGE,
@@ -393,7 +393,7 @@ SENSORS: tuple[GwmOraSensorEntityDescription, ...] = (
         entity_registry_enabled_default=False,
         value_fn=_value("charge_soc"),
     ),
-    GwmOraSensorEntityDescription(
+    GwmSensorEntityDescription(
         key="charging_gun_model",
         translation_key="charging_gun_model",
         device_class=SensorDeviceClass.ENUM,
@@ -402,7 +402,7 @@ SENSORS: tuple[GwmOraSensorEntityDescription, ...] = (
         entity_registry_enabled_default=False,
         value_fn=_charging_gun_model_value,
     ),
-    GwmOraSensorEntityDescription(
+    GwmSensorEntityDescription(
         key="hcu_powertrain_state",
         translation_key="hcu_powertrain_state",
         device_class=SensorDeviceClass.ENUM,
@@ -411,28 +411,28 @@ SENSORS: tuple[GwmOraSensorEntityDescription, ...] = (
         entity_registry_enabled_default=False,
         value_fn=_enum_value("hcu_powertrain_state", {"1", "3", "6"}),
     ),
-    GwmOraSensorEntityDescription(
+    GwmSensorEntityDescription(
         key="power",
         translation_key="power",
         entity_category=EntityCategory.DIAGNOSTIC,
         entity_registry_enabled_default=False,
         value_fn=_value("power"),
     ),
-    GwmOraSensorEntityDescription(
+    GwmSensorEntityDescription(
         key="battery_pack_state",
         translation_key="battery_pack_state",
         entity_category=EntityCategory.DIAGNOSTIC,
         entity_registry_enabled_default=False,
         value_fn=_value("battery_pack_state"),
     ),
-    GwmOraSensorEntityDescription(
+    GwmSensorEntityDescription(
         key="acc_clean_off",
         translation_key="acc_clean_off",
         entity_category=EntityCategory.DIAGNOSTIC,
         entity_registry_enabled_default=False,
         value_fn=_value("acc_clean_off"),
     ),
-    GwmOraSensorEntityDescription(
+    GwmSensorEntityDescription(
         key="tbox_state",
         translation_key="tbox_state",
         device_class=SensorDeviceClass.ENUM,
@@ -441,21 +441,21 @@ SENSORS: tuple[GwmOraSensorEntityDescription, ...] = (
         entity_registry_enabled_default=False,
         value_fn=_enum_value("tbox_state", {"0", "1"}),
     ),
-    GwmOraSensorEntityDescription(
+    GwmSensorEntityDescription(
         key="wireless_level",
         translation_key="wireless_level",
         entity_category=EntityCategory.DIAGNOSTIC,
         entity_registry_enabled_default=False,
         value_fn=_value("wireless_level"),
     ),
-    GwmOraSensorEntityDescription(
+    GwmSensorEntityDescription(
         key="oil_segments",
         translation_key="oil_segments",
         entity_category=EntityCategory.DIAGNOSTIC,
         entity_registry_enabled_default=False,
         value_fn=_value("oil_segments"),
     ),
-    GwmOraSensorEntityDescription(
+    GwmSensorEntityDescription(
         key="aux_battery_level",
         translation_key="aux_battery",
         device_class=SensorDeviceClass.BATTERY,
@@ -464,7 +464,7 @@ SENSORS: tuple[GwmOraSensorEntityDescription, ...] = (
         entity_registry_enabled_default=False,
         value_fn=_value("aux_battery_level"),
     ),
-    GwmOraSensorEntityDescription(
+    GwmSensorEntityDescription(
         key="remaining_usable_charge_percent",
         translation_key="remaining_usable_charge",
         device_class=SensorDeviceClass.BATTERY,
@@ -479,7 +479,7 @@ SENSORS: tuple[GwmOraSensorEntityDescription, ...] = (
 def _sensor_descriptions_for_vehicle(
     vehicle: dict[str, Any],
     region: str,
-) -> tuple[GwmOraSensorEntityDescription, ...]:
+) -> tuple[GwmSensorEntityDescription, ...]:
     """Return descriptions supported by the vehicle backend."""
     if str(region or "").lower() == "cn" and str(vehicle.get("platform") or "").lower() == "beantech":
         return SENSORS
@@ -488,7 +488,7 @@ def _sensor_descriptions_for_vehicle(
 
 async def async_setup_entry(
     hass: HomeAssistant,
-    entry: GwmOraConfigEntry,
+    entry: GwmConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up GWM sensors."""
@@ -496,7 +496,7 @@ async def async_setup_entry(
         entry,
         async_add_entities,
         lambda vehicle: (
-            GwmOraSensor(entry.runtime_data.coordinator, vehicle["vin"], description)
+            GwmSensor(entry.runtime_data.coordinator, vehicle["vin"], description)
             for description in _sensor_descriptions_for_vehicle(
                 vehicle, entry.runtime_data.coordinator.region
             )
@@ -504,16 +504,16 @@ async def async_setup_entry(
     )
 
 
-class GwmOraSensor(GwmOraEntity, SensorEntity):
+class GwmSensor(GwmEntity, SensorEntity):
     """A GWM sensor."""
 
-    entity_description: GwmOraSensorEntityDescription
+    entity_description: GwmSensorEntityDescription
 
     def __init__(
         self,
         coordinator,
         vin: str,
-        description: GwmOraSensorEntityDescription,
+        description: GwmSensorEntityDescription,
     ) -> None:
         super().__init__(coordinator, vin)
         self.entity_description = description

@@ -1,4 +1,4 @@
-"""Direct-cloud runtime and bounded config-flow handoff.
+"""GWM cloud runtime and bounded config-flow handoff.
 
 A successful config, reauth, or reconfigure flow stages one validated overseas
 read session for immediate entry setup. The bounded handoff is only an
@@ -12,7 +12,7 @@ import re
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from typing import Never, Protocol
+from typing import Protocol
 
 from homeassistant.core import HomeAssistant
 
@@ -45,11 +45,10 @@ from gwm_client import (
     map_vehicle_snapshot,
 )
 
-from .api import GwmOraApiForbidden
 from .cloud_auth import (
     CloudAuthenticationResult,
-    DirectCloudCredentials,
-    direct_unique_id,
+    GwmCloudCredentials,
+    cloud_unique_id,
 )
 from .const import (
     CONF_ACCOUNT,
@@ -63,7 +62,7 @@ from .const import (
 )
 
 _HANDOFF_TTL_SECONDS = 5 * 60
-_HANDOFF_DATA_KEY = f"{DOMAIN}_direct_cloud_handoffs"
+_HANDOFF_DATA_KEY = f"{DOMAIN}_cloud_handoffs"
 _ACCOUNT_BINDING = re.compile(r"[0-9a-f]{64}")
 
 
@@ -133,7 +132,7 @@ class _AuthStateStore(Protocol):
 
 
 @dataclass(frozen=True, slots=True, repr=False)
-class DirectClimateContext:
+class GwmClimateContext:
     """Fresh regional prerequisites used to resolve one climate request."""
 
     vehicle: CloudVehicle = field(repr=False)
@@ -142,7 +141,7 @@ class DirectClimateContext:
 
 
 @dataclass(frozen=True, slots=True, repr=False)
-class DirectCloudBootstrap:
+class GwmCloudBootstrap:
     """One validated, memory-only overseas session handoff."""
 
     region: str
@@ -168,9 +167,9 @@ class DirectCloudBootstrap:
     @classmethod
     def from_authentication(
         cls,
-        credentials: DirectCloudCredentials,
+        credentials: GwmCloudCredentials,
         result: CloudAuthenticationResult,
-    ) -> DirectCloudBootstrap:
+    ) -> GwmCloudBootstrap:
         """Create a handoff only from a complete overseas authentication."""
 
         valid_result = (
@@ -201,14 +200,14 @@ class DirectCloudBootstrap:
 
 @dataclass(slots=True)
 class _PendingBootstrap:
-    bootstrap: DirectCloudBootstrap
+    bootstrap: GwmCloudBootstrap
     expiry: asyncio.TimerHandle
 
 
-def stage_direct_cloud_bootstrap(
+def stage_cloud_bootstrap(
     hass: HomeAssistant,
     unique_id: str,
-    bootstrap: DirectCloudBootstrap,
+    bootstrap: GwmCloudBootstrap,
 ) -> None:
     """Stage one bounded, replaceable handoff for config-entry setup."""
 
@@ -234,10 +233,10 @@ def stage_direct_cloud_bootstrap(
     store[unique_id] = pending
 
 
-def consume_direct_cloud_bootstrap(
+def consume_cloud_bootstrap(
     hass: HomeAssistant,
     unique_id: str | None,
-) -> DirectCloudBootstrap | None:
+) -> GwmCloudBootstrap | None:
     """Consume exactly one staged handoff."""
 
     if not isinstance(unique_id, str):
@@ -252,7 +251,7 @@ def consume_direct_cloud_bootstrap(
     return pending.bootstrap
 
 
-class DirectCloudReadClient:
+class GwmCloudClient:
     """Own one authenticated overseas client and normalize account reads."""
 
     def __init__(
@@ -261,7 +260,7 @@ class DirectCloudReadClient:
         client: _OverseasReadClient,
         *,
         clock: Callable[[], datetime] | None = None,
-        bootstrap: DirectCloudBootstrap | None = None,
+        bootstrap: GwmCloudBootstrap | None = None,
         state_store: _AuthStateStore | None = None,
         entry_data: dict[str, object] | None = None,
         climate_commands_enabled: bool = False,
@@ -292,18 +291,18 @@ class DirectCloudReadClient:
         cls,
         data: dict[str, object],
         unique_id: str | None,
-        bootstrap: DirectCloudBootstrap,
+        bootstrap: GwmCloudBootstrap,
         *,
         state_store: _AuthStateStore | None = None,
         climate_commands_enabled: bool = False,
         lock_window_commands_enabled: bool = False,
         charging_control_enabled: bool = False,
-    ) -> DirectCloudReadClient:
+    ) -> GwmCloudClient:
         """Validate a staged handoff against the current config entry."""
 
         if not isinstance(unique_id, str):
             raise GwmConfigurationError(operation="login")
-        credentials = DirectCloudCredentials(
+        credentials = GwmCloudCredentials(
             region=str(data.get(CONF_REGION, "")),
             country=str(data.get(CONF_COUNTRY, "")),
             account=str(data.get(CONF_ACCOUNT, "")),
@@ -318,7 +317,7 @@ class DirectCloudReadClient:
             bootstrap.region != credentials.region
             or bootstrap.account_binding != credentials.account_binding
             or bootstrap.session.country != credentials.country
-            or unique_id != direct_unique_id(credentials)
+            or unique_id != cloud_unique_id(credentials)
         ):
             raise GwmConfigurationError(operation="login")
 
@@ -339,7 +338,7 @@ class DirectCloudReadClient:
         )
 
     @property
-    def reusable_bootstrap(self) -> DirectCloudBootstrap | None:
+    def reusable_bootstrap(self) -> GwmCloudBootstrap | None:
         """Return the current in-process handoff if authentication still holds."""
 
         return self._bootstrap if self._client.authenticated else None
@@ -402,7 +401,7 @@ class DirectCloudReadClient:
         identifier: VehicleIdentifier,
         *,
         include_status: bool,
-    ) -> DirectClimateContext:
+    ) -> GwmClimateContext:
         """Fetch current prerequisites without allowing an undiscovered VIN route."""
 
         if type(identifier) is not VehicleIdentifier or type(include_status) is not bool:
@@ -417,7 +416,7 @@ class DirectCloudReadClient:
                 raise
             basics = CloudVehicleBasics()
         status = await self._client.get_last_status(identifier) if include_status else None
-        return DirectClimateContext(vehicle=vehicle, basics=basics, status=status)
+        return GwmClimateContext(vehicle=vehicle, basics=basics, status=status)
 
     async def async_update_climate_defaults(
         self,
@@ -520,45 +519,9 @@ def _bootstrap_state_matches(
     )
 
 
-class DirectReadOnlyCommandApi:
-    """Fail closed if a deferred write surface is invoked directly."""
-
-    @staticmethod
-    def _unavailable() -> Never:
-        raise GwmOraApiForbidden("Direct-cloud writes are not available yet")
-
-    async def async_refresh(self) -> dict[str, object]:
-        self._unavailable()
-
-    async def async_get_vehicles(self) -> dict[str, object]:
-        self._unavailable()
-
-    async def async_get_command(self, command_id: str) -> dict[str, object]:
-        self._unavailable()
-
-    async def async_set_climate(self, *args: object, **kwargs: object) -> dict[str, object]:
-        self._unavailable()
-
-    async def async_lock(self, *args: object, **kwargs: object) -> dict[str, object]:
-        self._unavailable()
-
-    async def async_close_windows(self, *args: object, **kwargs: object) -> dict[str, object]:
-        self._unavailable()
-
-    async def async_vehicle_control(self, *args: object, **kwargs: object) -> dict[str, object]:
-        self._unavailable()
-
-    async def async_get_charging_plan(self, *args: object, **kwargs: object) -> dict[str, object]:
-        self._unavailable()
-
-    async def async_set_charging_plan(self, *args: object, **kwargs: object) -> dict[str, object]:
-        self._unavailable()
-
-
 __all__ = [
-    "DirectCloudBootstrap",
-    "DirectCloudReadClient",
-    "DirectReadOnlyCommandApi",
-    "consume_direct_cloud_bootstrap",
-    "stage_direct_cloud_bootstrap",
+    "GwmCloudBootstrap",
+    "GwmCloudClient",
+    "consume_cloud_bootstrap",
+    "stage_cloud_bootstrap",
 ]

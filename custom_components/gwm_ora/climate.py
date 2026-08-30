@@ -9,15 +9,15 @@ from homeassistant.const import ATTR_TEMPERATURE, UnitOfTemperature
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from . import GwmOraConfigEntry
-from .entity import GwmOraEntity, async_call_addon_api, setup_vehicle_entities
+from . import GwmConfigEntry
+from .entity import GwmEntity, async_call_gwm_api, setup_vehicle_entities
 
 PARALLEL_UPDATES = 0
 
 
 async def async_setup_entry(
     hass: HomeAssistant,
-    entry: GwmOraConfigEntry,
+    entry: GwmConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up GWM climate entities."""
@@ -25,12 +25,12 @@ async def async_setup_entry(
         entry,
         async_add_entities,
         lambda vehicle: (
-            GwmOraClimate(entry.runtime_data.api, entry.runtime_data.coordinator, vehicle["vin"]),
+            GwmClimate(entry.runtime_data.api, entry.runtime_data.coordinator, vehicle["vin"]),
         ),
     )
 
 
-class GwmOraClimate(GwmOraEntity, ClimateEntity):
+class GwmClimate(GwmEntity, ClimateEntity):
     """GWM A/C climate control."""
 
     _attr_translation_key = "ac_climate"
@@ -104,7 +104,7 @@ class GwmOraClimate(GwmOraEntity, ClimateEntity):
             HVACMode.COOL: "cool",
             HVACMode.HEAT: "heat",
         }.get(hvac_mode, "off")
-        command = await async_call_addon_api(self._api.async_set_climate(self.vin, mode=mode))
+        command = await async_call_gwm_api(self._api.async_set_climate(self.vin, mode=mode))
         self._requested_hvac_mode = None if hvac_mode == HVACMode.OFF else hvac_mode
         self.coordinator.async_track_command(command)
 
@@ -112,6 +112,6 @@ class GwmOraClimate(GwmOraEntity, ClimateEntity):
         """Set target temperature."""
         if (temperature := kwargs.get(ATTR_TEMPERATURE)) is None:
             return
-        command = await async_call_addon_api(self._api.async_set_climate(self.vin, temperature=int(temperature)))
+        command = await async_call_gwm_api(self._api.async_set_climate(self.vin, temperature=int(temperature)))
         self._requested_target_temperature = float(temperature)
         self.coordinator.async_track_command(command)

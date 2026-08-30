@@ -1,10 +1,32 @@
 # GWM
 
-This custom integration connects Home Assistant to the local **GWM** add-on and exposes vehicles available through the connected GWM account.
+This custom integration connects Home Assistant directly to supported GWM cloud regions. It does not require the retired Docker add-on.
 
-For installation buttons, add-on setup, security notes, examples, and troubleshooting, see the repository root `README.md`.
+The integration supports Europe, Australia and New Zealand, and Russia in the current setup flow. Mainland China remains disabled until its separate Python-client live-read validation passes.
 
-The integration stores only the add-on host, port, generated API token, and discovery metadata. GWM credentials and the vehicle security PIN remain in add-on configuration/storage.
+## Setup
+
+1. Install the integration files under `/config/custom_components/gwm_ora`.
+2. Restart Home Assistant.
+3. Open **Settings** > **Devices & services** > **Add integration**.
+4. Search for **GWM**.
+5. Select the account region and complete the sign-in and verification flow.
+
+Existing add-on entries are not migrated. Remove the previous entry and add GWM again. No password, token, certificate, or add-on state is imported.
+
+See the repository [README](https://github.com/moryoav/ha-gwm/blob/feature/integration-only/README.md) for branch installation instructions, account-region guidance, safety notes, and troubleshooting.
+
+## Options
+
+The integration options provide:
+
+- Cloud polling interval.
+- Explicit remote-command opt-in.
+- Write-only vehicle security PIN.
+- Independent charging-control opt-in.
+- Integration log level.
+
+Keep command options disabled until read-only polling and entity values have been checked against the official GWM app.
 
 ## Platforms
 
@@ -17,32 +39,13 @@ The integration stores only the add-on host, port, generated API token, and disc
 - Button
 - Switch
 
-Vehicle models and regions expose different status signals. Optional fuel, comfort, and diagnostic entities are disabled by default where appropriate, and missing values remain unknown without affecting other entities.
+Vehicle models and regions expose different values. Missing signals remain unavailable without interrupting other entities. Optional model-specific diagnostic entities are disabled by default where appropriate.
 
-The **Climate run time** number entity saves a duration from 5 to 30 minutes, in one-minute steps, for the next A/C command. Changing it does not start or stop the A/C.
-
-For experimental mainland-China accounts, status reading supports NavInfo and BeanTech vehicles. BeanTech status was live-tested on a Tank 300 Hi4-T. NavInfo climate also offers heating and the button platform exposes remote start/stop, horn/lights, tailgate, and sunroof controls when remote commands are enabled. BeanTech currently exposes unverified mappings for lock/unlock, close windows, remote start/stop, horn, flashing lights, and closing the sunroof. Test one command at a time with the vehicle parked and visible.
-
-The optional **Scheduled charging** switch and `gwm_ora.set_charging_plan` / `gwm_ora.clear_charging_plan` actions require charging control to be enabled separately. Use `enable_charging_control: true` for an add-on entry, or enable it in the direct cloud entry options on the integration-only branch. Direct China remains behind its validation gate. The NavInfo weekly schedule contract is offline-tested, while BeanTech charging remains unavailable. See the root README for behavior, safety notes, and examples.
-
-## Setup
-
-1. Install and start the `GWM` add-on.
-2. Open HACS, search for **GWM** under **Integrations**, select it, and choose **Download**.
-3. Restart Home Assistant.
-4. Open **Settings** > **Devices & services** and confirm the discovered **GWM** integration.
-
-If discovery does not appear, restart the add-on and then restart Home Assistant.
-
-## Reconfigure and Reauth
-
-Normal add-on installs should update automatically when Supervisor rediscovery publishes new host or token information.
-
-Manual/development installs can use the integration reconfigure flow to update host, port, and token. If the add-on rejects the stored API token, Home Assistant will start reauthentication and raise a repair issue.
+The optional **Scheduled charging** switch and `gwm_ora.set_charging_plan` and `gwm_ora.clear_charging_plan` actions require charging control to be enabled in the integration options.
 
 ## Diagnostics
 
-Diagnostics redact the generated add-on API token. Review diagnostics before sharing because vehicle snapshots can still contain VINs, timestamps, raw item codes, and location data.
+Diagnostics redact known credentials, tokens, security PINs, vehicle identifiers, and locations. Review every diagnostic file before sharing it.
 
 ## Quality Scale
 

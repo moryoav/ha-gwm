@@ -2,28 +2,6 @@
   "config": {
     "step": {
       "user": {
-        "title": "Set up GWM",
-        "description": "Connect Home Assistant directly to your GWM cloud account, or keep using the companion add-on during the migration.",
-        "menu_options": {
-          "cloud": "GWM cloud account",
-          "addon": "Companion add-on"
-        }
-      },
-      "addon": {
-        "title": "GWM add-on",
-        "description": "Connect to a running GWM add-on. This is mostly useful for development or non-Supervisor installs.",
-        "data": {
-          "host": "Host",
-          "port": "Port",
-          "token": "API token"
-        },
-        "data_description": {
-          "host": "Internal add-on hostname or development host.",
-          "port": "Add-on API port. The packaged add-on uses 8099.",
-          "token": "Generated add-on API token. GWM account credentials never go here."
-        }
-      },
-      "cloud": {
         "title": "Choose GWM cloud region",
         "description": "Choose the region used by the official GWM app for this account. Mainland China remains unavailable here until its separate live-read safety gate passes.",
         "data": {
@@ -56,7 +34,7 @@
       },
       "session_reclaim": {
         "title": "Allow ANZ session login",
-        "description": "Australia and New Zealand accounts permit only one active session. Continuing may sign out the official app or replace the add-on session. A dedicated shared-vehicle account is recommended.",
+        "description": "Australia and New Zealand accounts permit only one active session. Continuing may sign out the official app. A dedicated shared-vehicle account is recommended.",
         "data": {
           "allow_session_reclaim": "I understand and want to continue"
         }
@@ -67,17 +45,9 @@
       },
       "reconfigure": {
         "title": "Reconfigure GWM",
-        "description": "For direct-cloud entries, choose the replacement account region. For add-on entries, update the local API connection.",
+        "description": "Choose the replacement account region. You will authenticate before the current settings are changed.",
         "data": {
-          "region": "Cloud region",
-          "host": "Host",
-          "port": "Port",
-          "token": "API token"
-        },
-        "data_description": {
-          "host": "Internal add-on hostname or development host.",
-          "port": "Add-on API port. The packaged add-on uses 8099.",
-          "token": "Generated add-on API token. GWM account credentials never go here."
+          "region": "Cloud region"
         }
       },
       "reconfigure_account": {
@@ -91,22 +61,10 @@
       },
       "reauth_confirm": {
         "title": "Reconnect GWM",
-        "description": "For direct-cloud entries, enter the current password and complete any requested verification. For add-on entries, restart the add-on or update its local API details.",
+        "description": "Enter the current password and complete any requested verification.",
         "data": {
-          "host": "Host",
-          "port": "Port",
-          "token": "API token",
           "password": "Password"
-        },
-        "data_description": {
-          "host": "Internal add-on hostname or development host.",
-          "port": "Add-on API port. The packaged add-on uses 8099.",
-          "token": "Generated add-on API token. GWM account credentials never go here."
         }
-      },
-      "hassio_confirm": {
-        "title": "GWM add-on discovered",
-        "description": "Set up the discovered GWM add-on at {host}."
       }
     },
     "error": {
@@ -117,14 +75,15 @@
       "rate_limited": "GWM rate-limited the request. Wait before trying again.",
       "service_error": "GWM rejected the request with an unsupported or unexpected response.",
       "local_configuration_error": "The bundled regional security material could not be validated.",
-      "unsupported_region": "This cloud region is not available for direct setup yet.",
+      "unsupported_region": "This cloud region is not available for setup yet.",
       "initialization_failed": "The downstream GWM services still could not initialize.",
       "session_reclaim_not_confirmed": "Confirm that you understand the ANZ single-session effect before continuing."
     },
     "abort": {
       "already_configured": "This GWM account is already configured.",
-      "china_live_validation_required": "Direct mainland-China setup remains disabled until the separate live-read safety gate passes.",
+      "china_live_validation_required": "Mainland-China setup remains disabled until the separate live-read safety gate passes.",
       "invalid_flow_state": "This setup continuation is no longer valid. Start the flow again.",
+      "legacy_addon_entry": "The previous add-on based entry cannot be converted. Remove it and add GWM again to sign in directly.",
       "risk_control_required": "GWM requires a risk-control challenge. Complete it in the official app before trying again."
     }
   },
@@ -132,7 +91,7 @@
     "step": {
       "init": {
         "title": "GWM options",
-        "description": "Choose the direct-cloud polling interval and explicit feature opt-ins. Commands and charging remain unavailable until their later implementation checkpoints.",
+        "description": "Choose the cloud polling interval and explicit feature opt-ins.",
         "data": {
           "poll_interval_seconds": "Polling interval",
           "enable_remote_commands": "Enable remote commands",
@@ -142,7 +101,7 @@
         },
         "data_description": {
           "poll_interval_seconds": "Seconds between account-level cloud polls (30-3600).",
-          "enable_remote_commands": "Explicit opt-in; only command families whose integration-only migration checkpoints have passed are enabled.",
+          "enable_remote_commands": "Explicit opt-in for supported remote command controls.",
           "enable_charging_control": "Independent explicit opt-in for charging schedules.",
           "security_pin": "Required for remote commands outside mainland China and redacted from diagnostics.",
           "log_level": "Integration-specific diagnostic verbosity."
@@ -153,33 +112,24 @@
       "security_pin_required": "A vehicle security PIN is required when remote commands are enabled for this region."
     },
     "abort": {
-      "addon_options_managed": "Companion add-on options are still managed from the add-on configuration."
+      "legacy_addon_entry": "The previous add-on based entry cannot be configured. Remove it and add GWM again."
     }
   },
   "exceptions": {
-    "addon_auth_failed": {
-      "message": "The GWM add-on rejected the stored API token."
+    "cloud_auth_failed": {
+      "message": "GWM rejected the stored cloud authentication. Reauthenticate the integration."
     },
-    "addon_request_failed": {
-      "message": "The GWM add-on could not complete the request."
-    },
-    "addon_unavailable": {
-      "message": "The GWM add-on is not reachable."
+    "cloud_request_failed": {
+      "message": "The GWM cloud could not complete the request."
     },
     "remote_command_unavailable": {
-      "message": "Remote commands are unavailable. Enable remote commands in the add-on and configure a security PIN where required."
+      "message": "Remote commands are unavailable. Enable them in the integration options and configure a security PIN where required."
     },
     "charging_control_unavailable": {
-      "message": "Charging control is unavailable. Enable charging control in the add-on and restart it."
+      "message": "Charging control is unavailable. Enable it in the integration options."
     },
     "invalid_climate_run_time": {
       "message": "Climate run time must be a whole number from 5 to 30 minutes."
-    }
-  },
-  "issues": {
-    "addon_auth_failed": {
-      "title": "GWM add-on authentication failed",
-      "description": "The integration can reach the GWM add-on, but the add-on rejected the stored API token. Restart the add-on first so Supervisor can rediscover it. For development or non-Supervisor installs, use Reconfigure and enter the current add-on API token."
     }
   },
   "entity": {
@@ -315,7 +265,7 @@
   "services": {
     "set_charging_plan": {
       "name": "Set charging plan",
-      "description": "Set the vehicle's charging schedule. The car charges only inside the window; a window that starts in the future pauses charging until then. Requires enable_charging_control in the add-on.",
+      "description": "Set the vehicle's charging schedule. The car charges only inside the window; a window that starts in the future pauses charging until then. Requires charging control in the integration options.",
       "fields": {
         "vin": { "name": "VIN", "description": "The vehicle VIN as shown on the device (the readable serial, e.g. LGWTEST00XX000001)." },
         "start_time": { "name": "Start time", "description": "When charging may start. Set a future time to pause charging until then." },

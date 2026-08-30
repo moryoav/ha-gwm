@@ -31,14 +31,13 @@ body:
     attributes:
       label: Area of the project
       options:
-        - Add-on service
-        - GWM API client
+        - GWM client library
         - Custom integration
         - Config flow or setup
         - Entities or device model
         - Diagnostics or repairs
         - Remote commands
-        - Add-on packaging or images
+        - Integration packaging or dependencies
         - Documentation
         - Not sure
     validations:
@@ -61,7 +60,7 @@ body:
     id: safety
     attributes:
       label: Security, privacy, and vehicle-safety considerations
-      description: Note any impact on authentication, token storage, diagnostics, vehicle location, remote commands, or add-on networking.
+      description: Note any impact on authentication, private state, diagnostics, vehicle location, dependencies, or remote commands.
 
   - type: checkboxes
     id: checks
@@ -70,5 +69,5 @@ body:
       options:
         - label: I checked the existing issues for a similar request.
           required: true
-        - label: This request does not include GWM credentials, add-on API tokens, refresh tokens, security PINs, VINs, exact vehicle locations, private URLs, or personal Home Assistant configuration.
+        - label: This request does not include GWM credentials, access or refresh tokens, security PINs, VINs, exact vehicle locations, private URLs, or personal Home Assistant configuration.
           required: true

@@ -1,4 +1,4 @@
-"""Private, account-bound direct-cloud state and command journal storage."""
+"""Private, account-bound GWM cloud state and command journal storage."""
 
 from __future__ import annotations
 
@@ -23,8 +23,8 @@ from gwm_client import (
 
 from .cloud_auth import (
     CloudAuthState,
-    DirectCloudCredentials,
-    direct_unique_id,
+    GwmCloudCredentials,
+    cloud_unique_id,
 )
 from .const import (
     CONF_ACCOUNT,
@@ -60,7 +60,7 @@ _LEGACY_DIRECT_CONTEXT_DOMAIN = b"gwm-ora-direct-auth-context-v1\0"
 
 
 @dataclass(frozen=True, slots=True, repr=False)
-class DirectCommandJournalEntry:
+class GwmCommandJournalEntry:
     """One accepted cloud command retained for restart reconciliation."""
 
     journal_id: str
@@ -96,7 +96,7 @@ class DirectCommandJournalEntry:
 
 
 @dataclass(frozen=True, slots=True, repr=False)
-class DirectOwnedChargingPlan:
+class GwmOwnedChargingPlan:
     """The exact charging plan written by this integration for one vehicle."""
 
     vehicle_id: str = field(repr=False)
@@ -123,16 +123,16 @@ class DirectOwnedChargingPlan:
 
 
 @dataclass(frozen=True, slots=True, repr=False)
-class _DirectCloudRecord:
+class _GwmCloudRecord:
     region: str
     account_binding: str = field(repr=False)
     context_binding: str = field(repr=False)
     auth_state: CloudAuthState | None = field(default=None, repr=False)
-    commands: tuple[DirectCommandJournalEntry, ...] = field(
+    commands: tuple[GwmCommandJournalEntry, ...] = field(
         default=(),
         repr=False,
     )
-    charging_plans: tuple[DirectOwnedChargingPlan, ...] = field(
+    charging_plans: tuple[GwmOwnedChargingPlan, ...] = field(
         default=(),
         repr=False,
     )
@@ -146,12 +146,12 @@ class _DirectCloudRecord:
             or _HASH.fullmatch(self.context_binding) is None
             or not isinstance(self.commands, tuple)
             or len(self.commands) > _MAX_COMMANDS
-            or any(type(command) is not DirectCommandJournalEntry for command in self.commands)
+            or any(type(command) is not GwmCommandJournalEntry for command in self.commands)
             or len({command.journal_id for command in self.commands}) != len(self.commands)
             or not isinstance(self.charging_plans, tuple)
             or len(self.charging_plans) > _MAX_CHARGING_PLANS
             or any(
-                type(plan) is not DirectOwnedChargingPlan for plan in self.charging_plans
+                type(plan) is not GwmOwnedChargingPlan for plan in self.charging_plans
             )
             or len({plan.vehicle_id.casefold() for plan in self.charging_plans})
             != len(self.charging_plans)
@@ -161,7 +161,7 @@ class _DirectCloudRecord:
             _validate_regional_state(self.region, self.account_binding, self.auth_state)
 
 
-class DirectCloudStateStore:
+class GwmCloudStateStore:
     """Serialize one direct account's auth state and future command journal."""
 
     def __init__(self, hass: HomeAssistant, unique_id: str) -> None:
@@ -180,10 +180,10 @@ class DirectCloudStateStore:
         self._lock = asyncio.Lock()
         self._loaded = False
         self._invalid_loaded_data = False
-        self._record: _DirectCloudRecord | None = None
+        self._record: _GwmCloudRecord | None = None
 
     def __repr__(self) -> str:
-        return "DirectCloudStateStore()"
+        return "GwmCloudStateStore()"
 
     async def async_load_auth_state(
         self,
@@ -202,7 +202,7 @@ class DirectCloudStateStore:
 
     async def async_save_auth_state(
         self,
-        credentials: DirectCloudCredentials,
+        credentials: GwmCloudCredentials,
         auth_state: CloudAuthState,
     ) -> None:
         """Atomically publish a complete or recoverable partial state revision."""
@@ -265,7 +265,7 @@ class DirectCloudStateStore:
     async def async_get_command_journal(
         self,
         entry_data: dict[str, object],
-    ) -> tuple[DirectCommandJournalEntry, ...]:
+    ) -> tuple[GwmCommandJournalEntry, ...]:
         """Return the bounded same-account journal after restart."""
 
         credentials = _credentials_from_entry(entry_data)
@@ -279,18 +279,18 @@ class DirectCloudStateStore:
 
     async def async_record_accepted_command(
         self,
-        credentials: DirectCloudCredentials,
+        credentials: GwmCloudCredentials,
         *,
         vehicle_id: str,
         command_name: str,
         cloud_command_id: str,
         accepted_at: datetime,
-    ) -> DirectCommandJournalEntry:
+    ) -> GwmCommandJournalEntry:
         """Persist an accepted cloud identifier before future result polling."""
 
         _validate_credentials_for_store(self.unique_id, credentials)
         accepted_at = _normalized_datetime(accepted_at)
-        entry = DirectCommandJournalEntry(
+        entry = GwmCommandJournalEntry(
             journal_id=secrets.token_hex(16),
             vehicle_id=vehicle_id,
             command_name=command_name,
@@ -320,12 +320,12 @@ class DirectCloudStateStore:
 
     async def async_update_command(
         self,
-        credentials: DirectCloudCredentials,
+        credentials: GwmCloudCredentials,
         journal_id: str,
         *,
         state: str,
         updated_at: datetime,
-    ) -> DirectCommandJournalEntry:
+    ) -> GwmCommandJournalEntry:
         """Persist one future polling transition under the same account lock."""
 
         _validate_credentials_for_store(self.unique_id, credentials)
@@ -345,7 +345,7 @@ class DirectCloudStateStore:
                     or updated_at < current.updated_at
                 ):
                     raise ValueError("command_journal_invalid")
-                updated = DirectCommandJournalEntry(
+                updated = GwmCommandJournalEntry(
                     journal_id=current.journal_id,
                     vehicle_id=current.vehicle_id,
                     command_name=current.command_name,
@@ -369,7 +369,7 @@ class DirectCloudStateStore:
     async def async_get_owned_charging_plans(
         self,
         entry_data: dict[str, object],
-    ) -> tuple[DirectOwnedChargingPlan, ...]:
+    ) -> tuple[GwmOwnedChargingPlan, ...]:
         """Return exact same-account charging plans owned by the integration."""
 
         credentials = _credentials_from_entry(entry_data)
@@ -383,13 +383,13 @@ class DirectCloudStateStore:
 
     async def async_set_owned_charging_plan(
         self,
-        credentials: DirectCloudCredentials,
-        plan: DirectOwnedChargingPlan,
+        credentials: GwmCloudCredentials,
+        plan: GwmOwnedChargingPlan,
     ) -> None:
         """Atomically remember one exact plan after GWM accepts the write."""
 
         _validate_credentials_for_store(self.unique_id, credentials)
-        if type(plan) is not DirectOwnedChargingPlan:
+        if type(plan) is not GwmOwnedChargingPlan:
             raise ValueError("owned_charging_plan_invalid")
         async with self._lock:
             await self._async_ensure_loaded()
@@ -412,7 +412,7 @@ class DirectCloudStateStore:
 
     async def async_remove_owned_charging_plan(
         self,
-        credentials: DirectCloudCredentials,
+        credentials: GwmCloudCredentials,
         vehicle_id: str,
     ) -> None:
         """Forget one owned plan without touching any vehicle-side schedule."""
@@ -460,13 +460,13 @@ class DirectCloudStateStore:
             self._invalid_loaded_data = True
         self._loaded = True
 
-    def _record_matches(self, credentials: DirectCloudCredentials) -> bool:
+    def _record_matches(self, credentials: GwmCloudCredentials) -> bool:
         record = self._record
         return record is not None and (
             record.region == credentials.region
             and record.account_binding == credentials.account_binding
-            and record.context_binding == direct_authentication_context_binding(credentials)
-            and direct_unique_id(credentials) == self.unique_id
+            and record.context_binding == cloud_authentication_context_binding(credentials)
+            and cloud_unique_id(credentials) == self.unique_id
             and (
                 record.auth_state is None
                 or _auth_state_matches_credentials(record.auth_state, credentials)
@@ -475,7 +475,7 @@ class DirectCloudStateStore:
 
     async def _async_replace_for_context(
         self,
-        credentials: DirectCloudCredentials,
+        credentials: GwmCloudCredentials,
         *,
         auth_state: CloudAuthState | None,
     ) -> None:
@@ -488,30 +488,30 @@ class DirectCloudStateStore:
             )
         )
 
-    async def _async_save(self, record: _DirectCloudRecord) -> None:
+    async def _async_save(self, record: _GwmCloudRecord) -> None:
         await self._store.async_save(_encode_record(record))
         self._record = record
         self._invalid_loaded_data = False
 
 
-def direct_cloud_state_store(
+def cloud_state_store(
     hass: HomeAssistant,
     unique_id: str,
-) -> DirectCloudStateStore:
+) -> GwmCloudStateStore:
     """Return the one serialized state owner for a direct unique ID."""
 
     stores = hass.data.setdefault(_STORAGE_CACHE_KEY, {})
     if not isinstance(stores, dict):
         raise ValueError("direct_cloud_store_invalid")
     existing = stores.get(unique_id)
-    if isinstance(existing, DirectCloudStateStore):
+    if isinstance(existing, GwmCloudStateStore):
         return existing
-    store = DirectCloudStateStore(hass, unique_id)
+    store = GwmCloudStateStore(hass, unique_id)
     stores[unique_id] = store
     return store
 
 
-async def async_remove_direct_cloud_state(
+async def async_remove_cloud_state(
     hass: HomeAssistant,
     unique_id: str | None,
 ) -> None:
@@ -525,19 +525,19 @@ async def async_remove_direct_cloud_state(
         if isinstance(stores, dict)
         else None
     )
-    if not isinstance(store, DirectCloudStateStore):
-        store = DirectCloudStateStore(hass, unique_id)
+    if not isinstance(store, GwmCloudStateStore):
+        store = GwmCloudStateStore(hass, unique_id)
     await store.async_remove()
     if isinstance(stores, dict) and stores.get(unique_id) is store:
         stores.pop(unique_id, None)
 
 
-def direct_authentication_context_binding(
-    credentials: DirectCloudCredentials,
+def cloud_authentication_context_binding(
+    credentials: GwmCloudCredentials,
 ) -> str:
     """Bind durable state to region, country, account, and password."""
 
-    if type(credentials) is not DirectCloudCredentials:
+    if type(credentials) is not GwmCloudCredentials:
         raise ValueError("credentials_invalid")
     digest = hashlib.sha256()
     digest.update(_LEGACY_DIRECT_CONTEXT_DOMAIN)
@@ -553,10 +553,10 @@ def direct_authentication_context_binding(
     return digest.hexdigest()
 
 
-def _credentials_from_entry(entry_data: dict[str, object]) -> DirectCloudCredentials:
+def _credentials_from_entry(entry_data: dict[str, object]) -> GwmCloudCredentials:
     if not isinstance(entry_data, dict):
         raise ValueError("credentials_invalid")
-    return DirectCloudCredentials(
+    return GwmCloudCredentials(
         region=str(entry_data.get(CONF_REGION, "")),
         country=str(entry_data.get(CONF_COUNTRY, "")),
         account=str(entry_data.get(CONF_ACCOUNT, "")),
@@ -572,7 +572,7 @@ def _credentials_from_entry(entry_data: dict[str, object]) -> DirectCloudCredent
 def credentials_for_auth_state(
     entry_data: dict[str, object],
     auth_state: CloudAuthState,
-) -> DirectCloudCredentials:
+) -> GwmCloudCredentials:
     """Rebuild normalized credentials with the persisted device identity."""
 
     if not isinstance(
@@ -581,7 +581,7 @@ def credentials_for_auth_state(
     ):
         raise ValueError("auth_state_invalid")
     base = _credentials_from_entry(entry_data)
-    return DirectCloudCredentials(
+    return GwmCloudCredentials(
         region=base.region,
         country=base.country,
         account=base.account,
@@ -591,16 +591,16 @@ def credentials_for_auth_state(
 
 
 def _record_for_credentials(
-    credentials: DirectCloudCredentials,
+    credentials: GwmCloudCredentials,
     *,
     auth_state: CloudAuthState | None,
-    commands: tuple[DirectCommandJournalEntry, ...],
-    charging_plans: tuple[DirectOwnedChargingPlan, ...],
-) -> _DirectCloudRecord:
-    return _DirectCloudRecord(
+    commands: tuple[GwmCommandJournalEntry, ...],
+    charging_plans: tuple[GwmOwnedChargingPlan, ...],
+) -> _GwmCloudRecord:
+    return _GwmCloudRecord(
         region=credentials.region,
         account_binding=credentials.account_binding,
-        context_binding=direct_authentication_context_binding(credentials),
+        context_binding=cloud_authentication_context_binding(credentials),
         auth_state=auth_state,
         commands=commands,
         charging_plans=charging_plans,
@@ -609,9 +609,9 @@ def _record_for_credentials(
 
 def _validate_credentials_for_store(
     unique_id: str,
-    credentials: DirectCloudCredentials,
+    credentials: GwmCloudCredentials,
 ) -> None:
-    if type(credentials) is not DirectCloudCredentials or direct_unique_id(credentials) != unique_id:
+    if type(credentials) is not GwmCloudCredentials or cloud_unique_id(credentials) != unique_id:
         raise ValueError("credentials_invalid")
 
 
@@ -620,7 +620,7 @@ def _validate_regional_state(
     account_binding: str,
     state: CloudAuthState,
     *,
-    credentials: DirectCloudCredentials | None = None,
+    credentials: GwmCloudCredentials | None = None,
 ) -> None:
     expected_type = {
         REGION_EU: EuAuthState,
@@ -636,10 +636,10 @@ def _validate_regional_state(
 
 def _auth_state_matches_credentials(
     state: CloudAuthState,
-    credentials: DirectCloudCredentials,
+    credentials: GwmCloudCredentials,
 ) -> bool:
     try:
-        state_credentials = DirectCloudCredentials(
+        state_credentials = GwmCloudCredentials(
             region=credentials.region,
             country=credentials.country,
             account=credentials.account,
@@ -657,7 +657,7 @@ def _auth_state_matches_credentials(
     return True
 
 
-def _encode_record(record: _DirectCloudRecord) -> dict[str, Any]:
+def _encode_record(record: _GwmCloudRecord) -> dict[str, Any]:
     return {
         "region": record.region,
         "account_binding": record.account_binding,
@@ -672,7 +672,7 @@ def _encode_record(record: _DirectCloudRecord) -> dict[str, Any]:
     }
 
 
-def _decode_record(data: object) -> _DirectCloudRecord:
+def _decode_record(data: object) -> _GwmCloudRecord:
     if not isinstance(data, dict):
         raise ValueError("direct_cloud_state_invalid")
     old_keys = {"region", "account_binding", "context_binding", "auth_state", "commands"}
@@ -689,7 +689,7 @@ def _decode_record(data: object) -> _DirectCloudRecord:
         raise ValueError("direct_cloud_state_invalid")
     auth_data = value["auth_state"]
     region = _required_text(value["region"], 8)
-    return _DirectCloudRecord(
+    return _GwmCloudRecord(
         region=region,
         account_binding=_required_text(value["account_binding"], 64),
         context_binding=_required_text(value["context_binding"], 64),
@@ -874,7 +874,7 @@ def _decode_auth_state(region: str, data: object) -> CloudAuthState:
     raise ValueError("auth_state_invalid")
 
 
-def _encode_command(command: DirectCommandJournalEntry) -> dict[str, Any]:
+def _encode_command(command: GwmCommandJournalEntry) -> dict[str, Any]:
     return {
         "journal_id": command.journal_id,
         "vehicle_id": command.vehicle_id,
@@ -886,7 +886,7 @@ def _encode_command(command: DirectCommandJournalEntry) -> dict[str, Any]:
     }
 
 
-def _decode_command(data: object) -> DirectCommandJournalEntry:
+def _decode_command(data: object) -> GwmCommandJournalEntry:
     value = _exact_dict(
         data,
         {
@@ -899,7 +899,7 @@ def _decode_command(data: object) -> DirectCommandJournalEntry:
             "updated_at",
         },
     )
-    return DirectCommandJournalEntry(
+    return GwmCommandJournalEntry(
         journal_id=_required_text(value["journal_id"], 32),
         vehicle_id=_required_text(value["vehicle_id"], _MAX_COMMAND_IDENTIFIER_LENGTH),
         command_name=_required_text(value["command_name"], _MAX_COMMAND_NAME_LENGTH),
@@ -913,7 +913,7 @@ def _decode_command(data: object) -> DirectCommandJournalEntry:
     )
 
 
-def _encode_owned_charging_plan(plan: DirectOwnedChargingPlan) -> dict[str, Any]:
+def _encode_owned_charging_plan(plan: GwmOwnedChargingPlan) -> dict[str, Any]:
     return {
         "vehicle_id": plan.vehicle_id,
         "plan_id": plan.plan_id,
@@ -924,7 +924,7 @@ def _encode_owned_charging_plan(plan: DirectOwnedChargingPlan) -> dict[str, Any]
     }
 
 
-def _decode_owned_charging_plan(data: object) -> DirectOwnedChargingPlan:
+def _decode_owned_charging_plan(data: object) -> GwmOwnedChargingPlan:
     value = _exact_dict(
         data,
         {"vehicle_id", "plan_id", "plan_type", "start_time", "end_time", "weeks"},
@@ -932,7 +932,7 @@ def _decode_owned_charging_plan(data: object) -> DirectOwnedChargingPlan:
     plan_id = value["plan_id"]
     if plan_id is not None and not _int64(plan_id):
         raise ValueError("owned_charging_plan_invalid")
-    return DirectOwnedChargingPlan(
+    return GwmOwnedChargingPlan(
         vehicle_id=_required_text(value["vehicle_id"], _MAX_COMMAND_IDENTIFIER_LENGTH),
         plan_id=plan_id,
         plan_type=_required_int32(value["plan_type"]),
@@ -1046,11 +1046,11 @@ def _normalized_datetime(value: datetime) -> datetime:
 
 
 __all__ = [
-    "DirectCloudStateStore",
-    "DirectCommandJournalEntry",
-    "DirectOwnedChargingPlan",
-    "async_remove_direct_cloud_state",
+    "GwmCloudStateStore",
+    "GwmCommandJournalEntry",
+    "GwmOwnedChargingPlan",
+    "async_remove_cloud_state",
     "credentials_for_auth_state",
-    "direct_authentication_context_binding",
-    "direct_cloud_state_store",
+    "cloud_authentication_context_binding",
+    "cloud_state_store",
 ]

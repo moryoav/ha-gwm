@@ -8,7 +8,9 @@ rules:
   common-modules: done
   config-flow-test-coverage: done
   config-flow: done
-  dependency-transparency: done
+  dependency-transparency:
+    status: todo
+    comment: The live-testing branch uses an immutable source archive. A production release requires the client on PyPI through public CI and an exact manifest version pin.
   docs-actions: done
   docs-high-level-description: done
   docs-installation-instructions: done

@@ -7,7 +7,6 @@ from datetime import timedelta
 
 import voluptuous as vol
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import CONF_HOST, CONF_PORT
 from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.exceptions import (
     ConfigEntryAuthFailed,
@@ -15,8 +14,6 @@ from homeassistant.exceptions import (
     ServiceValidationError,
 )
 from homeassistant.helpers import config_validation as cv
-from homeassistant.helpers import issue_registry as ir
-from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.util import dt as dt_util
 
 from gwm_client import (
@@ -28,21 +25,19 @@ from gwm_client import (
     RussiaAuthenticated,
 )
 
-from .api import GwmOraApiAuthError, GwmOraApiClient, GwmOraApiError, GwmOraApiUnavailable
-from .cloud_auth import DirectCloudAuthenticator
-from .cloud_commands import DirectClimateCommandApi
+from .cloud_auth import GwmCloudAuthenticator
+from .cloud_commands import GwmCommandApi
 from .cloud_runtime import (
-    DirectCloudBootstrap,
-    DirectCloudReadClient,
-    DirectReadOnlyCommandApi,
-    consume_direct_cloud_bootstrap,
-    stage_direct_cloud_bootstrap,
+    GwmCloudBootstrap,
+    GwmCloudClient,
+    consume_cloud_bootstrap,
+    stage_cloud_bootstrap,
 )
 from .cloud_storage import (
-    DirectCloudStateStore,
-    async_remove_direct_cloud_state,
+    GwmCloudStateStore,
+    async_remove_cloud_state,
+    cloud_state_store,
     credentials_for_auth_state,
-    direct_cloud_state_store,
 )
 from .const import (
     ATTR_END_TIME,
@@ -53,32 +48,29 @@ from .const import (
     CONF_ENABLE_REMOTE_COMMANDS,
     CONF_POLL_INTERVAL_SECONDS,
     CONF_SECURITY_PIN,
-    CONF_TOKEN,
     CONNECTION_TYPE_CLOUD,
-    DEFAULT_NAME,
     DEFAULT_POLL_INTERVAL_SECONDS,
     DOMAIN,
-    LEGACY_DEFAULT_NAME,
     MIN_CHARGE_WINDOW_MINUTES,
     PLATFORMS,
     SERVICE_CLEAR_CHARGING_PLAN,
     SERVICE_SET_CHARGING_PLAN,
 )
-from .coordinator import GwmOraDataUpdateCoordinator
-from .entity import async_call_addon_api
+from .coordinator import GwmDataUpdateCoordinator
+from .entity import async_call_gwm_api
 
 
 @dataclass(slots=True)
-class GwmOraRuntimeData:
+class GwmRuntimeData:
     """Runtime data for a GWM config entry."""
 
-    api: GwmOraApiClient | DirectReadOnlyCommandApi | DirectClimateCommandApi
-    coordinator: GwmOraDataUpdateCoordinator
-    cloud: DirectCloudReadClient | None = None
-    state_store: DirectCloudStateStore | None = None
+    api: GwmCommandApi
+    coordinator: GwmDataUpdateCoordinator
+    cloud: GwmCloudClient
+    state_store: GwmCloudStateStore
 
 
-GwmOraConfigEntry = ConfigEntry[GwmOraRuntimeData]
+GwmConfigEntry = ConfigEntry[GwmRuntimeData]
 
 
 _SET_CHARGING_PLAN_SCHEMA = vol.Schema(
@@ -113,15 +105,10 @@ def _async_register_services(hass: HomeAssistant) -> None:
 
     def _resolve_for_vin(
         vin: str,
-    ) -> tuple[
-        GwmOraApiClient | DirectReadOnlyCommandApi | DirectClimateCommandApi,
-        GwmOraDataUpdateCoordinator,
-        str,
-    ]:
+    ) -> tuple[GwmCommandApi, GwmDataUpdateCoordinator, str]:
         """Resolve a user-supplied VIN to its (api, internal VIN).
 
-        Accepts either the display VIN (device serial) or the encoded VIN and
-        returns the encoded ``vin`` the add-on API expects.
+        Accepts either the display VIN (device serial) or the encoded VIN.
         """
         identifier = vin.strip()
         fallback = None
@@ -133,17 +120,8 @@ def _async_register_services(hass: HomeAssistant) -> None:
                     entry.runtime_data.coordinator,
                     vehicle["vin"],
                 )
-                capabilities = vehicle.get("capabilities")
-                charging_available = (
-                    capabilities.get("charging_control") is True
-                    if isinstance(capabilities, dict)
-                    and "charging_control" in capabilities
-                    else bool(
-                        (entry.runtime_data.coordinator.data or {}).get(
-                            "charging_control_enabled"
-                        )
-                    )
-                )
+                capabilities = vehicle.get("capabilities") or {}
+                charging_available = capabilities.get("charging_control") is True
                 if charging_available:
                     return resolved
                 if fallback is None:
@@ -157,7 +135,7 @@ def _async_register_services(hass: HomeAssistant) -> None:
         start_ms, end_ms = _charging_window_epoch_ms(
             call.data[ATTR_START_TIME], call.data[ATTR_END_TIME]
         )
-        await async_call_addon_api(
+        await async_call_gwm_api(
             api.async_set_charging_plan(
                 resolved_vin,
                 enable=True,
@@ -171,7 +149,7 @@ def _async_register_services(hass: HomeAssistant) -> None:
 
     async def _clear_charging_plan(call: ServiceCall) -> None:
         api, coordinator, resolved_vin = _resolve_for_vin(call.data[ATTR_VIN])
-        await async_call_addon_api(
+        await async_call_gwm_api(
             api.async_set_charging_plan(resolved_vin, enable=False),
             forbidden_translation_key="charging_control_unavailable",
         )
@@ -185,87 +163,53 @@ def _async_register_services(hass: HomeAssistant) -> None:
     )
 
 
-async def async_setup_entry(hass: HomeAssistant, entry: GwmOraConfigEntry) -> bool:
+async def async_setup_entry(hass: HomeAssistant, entry: GwmConfigEntry) -> bool:
     """Set up GWM from a config entry."""
-    if entry.data.get(CONF_CONNECTION_TYPE) == CONNECTION_TYPE_CLOUD:
-        return await _async_setup_direct_entry(hass, entry)
-
-    if entry.title == LEGACY_DEFAULT_NAME:
-        hass.config_entries.async_update_entry(entry, title=DEFAULT_NAME)
-
-    session = async_get_clientsession(hass)
-    api = GwmOraApiClient(
-        session,
-        entry.data[CONF_HOST],
-        entry.data[CONF_PORT],
-        entry.data[CONF_TOKEN],
-    )
-    coordinator = GwmOraDataUpdateCoordinator(hass, api, config_entry=entry)
-
-    try:
-        await coordinator.async_config_entry_first_refresh()
-    except (ConfigEntryAuthFailed, GwmOraApiAuthError):
-        ir.async_create_issue(
-            hass,
-            DOMAIN,
-            "addon_auth_failed",
-            is_fixable=False,
-            severity=ir.IssueSeverity.ERROR,
-            translation_key="addon_auth_failed",
+    if entry.data.get(CONF_CONNECTION_TYPE) != CONNECTION_TYPE_CLOUD:
+        raise ConfigEntryAuthFailed(
+            "The retired add-on entry cannot be converted; remove it and add GWM again"
         )
-        raise
-    except (GwmOraApiUnavailable, GwmOraApiError) as err:
-        raise ConfigEntryNotReady(str(err)) from err
+    return await _async_setup_cloud_entry(hass, entry)
 
-    ir.async_delete_issue(hass, DOMAIN, "addon_auth_failed")
-    entry.runtime_data = GwmOraRuntimeData(api=api, coordinator=coordinator)
-    _async_register_services(hass)
-    await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+
+async def async_unload_entry(hass: HomeAssistant, entry: GwmConfigEntry) -> bool:
+    """Unload a config entry."""
+    unloaded = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+    if not unloaded:
+        return False
+    await entry.runtime_data.coordinator.async_cancel_command_tasks()
+    cloud = entry.runtime_data.cloud
+    if (
+        (bootstrap := cloud.reusable_bootstrap) is not None
+        and entry.unique_id is not None
+    ):
+        stage_cloud_bootstrap(hass, entry.unique_id, bootstrap)
+    await cloud.aclose()
     return True
 
 
-async def async_unload_entry(hass: HomeAssistant, entry: GwmOraConfigEntry) -> bool:
-    """Unload a config entry."""
-    if entry.data.get(CONF_CONNECTION_TYPE) == CONNECTION_TYPE_CLOUD:
-        unloaded = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
-        if not unloaded:
-            return False
-        await entry.runtime_data.coordinator.async_cancel_command_tasks()
-        cloud = entry.runtime_data.cloud
-        if cloud is not None:
-            if (
-                (bootstrap := cloud.reusable_bootstrap) is not None
-                and entry.unique_id is not None
-            ):
-                stage_direct_cloud_bootstrap(hass, entry.unique_id, bootstrap)
-            await cloud.aclose()
-        return True
-    await entry.runtime_data.coordinator.async_cancel_command_tasks()
-    return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
-
-
-async def _async_setup_direct_entry(
+async def _async_setup_cloud_entry(
     hass: HomeAssistant,
-    entry: GwmOraConfigEntry,
+    entry: GwmConfigEntry,
 ) -> bool:
-    """Set up one restart-safe direct read runtime."""
+    """Set up one restart-safe GWM cloud runtime."""
 
     if entry.unique_id is None:
-        raise ConfigEntryAuthFailed("Direct GWM cloud account identity is missing")
+        raise ConfigEntryAuthFailed("GWM cloud account identity is missing")
     try:
-        state_store = direct_cloud_state_store(hass, entry.unique_id)
+        state_store = cloud_state_store(hass, entry.unique_id)
     except (TypeError, ValueError) as err:
         raise ConfigEntryAuthFailed(
-            "Direct GWM cloud account identity is invalid"
+            "GWM cloud account identity is invalid"
         ) from err
-    bootstrap = await _async_load_direct_bootstrap(hass, entry, state_store)
+    bootstrap = await _async_load_cloud_bootstrap(hass, entry, state_store)
 
     try:
         command_enabled = entry.options.get(CONF_ENABLE_REMOTE_COMMANDS) is True
         charging_enabled = entry.options.get(CONF_ENABLE_CHARGING_CONTROL) is True
         security_pin = entry.options.get(CONF_SECURITY_PIN)
         climate_enabled = command_enabled and isinstance(security_pin, str) and bool(security_pin.strip())
-        cloud = DirectCloudReadClient.from_entry_data(
+        cloud = GwmCloudClient.from_entry_data(
             dict(entry.data),
             entry.unique_id,
             bootstrap,
@@ -276,12 +220,12 @@ async def _async_setup_direct_entry(
         )
     except (GwmConfigurationError, TypeError, ValueError) as err:
         raise ConfigEntryAuthFailed(
-            "Direct GWM cloud authentication handoff is invalid"
+            "GWM cloud authentication handoff is invalid"
         ) from err
 
     try:
         credentials = credentials_for_auth_state(dict(entry.data), bootstrap.state)
-        api = DirectClimateCommandApi(
+        api = GwmCommandApi(
             cloud,
             state_store,
             credentials,
@@ -291,12 +235,12 @@ async def _async_setup_direct_entry(
         )
     except (TypeError, ValueError) as err:
         await cloud.aclose()
-        raise ConfigEntryAuthFailed("Direct GWM command context is invalid") from err
-    coordinator = GwmOraDataUpdateCoordinator(
+        raise ConfigEntryAuthFailed("GWM command context is invalid") from err
+    coordinator = GwmDataUpdateCoordinator(
         hass,
         api,
         config_entry=entry,
-        direct_client=cloud,
+        cloud_client=cloud,
         update_interval_seconds=int(
             entry.options.get(
                 CONF_POLL_INTERVAL_SECONDS,
@@ -308,7 +252,7 @@ async def _async_setup_direct_entry(
         await coordinator.async_config_entry_first_refresh()
         for command in await api.async_restore(dict(entry.data)):
             coordinator.async_track_command(command)
-        entry.runtime_data = GwmOraRuntimeData(
+        entry.runtime_data = GwmRuntimeData(
             api=api,
             coordinator=coordinator,
             cloud=cloud,
@@ -322,27 +266,27 @@ async def _async_setup_direct_entry(
             (reusable := cloud.reusable_bootstrap) is not None
             and entry.unique_id is not None
         ):
-            stage_direct_cloud_bootstrap(hass, entry.unique_id, reusable)
+            stage_cloud_bootstrap(hass, entry.unique_id, reusable)
         await cloud.aclose()
         raise
     return True
 
 
-async def _async_load_direct_bootstrap(
+async def _async_load_cloud_bootstrap(
     hass: HomeAssistant,
-    entry: GwmOraConfigEntry,
-    state_store: DirectCloudStateStore,
-) -> DirectCloudBootstrap:
+    entry: GwmConfigEntry,
+    state_store: GwmCloudStateStore,
+) -> GwmCloudBootstrap:
     """Load or resume one account-bound session without a fresh login."""
 
-    bootstrap = consume_direct_cloud_bootstrap(hass, entry.unique_id)
+    bootstrap = consume_cloud_bootstrap(hass, entry.unique_id)
     if bootstrap is not None:
         try:
             credentials = credentials_for_auth_state(dict(entry.data), bootstrap.state)
             await state_store.async_save_auth_state(credentials, bootstrap.state)
         except (TypeError, ValueError) as err:
             raise ConfigEntryAuthFailed(
-                "Direct GWM cloud authentication handoff is invalid"
+                "GWM cloud authentication handoff is invalid"
             ) from err
         return bootstrap
 
@@ -350,22 +294,22 @@ async def _async_load_direct_bootstrap(
         auth_state = await state_store.async_load_auth_state(dict(entry.data))
         if auth_state is None:
             raise ConfigEntryAuthFailed(
-                "Direct GWM cloud authentication must be renewed"
+                "GWM cloud authentication must be renewed"
             )
         credentials = credentials_for_auth_state(dict(entry.data), auth_state)
     except ConfigEntryAuthFailed:
         raise
     except (TypeError, ValueError) as err:
         raise ConfigEntryAuthFailed(
-            "Direct GWM cloud authentication state is invalid"
+            "GWM cloud authentication state is invalid"
         ) from err
     except Exception as err:
         raise ConfigEntryNotReady(
-            "Direct GWM cloud private state is temporarily unavailable"
+            "GWM cloud private state is temporarily unavailable"
         ) from err
 
     try:
-        result = await DirectCloudAuthenticator().async_authenticate(
+        result = await GwmCloudAuthenticator().async_authenticate(
             credentials,
             state=auth_state,
             allow_session_reclaim=False,
@@ -377,9 +321,9 @@ async def _async_load_direct_bootstrap(
         ):
             await state_store.async_clear_auth_state(dict(entry.data))
             raise ConfigEntryAuthFailed(
-                "Direct GWM cloud authentication requires user confirmation"
+                "GWM cloud authentication requires user confirmation"
             )
-        bootstrap = DirectCloudBootstrap.from_authentication(credentials, result)
+        bootstrap = GwmCloudBootstrap.from_authentication(credentials, result)
         await state_store.async_save_auth_state(credentials, result.state)
         return bootstrap
     except ConfigEntryAuthFailed:
@@ -387,24 +331,24 @@ async def _async_load_direct_bootstrap(
     except GwmAuthenticationError as err:
         await state_store.async_clear_auth_state(dict(entry.data))
         raise ConfigEntryAuthFailed(
-            "Direct GWM cloud authentication was rejected"
+            "GWM cloud authentication was rejected"
         ) from err
     except GwmClientError as err:
         raise ConfigEntryNotReady(
-            f"Direct GWM cloud {err.category} during {err.operation}"
+            f"GWM cloud {err.category} during {err.operation}"
         ) from err
     except (TypeError, ValueError) as err:
         await state_store.async_clear_auth_state(dict(entry.data))
         raise ConfigEntryAuthFailed(
-            "Direct GWM cloud authentication state is invalid"
+            "GWM cloud authentication state is invalid"
         ) from err
 
 
 async def async_remove_entry(
     hass: HomeAssistant,
-    entry: GwmOraConfigEntry,
+    entry: GwmConfigEntry,
 ) -> None:
-    """Remove private durable state with a deleted direct config entry."""
+    """Remove private durable state with a deleted GWM config entry."""
 
     if entry.data.get(CONF_CONNECTION_TYPE) == CONNECTION_TYPE_CLOUD:
-        await async_remove_direct_cloud_state(hass, entry.unique_id)
+        await async_remove_cloud_state(hass, entry.unique_id)

@@ -1,4 +1,4 @@
-"""Durable direct-cloud state and restart-safe journal tests."""
+"""Durable GWM cloud state and restart-safe journal tests."""
 
 from __future__ import annotations
 
@@ -17,15 +17,15 @@ from homeassistant.core import HomeAssistant
 
 from custom_components.gwm_ora.cloud_auth import (
     CloudAuthState,
-    DirectCloudCredentials,
-    direct_entry_data,
-    direct_unique_id,
+    GwmCloudCredentials,
+    cloud_entry_data,
+    cloud_unique_id,
 )
 from custom_components.gwm_ora.cloud_storage import (
-    DirectOwnedChargingPlan,
-    async_remove_direct_cloud_state,
-    direct_authentication_context_binding,
-    direct_cloud_state_store,
+    GwmOwnedChargingPlan,
+    async_remove_cloud_state,
+    cloud_authentication_context_binding,
+    cloud_state_store,
 )
 from gwm_client import (
     AnzAuthState,
@@ -43,9 +43,9 @@ def _credentials(
     region: str = "eu",
     *,
     password: str | None = "private-password",
-) -> DirectCloudCredentials:
+) -> GwmCloudCredentials:
     countries = {"eu": "DE", "aus": "AU", "rus": "RU", "cn": "CN"}
-    return DirectCloudCredentials(
+    return GwmCloudCredentials(
         region,
         countries[region],
         "private-account",
@@ -54,7 +54,7 @@ def _credentials(
     )
 
 
-def _state(credentials: DirectCloudCredentials) -> CloudAuthState:
+def _state(credentials: GwmCloudCredentials) -> CloudAuthState:
     regional = credentials.client_credentials()
     if credentials.region == "eu":
         return replace(
@@ -105,17 +105,17 @@ async def test_regional_auth_state_survives_a_process_restart(
     region: str,
 ) -> None:
     credentials = _credentials(region)
-    unique_id = direct_unique_id(credentials)
+    unique_id = cloud_unique_id(credentials)
     first_hass = HomeAssistant(str(tmp_path))
-    first = direct_cloud_state_store(first_hass, unique_id)
+    first = cloud_state_store(first_hass, unique_id)
 
     await first.async_save_auth_state(credentials, _state(credentials))
 
     second_hass = HomeAssistant(str(tmp_path))
-    restored = await direct_cloud_state_store(
+    restored = await cloud_state_store(
         second_hass,
         unique_id,
-    ).async_load_auth_state(direct_entry_data(credentials))
+    ).async_load_auth_state(cloud_entry_data(credentials))
 
     assert restored == _state(credentials)
     assert "private" not in repr(restored)
@@ -129,21 +129,21 @@ async def test_regional_auth_state_survives_a_process_restart(
     "changed",
     [
         _credentials(password="replacement-password"),
-        DirectCloudCredentials(
+        GwmCloudCredentials(
             "eu",
             "FR",
             "private-account",
             "private-password",
             _DEVICE_ID,
         ),
-        DirectCloudCredentials(
+        GwmCloudCredentials(
             "eu",
             "DE",
             "replacement-account",
             "private-password",
             _DEVICE_ID,
         ),
-        DirectCloudCredentials(
+        GwmCloudCredentials(
             "aus",
             "AU",
             "private-account",
@@ -154,12 +154,12 @@ async def test_regional_auth_state_survives_a_process_restart(
 )
 async def test_account_context_change_atomically_retires_state_and_commands(
     tmp_path: Path,
-    changed: DirectCloudCredentials,
+    changed: GwmCloudCredentials,
 ) -> None:
     credentials = _credentials()
-    unique_id = direct_unique_id(credentials)
+    unique_id = cloud_unique_id(credentials)
     hass = HomeAssistant(str(tmp_path))
-    store = direct_cloud_state_store(hass, unique_id)
+    store = cloud_state_store(hass, unique_id)
     await store.async_save_auth_state(credentials, _state(credentials))
     await store.async_record_accepted_command(
         credentials,
@@ -170,7 +170,7 @@ async def test_account_context_change_atomically_retires_state_and_commands(
     )
     await store.async_set_owned_charging_plan(
         credentials,
-        DirectOwnedChargingPlan(
+        GwmOwnedChargingPlan(
             vehicle_id="LGWTEST0000000001",
             plan_id=42,
             plan_type=0,
@@ -179,12 +179,12 @@ async def test_account_context_change_atomically_retires_state_and_commands(
         ),
     )
 
-    assert direct_authentication_context_binding(changed) != (
-        direct_authentication_context_binding(credentials)
+    assert cloud_authentication_context_binding(changed) != (
+        cloud_authentication_context_binding(credentials)
     )
-    assert await store.async_load_auth_state(direct_entry_data(changed)) is None
-    assert await store.async_get_command_journal(direct_entry_data(changed)) == ()
-    assert await store.async_get_owned_charging_plans(direct_entry_data(changed)) == ()
+    assert await store.async_load_auth_state(cloud_entry_data(changed)) is None
+    assert await store.async_get_command_journal(cloud_entry_data(changed)) == ()
+    assert await store.async_get_owned_charging_plans(cloud_entry_data(changed)) == ()
 
     stored_text = next((tmp_path / ".storage").glob("gwm_ora.direct_cloud.*")).read_text()
     assert "private-eu-access" not in stored_text
@@ -200,9 +200,9 @@ async def test_accepted_commands_are_serialized_and_restart_safe(
     tmp_path: Path,
 ) -> None:
     credentials = _credentials("aus")
-    unique_id = direct_unique_id(credentials)
+    unique_id = cloud_unique_id(credentials)
     first_hass = HomeAssistant(str(tmp_path))
-    first = direct_cloud_state_store(first_hass, unique_id)
+    first = cloud_state_store(first_hass, unique_id)
     await first.async_save_auth_state(credentials, _state(credentials))
 
     accepted = await asyncio.gather(
@@ -222,8 +222,8 @@ async def test_accepted_commands_are_serialized_and_restart_safe(
     assert "private" not in repr(first)
 
     second_hass = HomeAssistant(str(tmp_path))
-    second = direct_cloud_state_store(second_hass, unique_id)
-    restored = await second.async_get_command_journal(direct_entry_data(credentials))
+    second = cloud_state_store(second_hass, unique_id)
+    restored = await second.async_get_command_journal(cloud_entry_data(credentials))
     assert len(restored) == 100
     assert {entry.cloud_command_id for entry in restored} <= {
         f"SYNTHETIC-CLOUD-{index}" for index in range(105)
@@ -252,10 +252,10 @@ async def test_accepted_commands_are_serialized_and_restart_safe(
         )
 
     third_hass = HomeAssistant(str(tmp_path))
-    after_update = await direct_cloud_state_store(
+    after_update = await cloud_state_store(
         third_hass,
         unique_id,
-    ).async_get_command_journal(direct_entry_data(credentials))
+    ).async_get_command_journal(cloud_entry_data(credentials))
     assert after_update[0].state == "completed"
 
 
@@ -264,11 +264,11 @@ async def test_owned_charging_plan_is_restart_safe_replaceable_and_removable(
     tmp_path: Path,
 ) -> None:
     credentials = _credentials()
-    unique_id = direct_unique_id(credentials)
+    unique_id = cloud_unique_id(credentials)
     first_hass = HomeAssistant(str(tmp_path))
-    first = direct_cloud_state_store(first_hass, unique_id)
+    first = cloud_state_store(first_hass, unique_id)
     await first.async_save_auth_state(credentials, _state(credentials))
-    initial = DirectOwnedChargingPlan(
+    initial = GwmOwnedChargingPlan(
         vehicle_id="LGWTEST0000000001",
         plan_id=None,
         plan_type=0,
@@ -279,19 +279,19 @@ async def test_owned_charging_plan_is_restart_safe_replaceable_and_removable(
     await first.async_set_owned_charging_plan(credentials, initial)
 
     second_hass = HomeAssistant(str(tmp_path))
-    second = direct_cloud_state_store(second_hass, unique_id)
+    second = cloud_state_store(second_hass, unique_id)
     assert await second.async_get_owned_charging_plans(
-        direct_entry_data(credentials)
+        cloud_entry_data(credentials)
     ) == (initial,)
     confirmed = replace(initial, plan_id=42)
     await second.async_set_owned_charging_plan(credentials, confirmed)
     assert await second.async_get_owned_charging_plans(
-        direct_entry_data(credentials)
+        cloud_entry_data(credentials)
     ) == (confirmed,)
 
     await second.async_remove_owned_charging_plan(credentials, initial.vehicle_id)
     assert await second.async_get_owned_charging_plans(
-        direct_entry_data(credentials)
+        cloud_entry_data(credentials)
     ) == ()
 
 
@@ -300,9 +300,9 @@ async def test_pre_task20_storage_without_charging_key_remains_loadable(
     tmp_path: Path,
 ) -> None:
     credentials = _credentials()
-    unique_id = direct_unique_id(credentials)
+    unique_id = cloud_unique_id(credentials)
     first_hass = HomeAssistant(str(tmp_path))
-    await direct_cloud_state_store(first_hass, unique_id).async_save_auth_state(
+    await cloud_state_store(first_hass, unique_id).async_save_auth_state(
         credentials,
         _state(credentials),
     )
@@ -312,12 +312,12 @@ async def test_pre_task20_storage_without_charging_key_remains_loadable(
     path.write_text(json.dumps(document))
 
     second_hass = HomeAssistant(str(tmp_path))
-    second = direct_cloud_state_store(second_hass, unique_id)
-    assert await second.async_load_auth_state(direct_entry_data(credentials)) == _state(
+    second = cloud_state_store(second_hass, unique_id)
+    assert await second.async_load_auth_state(cloud_entry_data(credentials)) == _state(
         credentials
     )
     assert await second.async_get_owned_charging_plans(
-        direct_entry_data(credentials)
+        cloud_entry_data(credentials)
     ) == ()
 
 
@@ -326,16 +326,16 @@ async def test_config_entry_removal_deletes_private_state(
     tmp_path: Path,
 ) -> None:
     credentials = _credentials("rus")
-    unique_id = direct_unique_id(credentials)
+    unique_id = cloud_unique_id(credentials)
     hass = HomeAssistant(str(tmp_path))
-    await direct_cloud_state_store(hass, unique_id).async_save_auth_state(
+    await cloud_state_store(hass, unique_id).async_save_auth_state(
         credentials,
         _state(credentials),
     )
     paths = list((tmp_path / ".storage").glob("gwm_ora.direct_cloud.*"))
     assert len(paths) == 1
 
-    await async_remove_direct_cloud_state(hass, unique_id)
+    await async_remove_cloud_state(hass, unique_id)
 
     assert not paths[0].exists()
 
@@ -345,9 +345,9 @@ async def test_semantically_invalid_storage_fails_closed_and_is_overwritten(
     tmp_path: Path,
 ) -> None:
     credentials = _credentials()
-    unique_id = direct_unique_id(credentials)
+    unique_id = cloud_unique_id(credentials)
     first_hass = HomeAssistant(str(tmp_path))
-    await direct_cloud_state_store(first_hass, unique_id).async_save_auth_state(
+    await cloud_state_store(first_hass, unique_id).async_save_auth_state(
         credentials,
         _state(credentials),
     )
@@ -357,10 +357,10 @@ async def test_semantically_invalid_storage_fails_closed_and_is_overwritten(
     path.write_text(json.dumps(document))
 
     second_hass = HomeAssistant(str(tmp_path))
-    restored = await direct_cloud_state_store(
+    restored = await cloud_state_store(
         second_hass,
         unique_id,
-    ).async_load_auth_state(direct_entry_data(credentials))
+    ).async_load_auth_state(cloud_entry_data(credentials))
 
     assert restored is None
     rewritten = path.read_text()

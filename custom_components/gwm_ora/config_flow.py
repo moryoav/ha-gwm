@@ -7,10 +7,7 @@ from typing import Any
 import voluptuous as vol
 from homeassistant import config_entries
 from homeassistant.config_entries import ConfigEntry, ConfigFlowResult
-from homeassistant.const import CONF_HOST, CONF_PORT
 from homeassistant.helpers import selector
-from homeassistant.helpers.aiohttp_client import async_get_clientsession
-from homeassistant.helpers.service_info.hassio import HassioServiceInfo
 
 from gwm_client import (
     AnzAuthenticated,
@@ -34,30 +31,28 @@ from gwm_client import (
     RussiaVerificationRequired,
 )
 
-from .api import GwmOraApiAuthError, GwmOraApiClient, GwmOraApiError, GwmOraApiUnavailable
 from .cloud_auth import (
     CloudAuthenticationResult,
     CloudAuthState,
-    DirectCloudAuthenticator,
-    DirectCloudCredentials,
-    direct_entry_data,
-    direct_entry_title,
-    direct_unique_id,
+    GwmCloudAuthenticator,
+    GwmCloudCredentials,
+    cloud_entry_data,
+    cloud_entry_title,
+    cloud_unique_id,
     generate_device_id,
 )
 from .cloud_runtime import (
-    DirectCloudBootstrap,
-    stage_direct_cloud_bootstrap,
+    GwmCloudBootstrap,
+    stage_cloud_bootstrap,
 )
 from .cloud_storage import (
-    async_remove_direct_cloud_state,
+    async_remove_cloud_state,
+    cloud_state_store,
     credentials_for_auth_state,
-    direct_cloud_state_store,
 )
 from .const import (
     CONF_ACCOUNT,
     CONF_ALLOW_SESSION_RECLAIM,
-    CONF_API_VERSION,
     CONF_CONNECTION_TYPE,
     CONF_COUNTRY,
     CONF_ENABLE_CHARGING_CONTROL,
@@ -67,16 +62,11 @@ from .const import (
     CONF_POLL_INTERVAL_SECONDS,
     CONF_REGION,
     CONF_SECURITY_PIN,
-    CONF_SLUG,
-    CONF_TOKEN,
     CONF_VERIFICATION_CODE,
     CONFIGURABLE_CLOUD_REGIONS,
-    CONNECTION_TYPE_ADDON,
     CONNECTION_TYPE_CLOUD,
     DEFAULT_LOG_LEVEL,
-    DEFAULT_NAME,
     DEFAULT_POLL_INTERVAL_SECONDS,
-    DEFAULT_PORT,
     DOMAIN,
     LOG_LEVELS,
     MAX_POLL_INTERVAL_SECONDS,
@@ -120,32 +110,6 @@ def _password_selector(*, autocomplete: str = "current-password") -> selector.Te
             autocomplete=autocomplete,
         )
     )
-
-
-def _manual_schema(defaults: dict[str, Any] | None = None) -> vol.Schema:
-    """Return the manual add-on API schema."""
-
-    defaults = defaults or {}
-    return vol.Schema(
-        {
-            vol.Required(CONF_HOST, default=defaults.get(CONF_HOST, "")): str,
-            vol.Required(CONF_PORT, default=defaults.get(CONF_PORT, DEFAULT_PORT)): int,
-            vol.Required(CONF_TOKEN, default=defaults.get(CONF_TOKEN, "")): str,
-        }
-    )
-
-
-def _manual_data(user_input: dict[str, Any], *, slug: str = "manual") -> dict[str, Any]:
-    """Return normalized config entry data for a manually supplied add-on API."""
-
-    return {
-        CONF_CONNECTION_TYPE: CONNECTION_TYPE_ADDON,
-        CONF_HOST: user_input[CONF_HOST],
-        CONF_PORT: user_input[CONF_PORT],
-        CONF_TOKEN: user_input[CONF_TOKEN],
-        CONF_API_VERSION: 1,
-        CONF_SLUG: slug,
-    }
 
 
 def _region_schema(default: str = REGION_EU) -> vol.Schema:
@@ -192,7 +156,7 @@ def _verification_schema() -> vol.Schema:
     )
 
 
-def _direct_options_schema(entry: ConfigEntry, defaults: dict[str, Any] | None = None) -> vol.Schema:
+def _cloud_options_schema(entry: ConfigEntry, defaults: dict[str, Any] | None = None) -> vol.Schema:
     current = {**entry.options, **(defaults or {})}
     region = str(entry.data.get(CONF_REGION, ""))
     fields: dict[vol.Marker, object] = {
@@ -229,127 +193,50 @@ def _direct_options_schema(entry: ConfigEntry, defaults: dict[str, Any] | None =
     return vol.Schema(fields)
 
 
-def _is_direct(data: dict[str, Any] | ConfigEntry | Any) -> bool:
+def _is_cloud(data: dict[str, Any] | ConfigEntry | Any) -> bool:
     entry_data = data.data if isinstance(data, ConfigEntry) else data
     return entry_data.get(CONF_CONNECTION_TYPE) == CONNECTION_TYPE_CLOUD
 
 
-class GwmOraConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
-    """Handle add-on compatibility and native direct-cloud account flows."""
+class GwmConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
+    """Handle native GWM cloud account flows."""
 
     VERSION = 1
 
     def __init__(self) -> None:
-        self._discovered_data: dict[str, Any] | None = None
-        self._cloud_authenticator: DirectCloudAuthenticator | None = None
-        self._direct_mode = "user"
-        self._direct_region: str | None = None
-        self._direct_credentials: DirectCloudCredentials | None = None
+        self._cloud_authenticator: GwmCloudAuthenticator | None = None
+        self._cloud_mode = "user"
+        self._cloud_region: str | None = None
+        self._cloud_credentials: GwmCloudCredentials | None = None
         self._auth_state: CloudAuthState | None = None
         self._initialization_failures: tuple[str, ...] = ()
 
     @staticmethod
-    def async_get_options_flow(config_entry: ConfigEntry) -> GwmOraOptionsFlow:
-        """Return the options flow for either entry type."""
+    def async_get_options_flow(config_entry: ConfigEntry) -> GwmOptionsFlow:
+        """Return the GWM options flow."""
 
-        return GwmOraOptionsFlow()
-
-    async def async_step_hassio(
-        self,
-        discovery_info: HassioServiceInfo,
-    ) -> ConfigFlowResult:
-        """Handle Supervisor service discovery from the add-on."""
-
-        config = dict(discovery_info.config)
-        slug = config.get(CONF_SLUG) or discovery_info.slug or "gwm_ora"
-        data = {
-            CONF_CONNECTION_TYPE: CONNECTION_TYPE_ADDON,
-            CONF_HOST: config[CONF_HOST],
-            CONF_PORT: int(config.get(CONF_PORT, DEFAULT_PORT)),
-            CONF_TOKEN: config[CONF_TOKEN],
-            CONF_API_VERSION: int(config.get(CONF_API_VERSION, 1)),
-            CONF_SLUG: slug,
-        }
-
-        await self.async_set_unique_id(slug)
-        self._abort_if_unique_id_configured(updates=data)
-        self._discovered_data = data
-        return await self.async_step_hassio_confirm()
-
-    async def async_step_hassio_confirm(
-        self,
-        user_input: dict[str, Any] | None = None,
-    ) -> ConfigFlowResult:
-        """Confirm add-on discovery."""
-
-        assert self._discovered_data is not None
-        errors: dict[str, str] = {}
-
-        if user_input is not None:
-            errors["base"] = await self._async_validate_addon(self._discovered_data)
-            if not errors["base"]:
-                return self.async_create_entry(title=DEFAULT_NAME, data=self._discovered_data)
-
-        return self.async_show_form(
-            step_id="hassio_confirm",
-            errors=errors,
-            description_placeholders={"host": self._discovered_data[CONF_HOST]},
-        )
+        return GwmOptionsFlow()
 
     async def async_step_user(
         self,
         user_input: dict[str, Any] | None = None,
     ) -> ConfigFlowResult:
-        """Choose native direct-cloud setup or the compatibility add-on path."""
-
-        if user_input is not None:
-            return await self.async_step_addon(user_input)
-        return self.async_show_menu(
-            step_id="user",
-            menu_options=["cloud", "addon"],
-        )
-
-    async def async_step_addon(
-        self,
-        user_input: dict[str, Any] | None = None,
-    ) -> ConfigFlowResult:
-        """Handle manual add-on setup for development and non-Supervisor installs."""
-
-        errors: dict[str, str] = {}
-        if user_input is not None:
-            data = _manual_data(user_input)
-            errors["base"] = await self._async_validate_addon(data)
-            if not errors["base"]:
-                await self.async_set_unique_id(f"{data[CONF_HOST]}:{data[CONF_PORT]}")
-                self._abort_if_unique_id_configured(updates=data)
-                return self.async_create_entry(title=DEFAULT_NAME, data=data)
-
-        return self.async_show_form(
-            step_id="addon",
-            data_schema=_manual_schema(),
-            errors=errors,
-        )
-
-    async def async_step_cloud(
-        self,
-        user_input: dict[str, Any] | None = None,
-    ) -> ConfigFlowResult:
-        """Select a direct cloud region whose activation gate has passed."""
+        """Select a GWM cloud region whose activation gate has passed."""
 
         if user_input is None:
-            self._direct_mode = "user"
-            return self.async_show_form(step_id="cloud", data_schema=_region_schema())
+            self._cloud_mode = "user"
+            return self.async_show_form(step_id="user", data_schema=_region_schema())
 
         region = str(user_input.get(CONF_REGION, "")).strip().lower()
         if region == REGION_CHINA:
             return self.async_abort(reason="china_live_validation_required")
         if region not in CONFIGURABLE_CLOUD_REGIONS:
             return self.async_show_form(
-                step_id="cloud",
+                step_id="user",
                 data_schema=_region_schema(),
                 errors={CONF_REGION: "unsupported_region"},
             )
-        self._direct_region = region
+        self._cloud_region = region
         self._auth_state = None
         return await self.async_step_account()
 
@@ -359,17 +246,17 @@ class GwmOraConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     ) -> ConfigFlowResult:
         """Collect and validate the selected regional account."""
 
-        if self._direct_region not in SUPPORTED_CLOUD_REGIONS:
+        if self._cloud_region not in SUPPORTED_CLOUD_REGIONS:
             return self.async_abort(reason="invalid_flow_state")
         errors: dict[str, str] = {}
         if user_input is not None:
             try:
-                self._direct_credentials = self._credentials_from_input(
-                    self._direct_region,
+                self._cloud_credentials = self._credentials_from_input(
+                    self._cloud_region,
                     user_input,
                 )
                 self._auth_state = None
-                early_result = await self._async_restore_direct_state()
+                early_result = await self._async_restore_cloud_state()
             except (TypeError, ValueError):
                 errors["base"] = "invalid_account"
             else:
@@ -383,7 +270,7 @@ class GwmOraConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         return self.async_show_form(
             step_id="account",
-            data_schema=_account_schema(self._direct_region, user_input),
+            data_schema=_account_schema(self._cloud_region, user_input),
             errors=errors,
         )
 
@@ -393,7 +280,7 @@ class GwmOraConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     ) -> ConfigFlowResult:
         """Submit one non-persistent verification code continuation."""
 
-        if self._direct_credentials is None or self._auth_state is None:
+        if self._cloud_credentials is None or self._auth_state is None:
             return self.async_abort(reason="invalid_flow_state")
         errors: dict[str, str] = {}
         if user_input is not None:
@@ -411,7 +298,7 @@ class GwmOraConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     ) -> ConfigFlowResult:
         """Require explicit consent before an ANZ password login claims the session."""
 
-        if self._direct_credentials is None or self._auth_state is None:
+        if self._cloud_credentials is None or self._auth_state is None:
             return self.async_abort(reason="invalid_flow_state")
         errors: dict[str, str] = {}
         if user_input is not None:
@@ -435,7 +322,7 @@ class GwmOraConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     ) -> ConfigFlowResult:
         """Retry a recoverable China downstream-service initialization."""
 
-        if self._direct_credentials is None or self._auth_state is None:
+        if self._cloud_credentials is None or self._auth_state is None:
             return self.async_abort(reason="invalid_flow_state")
         errors: dict[str, str] = {}
         if user_input is not None:
@@ -449,12 +336,12 @@ class GwmOraConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         return self._show_initialization(errors)
 
     async def async_step_reauth(self, entry_data: dict[str, Any]) -> ConfigFlowResult:
-        """Handle either direct-cloud or add-on authentication failure."""
+        """Handle GWM cloud authentication failure."""
 
-        if not _is_direct(entry_data):
-            return await self.async_step_reauth_confirm()
-        self._direct_mode = "reauth"
-        self._direct_region = str(entry_data.get(CONF_REGION, ""))
+        if not _is_cloud(entry_data):
+            return self.async_abort(reason="legacy_addon_entry")
+        self._cloud_mode = "reauth"
+        self._cloud_region = str(entry_data.get(CONF_REGION, ""))
         self._auth_state = None
         return await self.async_step_reauth_confirm()
 
@@ -462,11 +349,11 @@ class GwmOraConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self,
         user_input: dict[str, Any] | None = None,
     ) -> ConfigFlowResult:
-        """Reconnect the current direct account or add-on API."""
+        """Reconnect the current GWM cloud account."""
 
         entry = self._get_reauth_entry()
-        if not _is_direct(entry):
-            return await self._async_step_addon_reauth(entry, user_input)
+        if not _is_cloud(entry):
+            return self.async_abort(reason="legacy_addon_entry")
 
         region = str(entry.data.get(CONF_REGION, ""))
         if region not in SUPPORTED_CLOUD_REGIONS:
@@ -475,7 +362,7 @@ class GwmOraConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         if user_input is not None:
             try:
                 password = None if region == REGION_CHINA else user_input.get(CONF_PASSWORD)
-                self._direct_credentials = DirectCloudCredentials(
+                self._cloud_credentials = GwmCloudCredentials(
                     region=region,
                     country=str(entry.data.get(CONF_COUNTRY, _DEFAULT_COUNTRIES[region])),
                     account=str(entry.data.get(CONF_ACCOUNT, "")),
@@ -483,7 +370,7 @@ class GwmOraConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     device_id=generate_device_id(),
                 )
                 self._auth_state = None
-                early_result = await self._async_restore_direct_state()
+                early_result = await self._async_restore_cloud_state()
             except (TypeError, ValueError):
                 errors["base"] = "invalid_account"
             else:
@@ -510,13 +397,13 @@ class GwmOraConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self,
         user_input: dict[str, Any] | None = None,
     ) -> ConfigFlowResult:
-        """Reconfigure either the direct account or compatibility add-on path."""
+        """Reconfigure the GWM cloud account."""
 
         entry = self._get_reconfigure_entry()
-        if not _is_direct(entry):
-            return await self._async_step_addon_reconfigure(entry, user_input)
+        if not _is_cloud(entry):
+            return self.async_abort(reason="legacy_addon_entry")
 
-        self._direct_mode = "reconfigure"
+        self._cloud_mode = "reconfigure"
         if user_input is None:
             return self.async_show_form(
                 step_id="reconfigure",
@@ -531,7 +418,7 @@ class GwmOraConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 data_schema=_region_schema(),
                 errors={CONF_REGION: "unsupported_region"},
             )
-        self._direct_region = region
+        self._cloud_region = region
         self._auth_state = None
         return await self.async_step_reconfigure_account()
 
@@ -542,22 +429,22 @@ class GwmOraConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         """Authenticate replacement account settings before applying them."""
 
         entry = self._get_reconfigure_entry()
-        if self._direct_region not in SUPPORTED_CLOUD_REGIONS:
+        if self._cloud_region not in SUPPORTED_CLOUD_REGIONS:
             return self.async_abort(reason="invalid_flow_state")
         defaults = (
             dict(entry.data)
-            if self._direct_region == entry.data.get(CONF_REGION)
-            else {CONF_COUNTRY: _DEFAULT_COUNTRIES[self._direct_region]}
+            if self._cloud_region == entry.data.get(CONF_REGION)
+            else {CONF_COUNTRY: _DEFAULT_COUNTRIES[self._cloud_region]}
         )
         errors: dict[str, str] = {}
         if user_input is not None:
             try:
-                self._direct_credentials = self._credentials_from_input(
-                    self._direct_region,
+                self._cloud_credentials = self._credentials_from_input(
+                    self._cloud_region,
                     user_input,
                 )
                 self._auth_state = None
-                early_result = await self._async_restore_direct_state()
+                early_result = await self._async_restore_cloud_state()
             except (TypeError, ValueError):
                 errors["base"] = "invalid_account"
             else:
@@ -570,7 +457,7 @@ class GwmOraConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     return await self._async_route_authentication(result)
         return self.async_show_form(
             step_id="reconfigure_account",
-            data_schema=_account_schema(self._direct_region, {**defaults, **(user_input or {})}),
+            data_schema=_account_schema(self._cloud_region, {**defaults, **(user_input or {})}),
             errors=errors,
         )
 
@@ -578,8 +465,8 @@ class GwmOraConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self,
         region: str,
         user_input: dict[str, Any],
-    ) -> DirectCloudCredentials:
-        return DirectCloudCredentials(
+    ) -> GwmCloudCredentials:
+        return GwmCloudCredentials(
             region=region,
             country=str(user_input.get(CONF_COUNTRY, _DEFAULT_COUNTRIES[region])),
             account=user_input[CONF_ACCOUNT],
@@ -593,11 +480,11 @@ class GwmOraConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         verification_code: object = None,
         allow_session_reclaim: bool = False,
     ) -> tuple[CloudAuthenticationResult | None, str]:
-        credentials = self._direct_credentials
+        credentials = self._cloud_credentials
         if credentials is None:
             return None, "invalid_account"
         if self._cloud_authenticator is None:
-            self._cloud_authenticator = DirectCloudAuthenticator()
+            self._cloud_authenticator = GwmCloudAuthenticator()
         try:
             result = await self._cloud_authenticator.async_authenticate(
                 credentials,
@@ -632,7 +519,7 @@ class GwmOraConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         errors: dict[str, str] | None = None,
     ) -> ConfigFlowResult:
         if isinstance(result, _AUTHENTICATED_TYPES):
-            return await self._async_finish_direct(result)
+            return await self._async_finish_cloud(result)
         if isinstance(result, _VERIFICATION_TYPES):
             await self._async_persist_auth_state(result.state)
             self._auth_state = result.state
@@ -661,20 +548,20 @@ class GwmOraConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             return self.async_abort(reason="risk_control_required")
         return self.async_abort(reason="invalid_flow_state")
 
-    async def _async_restore_direct_state(self) -> ConfigFlowResult | None:
+    async def _async_restore_cloud_state(self) -> ConfigFlowResult | None:
         """Restore a matching continuation before one explicit flow attempt."""
 
-        credentials = self._direct_credentials
+        credentials = self._cloud_credentials
         if credentials is None:
             return self.async_abort(reason="invalid_flow_state")
-        unique_id = direct_unique_id(credentials)
-        if self._direct_mode == "user":
+        unique_id = cloud_unique_id(credentials)
+        if self._cloud_mode == "user":
             await self.async_set_unique_id(unique_id)
             self._abort_if_unique_id_configured()
-        elif self._direct_mode == "reauth":
+        elif self._cloud_mode == "reauth":
             if self._get_reauth_entry().unique_id != unique_id:
                 return self.async_abort(reason="invalid_flow_state")
-        elif self._direct_mode == "reconfigure":
+        elif self._cloud_mode == "reconfigure":
             entry = self._get_reconfigure_entry()
             duplicate = self.hass.config_entries.async_entry_for_domain_unique_id(
                 DOMAIN,
@@ -685,80 +572,80 @@ class GwmOraConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         else:
             return self.async_abort(reason="invalid_flow_state")
 
-        state = await direct_cloud_state_store(
+        state = await cloud_state_store(
             self.hass,
             unique_id,
-        ).async_load_auth_state(direct_entry_data(credentials))
+        ).async_load_auth_state(cloud_entry_data(credentials))
         if state is not None:
-            self._direct_credentials = credentials_for_auth_state(
-                direct_entry_data(credentials),
+            self._cloud_credentials = credentials_for_auth_state(
+                cloud_entry_data(credentials),
                 state,
             )
             self._auth_state = state
         return None
 
     async def _async_persist_auth_state(self, state: CloudAuthState) -> None:
-        credentials = self._direct_credentials
+        credentials = self._cloud_credentials
         if credentials is None:
             raise ValueError("invalid_flow_state")
-        await direct_cloud_state_store(
+        await cloud_state_store(
             self.hass,
-            direct_unique_id(credentials),
+            cloud_unique_id(credentials),
         ).async_save_auth_state(credentials, state)
 
     async def _async_clear_persisted_auth_state(self) -> None:
-        credentials = self._direct_credentials
+        credentials = self._cloud_credentials
         if credentials is None:
             return
-        await direct_cloud_state_store(
+        await cloud_state_store(
             self.hass,
-            direct_unique_id(credentials),
-        ).async_clear_auth_state(direct_entry_data(credentials))
+            cloud_unique_id(credentials),
+        ).async_clear_auth_state(cloud_entry_data(credentials))
 
-    async def _async_finish_direct(
+    async def _async_finish_cloud(
         self,
         result: CloudAuthenticationResult,
     ) -> ConfigFlowResult:
-        credentials = self._direct_credentials
+        credentials = self._cloud_credentials
         if credentials is None:
             return self.async_abort(reason="invalid_flow_state")
-        data = direct_entry_data(credentials)
-        unique_id = direct_unique_id(credentials)
-        title = direct_entry_title(credentials.region)
+        data = cloud_entry_data(credentials)
+        unique_id = cloud_unique_id(credentials)
+        title = cloud_entry_title(credentials.region)
         try:
-            bootstrap = DirectCloudBootstrap.from_authentication(credentials, result)
+            bootstrap = GwmCloudBootstrap.from_authentication(credentials, result)
         except GwmConfigurationError:
             return self.async_abort(reason="china_live_validation_required")
         self._auth_state = None
 
-        if self._direct_mode == "user":
+        if self._cloud_mode == "user":
             await self.async_set_unique_id(unique_id)
             self._abort_if_unique_id_configured()
-            await direct_cloud_state_store(
+            await cloud_state_store(
                 self.hass,
                 unique_id,
             ).async_save_auth_state(credentials, result.state)
-            stage_direct_cloud_bootstrap(self.hass, unique_id, bootstrap)
-            self._direct_credentials = None
+            stage_cloud_bootstrap(self.hass, unique_id, bootstrap)
+            self._cloud_credentials = None
             return self.async_create_entry(title=title, data=data)
 
-        if self._direct_mode == "reauth":
+        if self._cloud_mode == "reauth":
             entry = self._get_reauth_entry()
             if entry.unique_id != unique_id:
                 return self.async_abort(reason="invalid_flow_state")
-            await direct_cloud_state_store(
+            await cloud_state_store(
                 self.hass,
                 unique_id,
             ).async_save_auth_state(credentials, result.state)
-            stage_direct_cloud_bootstrap(self.hass, unique_id, bootstrap)
-            self._direct_credentials = None
+            stage_cloud_bootstrap(self.hass, unique_id, bootstrap)
+            self._cloud_credentials = None
             return self.async_update_reload_and_abort(
                 entry,
                 data={**entry.data, **data},
                 title=title,
             )
 
-        if self._direct_mode == "reconfigure":
+        if self._cloud_mode == "reconfigure":
             entry = self._get_reconfigure_entry()
             previous_unique_id = entry.unique_id
             duplicate = self.hass.config_entries.async_entry_for_domain_unique_id(
@@ -767,11 +654,11 @@ class GwmOraConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             )
             if duplicate is not None and duplicate.entry_id != entry.entry_id:
                 return self.async_abort(reason="already_configured")
-            await direct_cloud_state_store(
+            await cloud_state_store(
                 self.hass,
                 unique_id,
             ).async_save_auth_state(credentials, result.state)
-            stage_direct_cloud_bootstrap(self.hass, unique_id, bootstrap)
+            stage_cloud_bootstrap(self.hass, unique_id, bootstrap)
             flow_result = self.async_update_reload_and_abort(
                 entry,
                 unique_id=unique_id,
@@ -779,8 +666,8 @@ class GwmOraConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 data=data,
             )
             if previous_unique_id != unique_id:
-                await async_remove_direct_cloud_state(self.hass, previous_unique_id)
-            self._direct_credentials = None
+                await async_remove_cloud_state(self.hass, previous_unique_id)
+            self._cloud_credentials = None
             return flow_result
         return self.async_abort(reason="invalid_flow_state")
 
@@ -801,67 +688,16 @@ class GwmOraConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             },
         )
 
-    async def _async_step_addon_reconfigure(
-        self,
-        entry: ConfigEntry,
-        user_input: dict[str, Any] | None,
-    ) -> ConfigFlowResult:
-        errors: dict[str, str] = {}
-        if user_input is not None:
-            data = _manual_data(user_input, slug=entry.data.get(CONF_SLUG, "manual"))
-            errors["base"] = await self._async_validate_addon(data)
-            if not errors["base"]:
-                return self.async_update_reload_and_abort(entry, data_updates=data)
-        return self.async_show_form(
-            step_id="reconfigure",
-            data_schema=_manual_schema(dict(entry.data)),
-            errors=errors,
-        )
-
-    async def _async_step_addon_reauth(
-        self,
-        entry: ConfigEntry,
-        user_input: dict[str, Any] | None,
-    ) -> ConfigFlowResult:
-        errors: dict[str, str] = {}
-        if user_input is not None:
-            data = _manual_data(user_input, slug=entry.data.get(CONF_SLUG, "manual"))
-            errors["base"] = await self._async_validate_addon(data)
-            if not errors["base"]:
-                return self.async_update_reload_and_abort(entry, data_updates=data)
-        return self.async_show_form(
-            step_id="reauth_confirm",
-            data_schema=_manual_schema(dict(entry.data)),
-            errors=errors,
-        )
-
-    async def _async_validate_addon(self, data: dict[str, Any]) -> str:
-        """Validate add-on API access."""
-
-        session = async_get_clientsession(self.hass)
-        api = GwmOraApiClient(session, data[CONF_HOST], data[CONF_PORT], data[CONF_TOKEN])
-        try:
-            await api.async_health()
-        except GwmOraApiAuthError:
-            return "invalid_auth"
-        except (GwmOraApiUnavailable, GwmOraApiError):
-            return "cannot_connect"
-        return ""
-
-    # Retain the private helper name used by the existing compatibility tests.
-    _async_validate = _async_validate_addon
-
-
-class GwmOraOptionsFlow(config_entries.OptionsFlowWithReload):
-    """Configure direct-cloud polling and future opt-in controls."""
+class GwmOptionsFlow(config_entries.OptionsFlowWithReload):
+    """Configure GWM cloud polling and opt-in controls."""
 
     async def async_step_init(
         self,
         user_input: dict[str, Any] | None = None,
     ) -> ConfigFlowResult:
         entry = self.config_entry
-        if not _is_direct(entry):
-            return self.async_abort(reason="addon_options_managed")
+        if not _is_cloud(entry):
+            return self.async_abort(reason="legacy_addon_entry")
 
         errors: dict[str, str] = {}
         if user_input is not None:
@@ -890,6 +726,6 @@ class GwmOraOptionsFlow(config_entries.OptionsFlowWithReload):
 
         return self.async_show_form(
             step_id="init",
-            data_schema=_direct_options_schema(entry, user_input),
+            data_schema=_cloud_options_schema(entry, user_input),
             errors=errors,
         )

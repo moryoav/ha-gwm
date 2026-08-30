@@ -6,13 +6,7 @@ from homeassistant.const import Platform
 
 DOMAIN = "gwm_ora"
 DEFAULT_NAME = "GWM"
-LEGACY_DEFAULT_NAME = "GWM ORA"
-DEFAULT_PORT = 8099
-CONF_TOKEN = "token"
-CONF_API_VERSION = "api_version"
-CONF_SLUG = "slug"
 CONF_CONNECTION_TYPE = "connection_type"
-CONNECTION_TYPE_ADDON = "addon"
 CONNECTION_TYPE_CLOUD = "cloud"
 CONF_REGION = "region"
 CONF_COUNTRY = "country"
@@ -52,7 +46,7 @@ PLATFORMS: list[Platform] = [
     Platform.SWITCH,
 ]
 
-# Charging schedule control (behind the add-on's enable_charging_control opt-in)
+# Charging schedule control (behind the integration option).
 SERVICE_SET_CHARGING_PLAN = "set_charging_plan"
 SERVICE_CLEAR_CHARGING_PLAN = "clear_charging_plan"
 ATTR_VIN = "vin"

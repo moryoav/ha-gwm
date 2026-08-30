@@ -9,15 +9,15 @@ from homeassistant.components.device_tracker.const import SourceType
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from . import GwmOraConfigEntry
-from .entity import GwmOraEntity, setup_vehicle_entities
+from . import GwmConfigEntry
+from .entity import GwmEntity, setup_vehicle_entities
 
 PARALLEL_UPDATES = 0
 
 
 async def async_setup_entry(
     hass: HomeAssistant,
-    entry: GwmOraConfigEntry,
+    entry: GwmConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up GWM device trackers."""
@@ -25,12 +25,12 @@ async def async_setup_entry(
         entry,
         async_add_entities,
         lambda vehicle: (
-            GwmOraDeviceTracker(entry.runtime_data.coordinator, vehicle["vin"]),
+            GwmDeviceTracker(entry.runtime_data.coordinator, vehicle["vin"]),
         ),
     )
 
 
-class GwmOraDeviceTracker(GwmOraEntity, TrackerEntity):
+class GwmDeviceTracker(GwmEntity, TrackerEntity):
     """A vehicle GPS tracker."""
 
     _attr_translation_key = "location"

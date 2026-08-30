@@ -6,15 +6,15 @@ from homeassistant.components.lock import LockEntity
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from . import GwmOraConfigEntry
-from .entity import GwmOraEntity, async_call_addon_api, setup_vehicle_entities, vehicle_value
+from . import GwmConfigEntry
+from .entity import GwmEntity, async_call_gwm_api, setup_vehicle_entities, vehicle_value
 
 PARALLEL_UPDATES = 0
 
 
 async def async_setup_entry(
     hass: HomeAssistant,
-    entry: GwmOraConfigEntry,
+    entry: GwmConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up GWM locks."""
@@ -22,12 +22,12 @@ async def async_setup_entry(
         entry,
         async_add_entities,
         lambda vehicle: (
-            GwmOraDoorLock(entry.runtime_data.api, entry.runtime_data.coordinator, vehicle["vin"]),
+            GwmDoorLock(entry.runtime_data.api, entry.runtime_data.coordinator, vehicle["vin"]),
         ),
     )
 
 
-class GwmOraDoorLock(GwmOraEntity, LockEntity):
+class GwmDoorLock(GwmEntity, LockEntity):
     """GWM door lock."""
 
     _attr_translation_key = "door_lock"
@@ -49,10 +49,10 @@ class GwmOraDoorLock(GwmOraEntity, LockEntity):
 
     async def async_lock(self, **kwargs) -> None:
         """Lock the vehicle."""
-        command = await async_call_addon_api(self._api.async_lock(self.vin, "lock"))
+        command = await async_call_gwm_api(self._api.async_lock(self.vin, "lock"))
         self.coordinator.async_track_command(command)
 
     async def async_unlock(self, **kwargs) -> None:
         """Unlock the vehicle."""
-        command = await async_call_addon_api(self._api.async_lock(self.vin, "unlock"))
+        command = await async_call_gwm_api(self._api.async_lock(self.vin, "unlock"))
         self.coordinator.async_track_command(command)

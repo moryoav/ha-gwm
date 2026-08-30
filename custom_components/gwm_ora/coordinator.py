@@ -16,26 +16,26 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, Upda
 
 from gwm_client import GwmAuthenticationError, GwmClientError
 
-from .api import GwmOraApiAuthError, GwmOraApiClient, GwmOraApiError, GwmOraApiUnavailable
-from .cloud_commands import DirectClimateCommandApi
-from .cloud_runtime import DirectCloudReadClient, DirectReadOnlyCommandApi
+from .cloud_commands import GwmCommandApi
+from .cloud_runtime import GwmCloudClient
 from .const import DOMAIN
+from .errors import GwmCommandError
 
 _LOGGER = logging.getLogger(__name__)
 
 
-class GwmOraDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
-    """Coordinator that polls the add-on's cached vehicle data."""
+class GwmDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
+    """Coordinator that polls the GWM cloud and tracks vehicle commands."""
 
     _TERMINAL_COMMAND_STATES = {"completed", "failed", "timeout", "canceled"}
 
     def __init__(
         self,
         hass: HomeAssistant,
-        api: GwmOraApiClient | DirectReadOnlyCommandApi | DirectClimateCommandApi,
+        api: GwmCommandApi,
         *,
+        cloud_client: GwmCloudClient,
         config_entry: ConfigEntry | None = None,
-        direct_client: DirectCloudReadClient | None = None,
         update_interval_seconds: int = 30,
     ) -> None:
         super().__init__(
@@ -46,43 +46,33 @@ class GwmOraDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             update_interval=timedelta(seconds=update_interval_seconds),
         )
         self.api = api
-        self.direct_client = direct_client
+        self.cloud_client = cloud_client
         self._command_tasks: dict[str, asyncio.Task[None]] = {}
         self._charging_plan_active: dict[str, bool] = {}
 
     async def _async_update_data(self) -> dict[str, Any]:
-        if self.direct_client is not None:
-            try:
-                data = await self.direct_client.async_get_vehicle_data()
-                if (
-                    isinstance(self.api, DirectClimateCommandApi)
-                    and self.config_entry is not None
-                ):
-                    try:
-                        await self.api.async_cleanup_owned_charging_plans(
-                            dict(self.config_entry.data)
-                        )
-                    except Exception:
-                        _LOGGER.warning(
-                            "Could not inspect owned charging plans; the next poll will retry"
-                        )
-                return data
-            except GwmAuthenticationError as err:
-                with suppress(Exception):
-                    await self.direct_client.async_authentication_rejected()
-                raise ConfigEntryAuthFailed(
-                    "Direct GWM cloud authentication was rejected"
-                ) from err
-            except GwmClientError as err:
-                raise UpdateFailed(
-                    f"Direct GWM cloud {err.category} during {err.operation}"
-                ) from err
         try:
-            return await self.api.async_get_vehicles()
-        except GwmOraApiAuthError as err:
-            raise ConfigEntryAuthFailed("Add-on API token rejected") from err
-        except (GwmOraApiUnavailable, GwmOraApiError) as err:
-            raise UpdateFailed(str(err)) from err
+            data = await self.cloud_client.async_get_vehicle_data()
+            if self.config_entry is not None:
+                try:
+                    await self.api.async_cleanup_owned_charging_plans(
+                        dict(self.config_entry.data)
+                    )
+                except Exception:
+                    _LOGGER.warning(
+                        "Could not inspect owned charging plans; the next poll will retry"
+                    )
+            return data
+        except GwmAuthenticationError as err:
+            with suppress(Exception):
+                await self.cloud_client.async_authentication_rejected()
+            raise ConfigEntryAuthFailed(
+                "GWM cloud authentication was rejected"
+            ) from err
+        except GwmClientError as err:
+            raise UpdateFailed(
+                f"GWM cloud {err.category} during {err.operation}"
+            ) from err
 
     @property
     def vehicles(self) -> list[dict[str, Any]]:
@@ -92,7 +82,7 @@ class GwmOraDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
     @property
     def region(self) -> str:
-        """Return the add-on region."""
+        """Return the configured cloud region."""
         return str((self.data or {}).get("region") or "").lower()
 
     def vehicle(self, vin: str) -> dict[str, Any] | None:
@@ -103,8 +93,8 @@ class GwmOraDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         """Return one vehicle snapshot by internal VIN or display serial number.
 
         Users supply the human-readable VIN (the device serial number, GWM's
-        ``showedVin``), while the add-on keys vehicles by the encoded ``vin``.
-        Accept either so service calls can use the VIN shown on the device.
+        ``showedVin``). Accept the internal identifier too so service calls can
+        use either representation.
         """
         display_identifier = identifier.casefold()
         return next(
@@ -151,16 +141,15 @@ class GwmOraDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             await asyncio.gather(*tasks, return_exceptions=True)
 
     async def _async_follow_command(self, command_id: str) -> None:
-        """Poll one command until the add-on reports a terminal state."""
-        direct_command = self.direct_client is not None
-        deadline_seconds = 310 if direct_command and self.region == "rus" else 130
-        poll_interval = 5 if direct_command else 2
+        """Poll one command until the provider reports a terminal state."""
+        deadline_seconds = 310 if self.region == "rus" else 130
+        poll_interval = 5
         deadline = time.monotonic() + deadline_seconds
         while time.monotonic() < deadline:
             await asyncio.sleep(poll_interval)
             try:
                 command = await self.api.async_get_command(command_id)
-            except (GwmOraApiUnavailable, GwmOraApiError, GwmClientError) as err:
+            except (GwmCommandError, GwmClientError) as err:
                 _LOGGER.debug("Could not refresh GWM command %s status: %s", command_id, err)
                 continue
 
@@ -174,12 +163,7 @@ class GwmOraDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
     async def _async_refresh_after_completed_command(self) -> None:
         """Refresh cached vehicle data immediately after a successful command."""
-        with suppress(
-            GwmOraApiUnavailable,
-            GwmOraApiError,
-            GwmOraApiAuthError,
-            GwmClientError,
-        ):
+        with suppress(GwmCommandError, GwmClientError):
             self.async_set_updated_data(await self.api.async_refresh())
 
     def _apply_command_status(self, command: dict[str, Any]) -> None:
