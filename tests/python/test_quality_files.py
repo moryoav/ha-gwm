@@ -95,12 +95,12 @@ def test_hacs_default_repository_readiness_files_exist() -> None:
     assert manifest["codeowners"] == ["@moryoav"]
     assert manifest["domain"] == "gwm_ora"
     assert manifest["name"] == "GWM"
-    assert manifest["version"] == "0.14.0"
+    assert manifest["version"] == "0.15.0"
     assert manifest["integration_type"] == "hub"
     assert manifest["loggers"] == ["gwm_client"]
     assert manifest["requirements"] == [
         "gwm-client@https://github.com/moryoav/ha-gwm/archive/"
-        "0027f2b9e050103e0af8a8a6c0b6b122efd96a83.zip"
+        "5e993848ddc0bd28aa3c0e23e8bf1e3e01013f65.zip"
     ]
 
     custom_components = [path.name for path in (ROOT / "custom_components").iterdir() if path.is_dir()]

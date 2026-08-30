@@ -82,6 +82,7 @@ _REGION_OPTIONS = [
     {"value": REGION_EU, "label": "Europe"},
     {"value": REGION_ANZ, "label": "Australia / New Zealand"},
     {"value": REGION_RUSSIA, "label": "Russia"},
+    {"value": REGION_CHINA, "label": "Mainland China"},
 ]
 _DEFAULT_COUNTRIES = {
     REGION_EU: "DE",
@@ -221,15 +222,13 @@ class GwmConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self,
         user_input: dict[str, Any] | None = None,
     ) -> ConfigFlowResult:
-        """Select a GWM cloud region whose activation gate has passed."""
+        """Select the GWM cloud region used by the account."""
 
         if user_input is None:
             self._cloud_mode = "user"
             return self.async_show_form(step_id="user", data_schema=_region_schema())
 
         region = str(user_input.get(CONF_REGION, "")).strip().lower()
-        if region == REGION_CHINA:
-            return self.async_abort(reason="china_live_validation_required")
         if region not in CONFIGURABLE_CLOUD_REGIONS:
             return self.async_show_form(
                 step_id="user",
@@ -410,8 +409,6 @@ class GwmConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 data_schema=_region_schema(str(entry.data.get(CONF_REGION, REGION_EU))),
             )
         region = str(user_input.get(CONF_REGION, "")).strip().lower()
-        if region == REGION_CHINA:
-            return self.async_abort(reason="china_live_validation_required")
         if region not in CONFIGURABLE_CLOUD_REGIONS:
             return self.async_show_form(
                 step_id="reconfigure",
@@ -615,7 +612,7 @@ class GwmConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         try:
             bootstrap = GwmCloudBootstrap.from_authentication(credentials, result)
         except GwmConfigurationError:
-            return self.async_abort(reason="china_live_validation_required")
+            return self.async_abort(reason="invalid_flow_state")
         self._auth_state = None
 
         if self._cloud_mode == "user":

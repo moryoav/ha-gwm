@@ -2,7 +2,7 @@
 
 This custom integration connects Home Assistant directly to supported GWM cloud regions. It does not require the retired Docker add-on.
 
-The integration supports Europe, Australia and New Zealand, and Russia in the current setup flow. Mainland China remains disabled until its separate Python-client live-read validation passes.
+The setup flow supports Europe, Australia and New Zealand, Russia, and mainland China. Mainland-China accounts use their registered phone number and SMS verification.
 
 ## Setup
 
@@ -22,7 +22,7 @@ The integration options provide:
 
 - Cloud polling interval.
 - Explicit remote-command opt-in.
-- Write-only vehicle security PIN.
+- Write-only vehicle security PIN outside mainland China.
 - Independent charging-control opt-in.
 - Integration log level.
 

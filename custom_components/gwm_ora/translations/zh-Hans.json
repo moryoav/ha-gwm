@@ -3,7 +3,7 @@
     "step": {
       "user": {
         "title": "选择 GWM 云区域",
-        "description": "选择官方 GWM 应用为此账号使用的区域。在完成单独的实时读取安全验证前，中国大陆区域暂不可在此选择。",
+        "description": "选择官方 GWM 应用为此账号使用的区域。",
         "data": {
           "region": "云区域"
         },
@@ -61,7 +61,7 @@
       },
       "reauth_confirm": {
         "title": "重新连接 GWM",
-        "description": "请输入当前密码并完成所需验证。",
+        "description": "确认账号并完成所需的密码或验证码步骤。",
         "data": {
           "password": "密码"
         }
@@ -81,7 +81,6 @@
     },
     "abort": {
       "already_configured": "此 GWM 账号已配置。",
-      "china_live_validation_required": "在完成单独的实时读取安全验证前，中国大陆设置保持禁用。",
       "invalid_flow_state": "此设置续接状态已失效，请重新开始设置流程。",
       "legacy_addon_entry": "旧的加载项条目无法转换。请将其删除，然后重新添加 GWM 并直接登录。",
       "risk_control_required": "GWM 要求完成风控验证。请先在官方应用中完成，然后重试。"

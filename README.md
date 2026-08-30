@@ -7,7 +7,7 @@
 
 This custom integration connects Home Assistant directly to supported regional GWM cloud services. It discovers vehicles on the account, creates native Home Assistant entities, polls vehicle status, and provides explicitly enabled remote controls.
 
-The `feature/integration-only` branch is a live-testing checkpoint. The previous Docker add-on is no longer part of this branch. Europe, Australia and New Zealand, and Russia are available in the setup flow. Mainland China remains disabled until its separate direct-client live-read gate passes.
+The `feature/integration-only` branch is a live-testing checkpoint. The previous Docker add-on is no longer part of this branch. Europe, Australia and New Zealand, Russia, and mainland China are available in the setup flow.
 
 ## Important Upgrade Note
 
@@ -32,6 +32,7 @@ The setup flow currently offers:
 - Europe, including EU countries, the United Kingdom, and Israel.
 - Australia and New Zealand.
 - Russia.
+- Mainland China, using the phone number registered in the official GWM app.
 
 The account region must match the region used by the official GWM app. It is not based on the vehicle's current location.
 
@@ -74,6 +75,8 @@ For European accounts, the message may come from `noreply@gwm-eu.com` with the s
 
 Australia and New Zealand accounts normally permit one active session. The setup flow requires explicit confirmation before it can replace the official app session. I recommend a dedicated account that has been shared access to the vehicle.
 
+Mainland-China accounts use the registered phone number and an SMS verification flow. They do not use an account password or vehicle security PIN in this integration. If GWM requests a risk-control challenge, complete it in the official app before trying again.
+
 The integration privately stores the generated device identity and account-bound authentication state so it can resume after a Home Assistant restart. Passwords and the optional vehicle security PIN are redacted from diagnostics.
 
 ## Options
@@ -82,7 +85,7 @@ Open the GWM integration entry and select **Configure** to set:
 
 - **Polling interval**: 30 to 3600 seconds. The default is 60 seconds.
 - **Enable remote commands**: Off by default.
-- **Vehicle security PIN**: Required for remote commands in the currently enabled regions.
+- **Vehicle security PIN**: Required for remote commands outside mainland China.
 - **Enable charging control**: Off by default and independent of remote commands.
 - **Log level**: Integration-specific diagnostic verbosity.
 
@@ -180,6 +183,7 @@ The previous add-on entry cannot be converted. Remove that entry and add GWM aga
 - Confirm that the selected cloud region and registration country are correct.
 - Enter any requested one-time code before it expires.
 - For Australia and New Zealand, confirm the single-session warning if you want the integration to take the active session.
+- For mainland China, use the registered phone number and complete the SMS flow. If GWM requests a risk-control challenge, complete it in the official app first.
 
 ### Entities are unavailable
 
@@ -191,15 +195,22 @@ The previous add-on entry cannot be converted. Remove that entry and add GWM aga
 ### Remote controls are unavailable
 
 - Enable remote commands in the integration options.
-- Enter the correct vehicle security PIN.
+- Enter the correct vehicle security PIN outside mainland China.
 - Reload the integration after changing options.
 - Confirm read-only polling works before testing a command.
 
 ## Mainland China
 
-The Python client contains isolated NavInfo and BeanTech protocol implementations with extensive offline tests. I have not enabled China in the Home Assistant setup flow because each claimed platform still needs a separately approved, sanitized live read through the Python path.
+Mainland China is available in the setup flow. The integration uses the registered phone number, SMS authentication, and separate G-App, BeanTech, and AutoAI sessions. Remote commands do not use a vehicle security PIN.
 
-The previous add-on's China results remain useful evidence, but they do not prove that the new client transport is ready for production. China testing will be a separate checkpoint.
+The integration preserves the released add-on capability boundaries:
+
+- NavInfo vehicles provide status polling, climate cooling and heating, climate stop and parameter changes, lock and unlock, close windows, the full China vehicle-control button set, and charging schedules when the matching options are enabled.
+- BeanTech vehicles provide status polling, lock and unlock, close windows, remote start and stop, horn, flashing lights, and close sunroof when remote commands are enabled.
+- BeanTech does not expose climate control, charging schedules, tailgate actions, other sunroof positions, or combined horn and lights.
+- Missing or unknown China platforms fail closed instead of using another platform's route.
+
+Start with remote commands and charging control disabled. Compare read-only values with the official app before enabling any operation that affects the vehicle.
 
 ## Removal
 

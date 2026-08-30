@@ -25,6 +25,7 @@ from custom_components.gwm_ora.const import (
     CONNECTION_TYPE_CLOUD,
 )
 from gwm_client import (
+    ChinaAuthState,
     ChinaClientConfig,
     EuBootstrapMaterial,
     GwmClientConfig,
@@ -240,6 +241,39 @@ async def test_china_attempt_dispatches_without_loading_overseas_material() -> N
 
     assert result is marker
     assert clients[0].calls[0]["verification_code"] == "123456"
+    assert clients[0].calls[0]["allow_sms_login"] is True
+    assert clients[0].closed
+
+
+@pytest.mark.asyncio
+async def test_china_restart_maps_no_password_login_to_no_sms_fallback() -> None:
+    marker = object()
+    clients: list[_ChinaClient] = []
+
+    def factory(config: ChinaClientConfig) -> Any:
+        client = _ChinaClient(config, marker)
+        clients.append(client)
+        return client
+
+    authenticator = GwmCloudAuthenticator(china_client_factory=factory)
+    credentials = GwmCloudCredentials(
+        "cn",
+        "CN",
+        "13800138000",
+        None,
+        _DEVICE_ID,
+    )
+    state = ChinaAuthState.for_credentials(credentials.client_credentials())
+
+    result = await authenticator.async_authenticate(
+        credentials,
+        state=state,
+        allow_password_login=False,
+    )
+
+    assert result is marker
+    assert clients[0].calls[0]["state"] == state
+    assert clients[0].calls[0]["allow_sms_login"] is False
     assert clients[0].closed
 
 

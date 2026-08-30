@@ -1,8 +1,8 @@
 """GWM cloud runtime and bounded config-flow handoff.
 
-A successful config, reauth, or reconfigure flow stages one validated overseas
-read session for immediate entry setup. The bounded handoff is only an
-in-process optimization; private account-bound storage owns restart recovery.
+A successful config, reauth, or reconfigure flow stages one validated regional
+session for immediate entry setup. The bounded handoff is only an in-process
+optimization; private account-bound storage owns restart recovery.
 """
 
 from __future__ import annotations
@@ -12,7 +12,7 @@ import re
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from typing import Protocol
+from typing import Protocol, cast
 
 from homeassistant.core import HomeAssistant
 
@@ -21,8 +21,14 @@ from gwm_client import (
     AnzAuthState,
     ChargingPlanCommand,
     ChargingPlanInfo,
+    ChinaAuthenticated,
+    ChinaAuthState,
+    ChinaClient,
+    ChinaClientConfig,
+    ChinaVehicleControlCommand,
     ClimateCommand,
     CloseWindowsCommand,
+    CloudClimateConfiguration,
     CloudVehicle,
     CloudVehicleBasics,
     CloudVehicleStatus,
@@ -57,6 +63,7 @@ from .const import (
     CONF_REGION,
     DOMAIN,
     REGION_ANZ,
+    REGION_CHINA,
     REGION_EU,
     REGION_RUSSIA,
 )
@@ -124,6 +131,50 @@ class _OverseasReadClient(Protocol):
     async def aclose(self) -> None: ...
 
 
+class _ChinaReadClient(Protocol):
+    @property
+    def authenticated(self) -> bool: ...
+
+    async def acquire_vehicles(self) -> tuple[CloudVehicle, ...]: ...
+
+    async def get_last_status(self, identifier: VehicleIdentifier) -> CloudVehicleStatus: ...
+
+    async def get_charging_plan(
+        self,
+        identifier: VehicleIdentifier,
+    ) -> ChargingPlanInfo: ...
+
+    async def set_charging_plan(self, command: ChargingPlanCommand) -> None: ...
+
+    async def send_climate_command(
+        self,
+        command: ClimateCommand,
+    ) -> RemoteCommandAcceptance: ...
+
+    async def send_lock_command(
+        self,
+        command: DoorLockCommand,
+    ) -> RemoteCommandAcceptance: ...
+
+    async def send_close_windows_command(
+        self,
+        command: CloseWindowsCommand,
+    ) -> RemoteCommandAcceptance: ...
+
+    async def send_vehicle_control_command(
+        self,
+        command: ChinaVehicleControlCommand,
+    ) -> RemoteCommandAcceptance: ...
+
+    async def get_remote_command_results(
+        self,
+        identifier: VehicleIdentifier,
+        command_id: str,
+    ) -> tuple[RemoteCommandResultItem, ...]: ...
+
+    async def aclose(self) -> None: ...
+
+
 class _AuthStateStore(Protocol):
     async def async_clear_auth_state(
         self,
@@ -142,19 +193,20 @@ class GwmClimateContext:
 
 @dataclass(frozen=True, slots=True, repr=False)
 class GwmCloudBootstrap:
-    """One validated, memory-only overseas session handoff."""
+    """One validated, memory-only regional session handoff."""
 
     region: str
     account_binding: str = field(repr=False)
-    state: EuAuthState | AnzAuthState | RussiaAuthState = field(repr=False)
-    session: GwmSession = field(repr=False)
+    state: EuAuthState | AnzAuthState | RussiaAuthState | ChinaAuthState = field(
+        repr=False
+    )
+    session: GwmSession | None = field(repr=False)
 
     def __post_init__(self) -> None:
         if (
-            self.region not in {REGION_EU, REGION_ANZ, REGION_RUSSIA}
+            self.region not in {REGION_EU, REGION_ANZ, REGION_RUSSIA, REGION_CHINA}
             or not isinstance(self.account_binding, str)
             or _ACCOUNT_BINDING.fullmatch(self.account_binding) is None
-            or type(self.session) is not GwmSession
             or not _bootstrap_state_matches(
                 self.region,
                 self.account_binding,
@@ -170,15 +222,30 @@ class GwmCloudBootstrap:
         credentials: GwmCloudCredentials,
         result: CloudAuthenticationResult,
     ) -> GwmCloudBootstrap:
-        """Create a handoff only from a complete overseas authentication."""
+        """Create a handoff only from a complete regional authentication."""
+
+        if credentials.region == REGION_CHINA:
+            if type(result) is not ChinaAuthenticated:
+                raise GwmConfigurationError(operation="login")
+            if (
+                result.state.account_binding != credentials.account_binding
+                or result.state.device_id != credentials.device_id
+            ):
+                raise GwmConfigurationError(operation="login")
+            return cls(
+                region=credentials.region,
+                account_binding=credentials.account_binding,
+                state=result.state,
+                session=None,
+            )
 
         valid_result = (
-            credentials.region == REGION_EU
-            and type(result) is EuAuthenticated
-            or credentials.region == REGION_ANZ
-            and type(result) is AnzAuthenticated
-            or credentials.region == REGION_RUSSIA
-            and type(result) is RussiaAuthenticated
+            (credentials.region == REGION_EU and type(result) is EuAuthenticated)
+            or (credentials.region == REGION_ANZ and type(result) is AnzAuthenticated)
+            or (
+                credentials.region == REGION_RUSSIA
+                and type(result) is RussiaAuthenticated
+            )
         )
         if not valid_result or not isinstance(
             result,
@@ -252,12 +319,12 @@ def consume_cloud_bootstrap(
 
 
 class GwmCloudClient:
-    """Own one authenticated overseas client and normalize account reads."""
+    """Own one authenticated regional client and normalize account reads."""
 
     def __init__(
         self,
         region: str,
-        client: _OverseasReadClient,
+        client: _OverseasReadClient | _ChinaReadClient,
         *,
         clock: Callable[[], datetime] | None = None,
         bootstrap: GwmCloudBootstrap | None = None,
@@ -267,7 +334,7 @@ class GwmCloudClient:
         lock_window_commands_enabled: bool = False,
         charging_control_enabled: bool = False,
     ) -> None:
-        if region not in {REGION_EU, REGION_ANZ, REGION_RUSSIA}:
+        if region not in {REGION_EU, REGION_ANZ, REGION_RUSSIA, REGION_CHINA}:
             raise GwmConfigurationError(operation="request")
         self.region = region
         self._client = client
@@ -285,6 +352,7 @@ class GwmCloudClient:
         self._lock_window_commands_enabled = lock_window_commands_enabled
         self._charging_control_enabled = charging_control_enabled
         self._vehicles: dict[str, CloudVehicle] = {}
+        self._china_climate_defaults: dict[str, CloudClimateConfiguration] = {}
 
     @classmethod
     def from_entry_data(
@@ -311,16 +379,38 @@ class GwmCloudClient:
                 if isinstance(data.get(CONF_PASSWORD), str)
                 else None
             ),
-            device_id=bootstrap.session.device_id,
+            device_id=bootstrap.state.device_id,
         )
         if (
             bootstrap.region != credentials.region
             or bootstrap.account_binding != credentials.account_binding
-            or bootstrap.session.country != credentials.country
             or unique_id != cloud_unique_id(credentials)
         ):
             raise GwmConfigurationError(operation="login")
 
+        if credentials.region == REGION_CHINA:
+            if type(bootstrap.state) is not ChinaAuthState or bootstrap.session is not None:
+                raise GwmConfigurationError(operation="login")
+            client = ChinaClient(
+                ChinaClientConfig(),
+                authenticated_state=bootstrap.state,
+            )
+            return cls(
+                credentials.region,
+                client,
+                bootstrap=bootstrap,
+                state_store=state_store,
+                entry_data=data,
+                climate_commands_enabled=climate_commands_enabled,
+                lock_window_commands_enabled=lock_window_commands_enabled,
+                charging_control_enabled=charging_control_enabled,
+            )
+
+        if (
+            type(bootstrap.session) is not GwmSession
+            or bootstrap.session.country != credentials.country
+        ):
+            raise GwmConfigurationError(operation="login")
         try:
             region = Region(credentials.region)
         except ValueError:
@@ -350,34 +440,60 @@ class GwmCloudClient:
         records: list[tuple[CloudVehicle, CloudVehicleStatus, CloudVehicleBasics]] = []
         for vehicle in vehicles:
             status = await self._client.get_last_status(vehicle.identifier)
-            try:
-                basics = await self._client.get_vehicle_basics(vehicle.identifier)
-            except GwmOptionalEndpointError:
-                if self.region != REGION_ANZ:
-                    raise
-                basics = CloudVehicleBasics()
+            if self.region == REGION_CHINA:
+                basics = self._china_vehicle_basics(vehicle.identifier)
+            else:
+                overseas_client = cast(_OverseasReadClient, self._client)
+                try:
+                    basics = await overseas_client.get_vehicle_basics(
+                        vehicle.identifier
+                    )
+                except GwmOptionalEndpointError:
+                    if self.region != REGION_ANZ:
+                        raise
+                    basics = CloudVehicleBasics()
             records.append((vehicle, status, basics))
 
         refreshed_at = self._clock()
         try:
             snapshots = []
             for vehicle, status, basics in records:
+                platform = (vehicle.platform or "").strip().casefold()
+                china_supported = self.region == REGION_CHINA and platform in {
+                    "navinfo",
+                    "beantech",
+                }
+                china_navinfo = self.region == REGION_CHINA and platform == "navinfo"
+                remote_commands_available = (
+                    self._lock_window_commands_enabled and china_supported
+                )
+                charging_control_available = self._charging_control_enabled and (
+                    self.region != REGION_CHINA or china_navinfo
+                )
                 snapshot = map_vehicle_snapshot(
                     vehicle,
                     status,
                     basics,
                     refreshed_at=refreshed_at,
-                    # Extended China controls remain disabled until Gate A-CN activation.
-                    remote_commands_available=False,
+                    remote_commands_available=remote_commands_available,
+                    charging_control_available=charging_control_available,
                 ).as_dict()
                 capability_data = snapshot.get("capabilities")
                 if not isinstance(capability_data, dict):
                     raise TypeError("capabilities_invalid")
                 capabilities = dict(capability_data)
-                capabilities["climate_commands"] = self._climate_commands_enabled
-                capabilities["lock_window_commands"] = self._lock_window_commands_enabled
-                capabilities["charging_control"] = self._charging_control_enabled
-                capabilities["china_vehicle_commands"] = False
+                capabilities["climate_commands"] = (
+                    self._climate_commands_enabled
+                    and (self.region != REGION_CHINA or china_navinfo)
+                )
+                capabilities["lock_window_commands"] = (
+                    self._lock_window_commands_enabled
+                    and (self.region != REGION_CHINA or china_supported)
+                )
+                capabilities["charging_control"] = charging_control_available
+                capabilities["china_vehicle_commands"] = (
+                    self._lock_window_commands_enabled and china_supported
+                )
                 snapshot["capabilities"] = capabilities
                 snapshots.append(snapshot)
         except (TypeError, ValueError):
@@ -409,12 +525,18 @@ class GwmCloudClient:
         vehicle = self._vehicles.get(identifier.value)
         if vehicle is None:
             raise GwmRoutePolicyError(operation="send_climate_command")
-        try:
-            basics = await self._client.get_vehicle_basics(identifier)
-        except GwmOptionalEndpointError:
-            if self.region != REGION_ANZ:
-                raise
-            basics = CloudVehicleBasics()
+        if self.region == REGION_CHINA:
+            if (vehicle.platform or "").strip().casefold() != "navinfo":
+                raise GwmRoutePolicyError(operation="send_climate_command")
+            basics = self._china_vehicle_basics(identifier)
+        else:
+            overseas_client = cast(_OverseasReadClient, self._client)
+            try:
+                basics = await overseas_client.get_vehicle_basics(identifier)
+            except GwmOptionalEndpointError:
+                if self.region != REGION_ANZ:
+                    raise
+                basics = CloudVehicleBasics()
         status = await self._client.get_last_status(identifier) if include_status else None
         return GwmClimateContext(vehicle=vehicle, basics=basics, status=status)
 
@@ -425,7 +547,16 @@ class GwmCloudClient:
         temperature: int,
         operation_time_minutes: int,
     ) -> None:
-        await self._client.update_climate_defaults(
+        if self.region == REGION_CHINA:
+            vehicle = self._vehicles.get(identifier.value)
+            if vehicle is None or (vehicle.platform or "").strip().casefold() != "navinfo":
+                raise GwmRoutePolicyError(operation="send_climate_command")
+            self._china_climate_defaults[identifier.value] = CloudClimateConfiguration(
+                temperature=str(temperature),
+                operation_time=str(operation_time_minutes * 60),
+            )
+            return
+        await cast(_OverseasReadClient, self._client).update_climate_defaults(
             identifier,
             temperature=temperature,
             operation_time_minutes=operation_time_minutes,
@@ -448,9 +579,15 @@ class GwmCloudClient:
         self,
         command: ClimateCommand,
         *,
-        security_password_hash: str,
+        security_password_hash: str | None = None,
     ) -> RemoteCommandAcceptance:
-        return await self._client.send_climate_command(
+        if self.region == REGION_CHINA:
+            return await cast(_ChinaReadClient, self._client).send_climate_command(
+                command
+            )
+        if not isinstance(security_password_hash, str):
+            raise GwmConfigurationError(operation="send_climate_command")
+        return await cast(_OverseasReadClient, self._client).send_climate_command(
             command,
             security_password_hash=security_password_hash,
         )
@@ -459,9 +596,13 @@ class GwmCloudClient:
         self,
         command: DoorLockCommand,
         *,
-        security_password_hash: str,
+        security_password_hash: str | None = None,
     ) -> RemoteCommandAcceptance:
-        return await self._client.send_lock_command(
+        if self.region == REGION_CHINA:
+            return await cast(_ChinaReadClient, self._client).send_lock_command(command)
+        if not isinstance(security_password_hash, str):
+            raise GwmConfigurationError(operation="send_lock_command")
+        return await cast(_OverseasReadClient, self._client).send_lock_command(
             command,
             security_password_hash=security_password_hash,
         )
@@ -470,12 +611,30 @@ class GwmCloudClient:
         self,
         command: CloseWindowsCommand,
         *,
-        security_password_hash: str,
+        security_password_hash: str | None = None,
     ) -> RemoteCommandAcceptance:
-        return await self._client.send_close_windows_command(
+        if self.region == REGION_CHINA:
+            return await cast(
+                _ChinaReadClient, self._client
+            ).send_close_windows_command(command)
+        if not isinstance(security_password_hash, str):
+            raise GwmConfigurationError(operation="send_close_windows_command")
+        return await cast(_OverseasReadClient, self._client).send_close_windows_command(
             command,
             security_password_hash=security_password_hash,
         )
+
+    async def async_send_vehicle_control_command(
+        self,
+        command: ChinaVehicleControlCommand,
+    ) -> RemoteCommandAcceptance:
+        """Send one platform-filtered mainland-China vehicle command."""
+
+        if self.region != REGION_CHINA:
+            raise GwmRoutePolicyError(operation="send_vehicle_control_command")
+        return await cast(
+            _ChinaReadClient, self._client
+        ).send_vehicle_control_command(command)
 
     async def async_get_remote_command_results(
         self,
@@ -496,13 +655,35 @@ class GwmCloudClient:
         if self._state_store is not None:
             await self._state_store.async_clear_auth_state(self._entry_data)
 
+    def _china_vehicle_basics(
+        self,
+        identifier: VehicleIdentifier,
+    ) -> CloudVehicleBasics:
+        climate = self._china_climate_defaults.setdefault(
+            identifier.value,
+            CloudClimateConfiguration(
+                temperature="22",
+                operation_time="900",
+            ),
+        )
+        return CloudVehicleBasics(climate=climate)
+
 
 def _bootstrap_state_matches(
     region: str,
     account_binding: str,
     state: object,
-    session: GwmSession,
+    session: GwmSession | None,
 ) -> bool:
+    if region == REGION_CHINA:
+        return (
+            type(state) is ChinaAuthState
+            and session is None
+            and state.account_binding == account_binding
+            and state.complete
+        )
+    if type(session) is not GwmSession:
+        return False
     expected = {
         REGION_EU: EuAuthState,
         REGION_ANZ: AnzAuthState,

@@ -18,6 +18,8 @@ from homeassistant.util import dt as dt_util
 
 from gwm_client import (
     AnzAuthenticated,
+    ChinaAuthenticated,
+    ChinaInitializationRequired,
     EuAuthenticated,
     GwmAuthenticationError,
     GwmClientError,
@@ -47,12 +49,14 @@ from .const import (
     CONF_ENABLE_CHARGING_CONTROL,
     CONF_ENABLE_REMOTE_COMMANDS,
     CONF_POLL_INTERVAL_SECONDS,
+    CONF_REGION,
     CONF_SECURITY_PIN,
     CONNECTION_TYPE_CLOUD,
     DEFAULT_POLL_INTERVAL_SECONDS,
     DOMAIN,
     MIN_CHARGE_WINDOW_MINUTES,
     PLATFORMS,
+    REGION_CHINA,
     SERVICE_CLEAR_CHARGING_PLAN,
     SERVICE_SET_CHARGING_PLAN,
 )
@@ -208,14 +212,18 @@ async def _async_setup_cloud_entry(
         command_enabled = entry.options.get(CONF_ENABLE_REMOTE_COMMANDS) is True
         charging_enabled = entry.options.get(CONF_ENABLE_CHARGING_CONTROL) is True
         security_pin = entry.options.get(CONF_SECURITY_PIN)
-        climate_enabled = command_enabled and isinstance(security_pin, str) and bool(security_pin.strip())
+        commands_available = command_enabled and (
+            entry.data.get(CONF_REGION) == REGION_CHINA
+            or isinstance(security_pin, str)
+            and bool(security_pin.strip())
+        )
         cloud = GwmCloudClient.from_entry_data(
             dict(entry.data),
             entry.unique_id,
             bootstrap,
             state_store=state_store,
-            climate_commands_enabled=climate_enabled,
-            lock_window_commands_enabled=climate_enabled,
+            climate_commands_enabled=commands_available,
+            lock_window_commands_enabled=commands_available,
             charging_control_enabled=charging_enabled,
         )
     except (GwmConfigurationError, TypeError, ValueError) as err:
@@ -315,9 +323,19 @@ async def _async_load_cloud_bootstrap(
             allow_session_reclaim=False,
             allow_password_login=False,
         )
+        if isinstance(result, ChinaInitializationRequired):
+            await state_store.async_save_auth_state(credentials, result.state)
+            raise ConfigEntryNotReady(
+                "GWM China downstream services require another initialization attempt"
+            )
         if not isinstance(
             result,
-            (EuAuthenticated, AnzAuthenticated, RussiaAuthenticated),
+            (
+                EuAuthenticated,
+                AnzAuthenticated,
+                RussiaAuthenticated,
+                ChinaAuthenticated,
+            ),
         ):
             await state_store.async_clear_auth_state(dict(entry.data))
             raise ConfigEntryAuthFailed(

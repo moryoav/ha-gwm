@@ -8,15 +8,16 @@ This project follows semantic versioning. HACS uses the latest GitHub release ta
 
 ### Added
 
-- Added the standalone Home Assistant setup flow for Europe, Australia and New Zealand, and Russia.
+- Added the standalone Home Assistant setup flow for Europe, Australia and New Zealand, Russia, and mainland China.
 - Added an immutable `gwm-client` source dependency for testing this branch before the client is published separately.
+- Added mainland-China SMS setup, restart-safe session handoff, direct polling, no-PIN controls, and platform-specific NavInfo and BeanTech capabilities.
 
 ### Changed
 
 - Changed the integration to authenticate, poll, and send enabled commands directly through the GWM cloud client.
 - Existing add-on based entries now require removal and a new GWM setup. Credentials, tokens, certificates, and add-on state are not imported.
 - Renamed the reusable Python package and surviving internal Python types to brand-neutral GWM names while preserving the public `gwm_ora` Home Assistant domain and action namespace.
-- Kept mainland China out of the setup selector until its separate direct-client live-read gate passes.
+- Matched the released add-on capability boundaries for mainland-China NavInfo and BeanTech vehicles in the standalone integration.
 
 ### Removed
 

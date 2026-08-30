@@ -12,6 +12,7 @@ pytest.importorskip("homeassistant")
 
 from homeassistant.core import HomeAssistant
 
+from custom_components.gwm_ora import cloud_runtime
 from custom_components.gwm_ora.cloud_auth import (
     GwmCloudCredentials,
     cloud_entry_data,
@@ -28,15 +29,24 @@ from gwm_client import (
     AnzAuthState,
     ChargingPlanCommand,
     ChargingPlanInfo,
+    ChinaAuthenticated,
+    ChinaAuthState,
+    ChinaVehicle,
+    ChinaVehicleControlCommand,
+    ClimateCommand,
+    CloseWindowsCommand,
     CloudClimateConfiguration,
     CloudStatusItem,
     CloudVehicle,
     CloudVehicleBasics,
     CloudVehicleStatus,
+    DoorLockCommand,
     GwmConfigurationError,
     GwmNetworkError,
     GwmOptionalEndpointError,
+    GwmRoutePolicyError,
     GwmSession,
+    RemoteCommandAcceptance,
     VehicleIdentifier,
 )
 
@@ -268,3 +278,185 @@ async def test_rejected_runtime_revision_cannot_be_restaged() -> None:
 
     assert runtime.reusable_bootstrap is None
     assert state_store.cleared == cloud_entry_data(credentials)
+
+
+@pytest.mark.asyncio
+async def test_china_runtime_handoff_maps_platform_capabilities_and_no_pin_writes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    credentials = GwmCloudCredentials(
+        "cn",
+        "CN",
+        "13800138000",
+        None,
+        _DEVICE_ID,
+    )
+    regional = credentials.client_credentials()
+    state = replace(
+        ChinaAuthState.for_credentials(regional),
+        g_token="synthetic-g-token",
+        g_refresh_token="synthetic-g-refresh-token",
+        user_id="synthetic-g-user",
+        bean_id="synthetic-g-bean",
+        bean_tech_access_token="synthetic-bean-access-token",
+        auto_ai_token_id="synthetic-auto-token",
+        auto_ai_user_id="synthetic-auto-user",
+    )
+    bootstrap = GwmCloudBootstrap.from_authentication(
+        credentials,
+        ChinaAuthenticated(state),
+    )
+    navinfo = ChinaVehicle(
+        identifier=VehicleIdentifier("LGWTEST0000000001"),
+        app_show_series_name="Synthetic NavInfo",
+        platform="navinfo",
+    )
+    beantech = ChinaVehicle(
+        identifier=VehicleIdentifier("LGWTEST0000000002"),
+        app_show_series_name="Synthetic BeanTech",
+        platform="beantech",
+    )
+
+    class ChinaReadClient:
+        authenticated = True
+
+        def __init__(self) -> None:
+            self.climate: list[ClimateCommand] = []
+            self.locks: list[DoorLockCommand] = []
+            self.windows: list[CloseWindowsCommand] = []
+            self.controls: list[ChinaVehicleControlCommand] = []
+            self.charging: list[ChargingPlanCommand] = []
+            self.closed = False
+
+        async def acquire_vehicles(self) -> tuple[ChinaVehicle, ...]:
+            return (navinfo, beantech)
+
+        async def get_last_status(
+            self,
+            identifier: VehicleIdentifier,
+        ) -> CloudVehicleStatus:
+            return CloudVehicleStatus(device_id=f"serial-{identifier.value[-1]}")
+
+        async def get_charging_plan(
+            self,
+            identifier: VehicleIdentifier,
+        ) -> ChargingPlanInfo:
+            assert identifier == navinfo.identifier
+            return ChargingPlanInfo()
+
+        async def set_charging_plan(self, command: ChargingPlanCommand) -> None:
+            self.charging.append(command)
+
+        async def send_climate_command(
+            self,
+            command: ClimateCommand,
+        ) -> RemoteCommandAcceptance:
+            self.climate.append(command)
+            return RemoteCommandAcceptance("china-climate-command")
+
+        async def send_lock_command(
+            self,
+            command: DoorLockCommand,
+        ) -> RemoteCommandAcceptance:
+            self.locks.append(command)
+            return RemoteCommandAcceptance("china-lock-command")
+
+        async def send_close_windows_command(
+            self,
+            command: CloseWindowsCommand,
+        ) -> RemoteCommandAcceptance:
+            self.windows.append(command)
+            return RemoteCommandAcceptance("china-window-command")
+
+        async def send_vehicle_control_command(
+            self,
+            command: ChinaVehicleControlCommand,
+        ) -> RemoteCommandAcceptance:
+            self.controls.append(command)
+            return RemoteCommandAcceptance("china-control-command")
+
+        async def get_remote_command_results(
+            self,
+            identifier: VehicleIdentifier,
+            command_id: str,
+        ) -> tuple[()]:
+            del identifier, command_id
+            return ()
+
+        async def aclose(self) -> None:
+            self.authenticated = False
+            self.closed = True
+
+    client = ChinaReadClient()
+
+    def create_china_client(*args: object, **kwargs: object) -> ChinaReadClient:
+        assert kwargs["authenticated_state"] == state
+        return client
+
+    monkeypatch.setattr(cloud_runtime, "ChinaClient", create_china_client)
+    runtime = GwmCloudClient.from_entry_data(
+        cloud_entry_data(credentials),
+        cloud_unique_id(credentials),
+        bootstrap,
+        climate_commands_enabled=True,
+        lock_window_commands_enabled=True,
+        charging_control_enabled=True,
+    )
+
+    result = await runtime.async_get_vehicle_data()
+    snapshots = result["vehicles"]
+    assert isinstance(snapshots, list)
+    assert snapshots[0]["capabilities"] == {
+        "remote_commands": True,
+        "charging_control": True,
+        "climate_commands": True,
+        "lock_window_commands": True,
+        "china_vehicle_commands": True,
+    }
+    assert snapshots[1]["capabilities"] == {
+        "remote_commands": True,
+        "charging_control": False,
+        "climate_commands": False,
+        "lock_window_commands": True,
+        "china_vehicle_commands": True,
+    }
+
+    context = await runtime.async_get_climate_context(
+        navinfo.identifier,
+        include_status=False,
+    )
+    assert context.basics.climate == CloudClimateConfiguration("22", "900")
+    await runtime.async_update_climate_defaults(
+        navinfo.identifier,
+        temperature=25,
+        operation_time_minutes=20,
+    )
+    updated = await runtime.async_get_climate_context(
+        navinfo.identifier,
+        include_status=False,
+    )
+    assert updated.basics.climate == CloudClimateConfiguration("25", "1200")
+
+    climate = ClimateCommand(navinfo.identifier, "heat", 25, 20, False)
+    lock = DoorLockCommand(beantech.identifier, True)
+    windows = CloseWindowsCommand(beantech.identifier)
+    control = ChinaVehicleControlCommand(beantech.identifier, "horn")
+    charging = ChargingPlanCommand(navinfo.identifier, False)
+    await runtime.async_send_climate_command(climate)
+    await runtime.async_send_lock_command(lock)
+    await runtime.async_send_close_windows_command(windows)
+    await runtime.async_send_vehicle_control_command(control)
+    await runtime.async_set_charging_plan(charging)
+
+    assert client.climate == [climate]
+    assert client.locks == [lock]
+    assert client.windows == [windows]
+    assert client.controls == [control]
+    assert client.charging == [charging]
+    with pytest.raises(GwmRoutePolicyError):
+        await runtime.async_get_climate_context(
+            beantech.identifier,
+            include_status=False,
+        )
+    await runtime.aclose()
+    assert client.closed

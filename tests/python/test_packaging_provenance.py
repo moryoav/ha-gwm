@@ -16,7 +16,7 @@ from gwm_client.crypto import load_certificate, recover_transformed_private_key
 
 ROOT = Path(__file__).resolve().parents[2]
 RESOURCE_DIRECTORY = ROOT / "custom_components" / "gwm_ora" / "resources"
-CLIENT_SOURCE_COMMIT = "0027f2b9e050103e0af8a8a6c0b6b122efd96a83"
+CLIENT_SOURCE_COMMIT = "5e993848ddc0bd28aa3c0e23e8bf1e3e01013f65"
 
 EXPECTED_FILES = {
     "gwm_general.cer": (1529, "24886bad04d8b26aa2aafd3fb22c74bd1f2859d81499a39c561df4930429a03d"),
@@ -127,7 +127,7 @@ def test_packaging_decision_keeps_the_client_separate_and_activates_test_pin() -
         "gwm-client@https://github.com/moryoav/ha-gwm/archive/"
         f"{CLIENT_SOURCE_COMMIT}.zip"
     ]
-    assert manifest["version"] == "0.14.0"
+    assert manifest["version"] == "0.15.0"
     assert manifest["integration_type"] == "hub"
     assert manifest["loggers"] == ["gwm_client"]
     assert manifest["domain"] == "gwm_ora"

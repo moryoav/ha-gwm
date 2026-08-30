@@ -3,7 +3,7 @@
     "step": {
       "user": {
         "title": "Choose GWM cloud region",
-        "description": "Choose the region used by the official GWM app for this account. Mainland China remains unavailable here until its separate live-read safety gate passes.",
+        "description": "Choose the region used by the official GWM app for this account.",
         "data": {
           "region": "Cloud region"
         },
@@ -61,7 +61,7 @@
       },
       "reauth_confirm": {
         "title": "Reconnect GWM",
-        "description": "Enter the current password and complete any requested verification.",
+        "description": "Confirm the account and complete any requested password or verification step.",
         "data": {
           "password": "Password"
         }
@@ -81,7 +81,6 @@
     },
     "abort": {
       "already_configured": "This GWM account is already configured.",
-      "china_live_validation_required": "Mainland-China setup remains disabled until the separate live-read safety gate passes.",
       "invalid_flow_state": "This setup continuation is no longer valid. Start the flow again.",
       "legacy_addon_entry": "The previous add-on based entry cannot be converted. Remove it and add GWM again to sign in directly.",
       "risk_control_required": "GWM requires a risk-control challenge. Complete it in the official app before trying again."

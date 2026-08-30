@@ -6,10 +6,10 @@ This document is the durable plan, behavior contract, decision log, and test led
 
 - Working branch: `feature/integration-only`
 - Branch point: `1184737` (`Update README GWM logo to SVG`)
-- Current checkpoint: Task 24 complete; the integration-only branch is ready for manual installation and controlled live testing in Europe, Australia and New Zealand, or Russia
-- Next checkpoint: manually install this branch, then run a separately approved live authentication and read-only test with command options disabled
+- Current checkpoint: Task 25 complete; the integration-only branch is ready for manual installation and controlled live testing in all four regions
+- Next checkpoint: manually install this branch, then run live authentication and read-only polling with command options disabled
 - Synchronized `main`: `7b599cb` (`v0.13.0`) through a two-parent merge without rebasing or selective cherry-picks
-- Task 24 activates an immutable source dependency for branch testing and removes the add-on, local proxy, and .NET trees. Direct China remains hidden behind Gate A-CN, no credentials or state are migrated, no live request or vehicle operation is included, and unresolved protocol-material permission and replacement conditions remain production release holds
+- Task 25 exposes mainland China through the native setup flow and connects the isolated Python runtime to the same NavInfo and BeanTech capability boundaries carried by released `main`. No credentials or state are migrated, no live request or vehicle operation is included, and unresolved protocol-material permission and replacement conditions remain production release holds
 
 Work proceeds one explicitly approved task at a time. At the end of every task, update this document, run the checks appropriate to that checkpoint, create one focused commit, push it to `feature/integration-only`, report the result, and stop. Do not begin the next task without a new user green light.
 
@@ -118,7 +118,7 @@ Task 24 retires the add-on only after the Python path preserves the behaviors be
 | Europe/Israel | `region: eu` and the account registration country | EU v2 password login and verification, token refresh, EU request canonicalization/signing, general-certificate bootstrap, per-device certificate enrollment, mutual TLS, vehicle reads, and commands |
 | Australia/New Zealand | `region: aus` and the exact account registration country | ANZ login and verification, `bt-auth` behavior, single-active-session recovery, ANZ query canonicalization, tolerant API quirks, required VIN headers, vehicle reads, and commands |
 | Russia | `region: rus`, normally with `country: RU` | Russia login and verification payloads, Russian certificate chain and mutual TLS, regional routing/headers/signing, string-or-number decoding, vehicle reads, and Russia-specific command/result behavior |
-| Mainland China (experimental) | `region: cn`, `country: CN`, and the registered phone number | SMS-only G-App login, separate G-App/BeanTech/AutoAI sessions, three signing/encryption schemes, 32-character device identity, fixed UTC+08:00 timestamps, app-like transport, NavInfo-only discovery/status reads, China status translation, no-PIN commands, and China charging behavior |
+| Mainland China | `region: cn`, `country: CN`, and the registered phone number | SMS-only G-App login, separate G-App/BeanTech/AutoAI sessions, three signing/encryption schemes, 32-character device identity, fixed UTC+08:00 timestamps, app-like transport, platform-routed NavInfo and BeanTech status reads, China status translation, no-PIN commands, and NavInfo charging behavior |
 
 Regional logic must remain strategy-like and separately tested. China is a separate multi-service strategy, not a fourth overseas-gateway policy. A fix for one region or service must not silently alter another region’s signing, serialization, headers, endpoints, transport, session, or result interpretation.
 
@@ -127,7 +127,7 @@ Regional logic must remain strategy-like and separately tested. China is a separ
 The current user-facing configuration comprises:
 
 - Account registration country.
-- Cloud region: `eu`, `aus`, `rus`, or experimental `cn`.
+- Cloud region: `eu`, `aus`, `rus`, or `cn`.
 - Account username/e-mail and password outside China; registered phone number and no password for China.
 - One-time verification code when required; China always starts a fresh login through an SMS continuation.
 - Vehicle security PIN for remote controls outside China; the China app protocol does not send a PIN.
@@ -207,7 +207,7 @@ Charging control remains a separate opt-in and does not require the remote-contr
 - Provide the existing switch and `gwm_ora.set_charging_plan` / `gwm_ora.clear_charging_plan` actions.
 - Track the exact plan written by this project.
 - During cleanup, remove only a still-matching owned plan and never delete a schedule replaced or changed by the official GWM app.
-- Preserve China’s separate AutoAI weekly-schedule command, fixed-China-time conversion, weekday encoding, and synthesized plan-read semantics without claiming live validation that has not occurred.
+- Preserve China’s separate AutoAI weekly-schedule command, fixed-China-time conversion, weekday encoding, and synthesized plan-read semantics.
 
 ### Security and privacy
 
@@ -236,9 +236,9 @@ Task 8 is a second, China-specific feasibility checkpoint. It will remain reuse-
 
 After Task 3, Python must reproduce the offline signing/certificate vectors and retrieve a sanitized live vehicle snapshot directly from at least one GWM region using scoped TLS. Failure pauses the migration for reassessment.
 
-### Gate A-CN — China transport and production-read feasibility (offline NavInfo portions passed 2026-08-28; direct-Python live activation prerequisite pending)
+### Gate A-CN - China transport and production-read feasibility (accepted for migration parity on 2026-08-30)
 
-After Task 8, Python must reproduce all three China crypto/signing families and complete a bounded end-to-end synthetic-service discovery/status round trip using the selected transport. Released `main` v0.13.0 adds contributed, live-tested BeanTech status reading to the C# add-on, which establishes useful route/schema evidence but does not validate the independent Python transport. Task 16 must reproduce both NavInfo/AutoAI and BeanTech status paths offline. Before `cn` can be enabled in the standalone Home Assistant flow, a sanitized live read-only validation of the Python path must also pass on each platform claimed ready, using either an existing session or a separately approved SMS-login procedure. Lack of suitable China access does not block branch testing for the other regions, but it does block claiming China readiness.
+Python reproduces all three China crypto and signing families, the bounded China transport, SMS authentication, NavInfo and BeanTech status routes, platform-specific commands, charging boundaries, and restart behavior. The user explicitly chose released `main` as the validation baseline and required the standalone integration to expose the same capabilities. Task 25 therefore replaces the earlier extra direct-Python activation prerequisite with parity to released `main`. Manual integration testing remains the next checkpoint, but China is no longer hidden from setup.
 
 ### Gate B — Read-only integration (passed 2026-08-28)
 
@@ -246,11 +246,11 @@ After Task 14, native config flows, account-bound state, and a direct coordinato
 
 ### Gate C - Write parity (offline matrix passed 2026-08-30; live validation remains pending)
 
-After Task 21, commands and charging control pass the complete fixture, lifecycle, restart, cancellation, and fail-closed matrix for EU, ANZ, Russia, NavInfo China, and BeanTech China. No live operation was approved for this checkpoint, so live command and charging behavior remains unverified in every region and platform. Experimental China operations remain labeled as such until separately live-validated.
+After Task 21, commands and charging control pass the complete fixture, lifecycle, restart, cancellation, and fail-closed matrix for EU, ANZ, Russia, NavInfo China, and BeanTech China. Task 25 exposes the released `main` capability set without broadening any platform route. No live vehicle operation was performed during these migration checkpoints.
 
-### Gate D — Cutover readiness
+### Gate D - Cutover readiness (passed for manual branch testing on 2026-08-30)
 
-After Task 24, packaging, explicit fresh-entry cutover behavior, documentation, complete offline tests, and isolated dependency installation must pass before this branch is ready for manual installation. Existing add-on entries are not converted. Gate A-CN must pass before any China platform is included, so China remains hidden while the other regions enter live testing.
+Packaging, explicit fresh-entry cutover behavior, documentation, complete offline tests, and isolated dependency installation pass before manual installation. Existing add-on entries are not converted. Task 25 adds the accepted mainland-China parity baseline, so all four regions can enter controlled live testing through the standalone integration.
 
 ## Roadmap
 
@@ -278,6 +278,7 @@ After Task 24, packaging, explicit fresh-entry cutover behavior, documentation, 
 - [x] Task 22 - Resolve packaging, dependency, licensing, certificate, and protocol-material provenance.
 - [x] Task 23 — Resolve the existing-installation path by requiring removal, a new integration entry, and fresh authentication. Do not import add-on credentials or state.
 - [x] Task 24 — Remove add-on/proxy code and complete final validation and documentation.
+- [x] Task 25 - Activate mainland China in the standalone flow and preserve released NavInfo and BeanTech capability parity.
 
 The changed checkpoints stay intentionally narrow:
 
@@ -296,7 +297,8 @@ The changed checkpoints stay intentionally narrow:
 - The Task 22 naming correction uses `gwm-client` and `gwm_client` for the unpublished multi-brand client. Existing `gwm_ora` Home Assistant and add-on identifiers remain compatibility contracts, not vehicle-scope claims. I defer renaming surviving internal `GwmOra*` Python symbols until Task 24 removes the proxy path, so the cleanup happens once without changing the external domain or action namespace.
 - Task 23 intentionally performs no credential or state migration. A previous add-on entry fails with clear removal and re-add guidance, and the normal user flow starts with region selection and fresh authentication.
 - Task 24 removes the Docker, .NET, Supervisor, and local proxy surfaces, activates the immutable `gwm-client` source archive for branch testing, and completes brand-neutral internal Python naming. The public `gwm_ora` domain, action namespace, storage compatibility keys, and protocol-derived names remain stable where changing them would break persisted development state or wire fidelity.
-- Tasks 17 through 22 and Task 24 preserve the original command, charging, hardening, packaging, and cutover progression. I keep the platform capability explicit: BeanTech supports lock/unlock, close windows, remote start/stop, horn, flash, and close sunroof. It does not support the climate entity, climate run-time number, tailgate operations, other sunroof positions, combined horn/lights, or charging schedules. Task 19 keeps these experimental controls separate from the already-supported command families and from direct China activation.
+- Task 25 removes the obsolete China selector gate, transfers a validated complete China state into the owned runtime without a second login, resumes complete China state after restart without requesting SMS, and applies the released per-platform capability matrix to normalized snapshots and Home Assistant entities.
+- Tasks 17 through 22, Task 24, and Task 25 preserve the original command, charging, hardening, packaging, and cutover progression. I keep the platform capability explicit: BeanTech supports lock/unlock, close windows, remote start/stop, horn, flash, and close sunroof. It does not support the climate entity, climate run-time number, tailgate operations, other sunroof positions, combined horn/lights, or charging schedules.
 
 ## Decision Log
 
@@ -367,6 +369,7 @@ The changed checkpoints stay intentionally narrow:
 | D-063 | 2026-08-30 | I do not migrate existing add-on credentials, tokens, certificates, or state. | The user accepts a one-time fresh integration setup, which removes a sensitive migration path and avoids carrying the retired local proxy contract into the final architecture. |
 | D-064 | 2026-08-30 | I pin branch testing to the immutable Task 22 `gwm-client` source archive. | Home Assistant can install the independent client from a fixed HTTPS archive without requiring Git on the host. Production still requires a separately approved package publication and version pin. |
 | D-065 | 2026-08-30 | I remove the add-on, .NET solution and tests, Supervisor workflows, and local integration proxy in Task 24. | The direct client and Home Assistant lifecycle now own the required read and write contracts, and retaining the second runtime would make the integration-only branch ambiguous and harder to test. |
+| D-066 | 2026-08-30 | I treat released `main` as the accepted mainland-China validation baseline and expose matching capabilities in Task 25. | The user requires the standalone integration to preserve the app and integration combination instead of applying an additional Python-only activation gate. NavInfo and BeanTech stay isolated and expose only their released capability sets. |
 
 ## Post-Branch Main Drift Review
 
@@ -1499,9 +1502,23 @@ Delivered:
 - The complete Python suite passes 1,088 tests. The Home Assistant-side suite passes 125 tests and the client-only suite passes 963 tests. Repository-wide Ruff, strict mypy across all 25 client source files, and Python 3.13 compilation pass.
 - A clean external build produces the 0.1.0 wheel and source archive. Twine and the narrow archive verifier pass. A clean external directory installs the exact manifest source archive and imports the copied integration against that installed package rather than the repository client source.
 
+### Task 25 - Mainland-China standalone activation
+
+Status: complete on 2026-08-30; mainland China is available in the native setup and reconfigure flows with the released NavInfo and BeanTech capability matrix. I did not authenticate to a live account or send a live vehicle operation in this task.
+
+Delivered:
+
+- I added mainland China to the region selector and retained its registered-phone, SMS verification, downstream initialization, risk-control, reauthentication, and no-password flow.
+- I added a validated complete-state handoff to `ChinaClient` so entry setup can own the client without performing a second login. A restart can revalidate or refresh stored China state, but its restart policy disables every SMS request and login fallback. Recoverable rotated partial state is retained for another initialization attempt.
+- I connected China discovery and status polling to the normalized runtime. China climate defaults match the released add-on's in-memory 22 degree and 15 minute defaults.
+- I expose NavInfo climate, lock and window, all mapped extended controls, and charging capabilities when their options are enabled. I expose only the released BeanTech lock, window, remote start and stop, horn, flash, and close-sunroof controls. BeanTech climate, charging, and unmapped actions remain unavailable and fail closed before transport.
+- I set the integration version to 0.15.0 and pinned the test dependency to the immutable client handoff commit used by this runtime.
+- Focused tests cover China setup, risk control, complete-state restart, no-PIN option activation, mixed NavInfo and BeanTech capabilities, local climate defaults, command delegation, charging isolation, and transport ownership.
+- The complete Python suite passes 1,098 tests. The Home Assistant-side suite passes 131 tests and the client-only suite passes 967 tests. Repository-wide Ruff, strict client mypy, client archive build, Twine, and the narrow archive verifier pass.
+
 ### Next checkpoint (requires explicit approval)
 
-Install `feature/integration-only` on the selected Home Assistant test system and complete a live authentication plus read-only polling test with remote commands and charging control disabled. Any live climate, lock, window, extended China, or charging operation still requires a separate immediate approval.
+Install `feature/integration-only` on the selected Home Assistant test system and complete live authentication plus read-only polling with remote commands and charging control disabled. Any live climate, lock, window, extended China, or charging operation still requires a separate immediate approval.
 
 ## Open Risks and Questions
 
@@ -1511,10 +1528,10 @@ Install `feature/integration-only` on the selected Home Assistant test system an
 - Modern `cryptography` rejects invalid PrintableString characters in the legacy OEM CA subjects; the POC validates their envelopes and lets OpenSSL consume the original signed bytes instead.
 - EU authentication is implemented and exhaustively fixture-tested offline, but its undocumented application-level token-expiry and wrong-verification-code values remain unverified. Until sanitized evidence establishes those codes, only HTTP 401/403 retires token state and unknown application errors propagate without fallback side effects.
 - Exact live parity of undocumented authentication and response behavior in ANZ and Russia remains unverified; EU read transport is proven live, while Task 5 EU auth, Task 6 ANZ auth/read, and Task 10 Russia auth/read semantics were deliberately not exercised live.
-- The overseas Python transport still deliberately rejects compressed responses. The separate China adapter, expanded through Task 16, proves independently bounded gzip and both NavInfo/BeanTech status routes over HTTP/1.1 against synthetic services, but `aiohttp` cannot prefer HTTP/2 and no live China read was approved; a sanitized live validation must decide whether each service accepts the permitted fallback or an isolated HTTP/2-capable dependency is required before Gate A-CN activation.
+- The overseas Python transport still deliberately rejects compressed responses. The separate China adapter proves independently bounded gzip and both NavInfo and BeanTech status routes over HTTP/1.1 against synthetic services. `aiohttp` cannot prefer HTTP/2, so manual China testing should confirm that each service accepts the app-permitted HTTP/1.1 fallback. This observation no longer hides China from the setup flow.
 - China authentication now crosses three services in the standalone client, but its exact live error-code behavior remains unverified. Unknown G-App, BeanTech, or AutoAI application codes therefore do not retire authentication, trigger SMS delivery/login, or discard a recoverable G-App-only partial; risk-control `1013` remains an explicit stop directing the user to the official app.
 - BeanTech and AutoAI initialization now use the narrowly bounded three-attempt policy selected in D-035. It is fixture-proven only; live validation must confirm gateway behavior, while SMS delivery/login, refresh, reads, schema/TLS/risk failures, and commands retain no automatic retry.
-- China evidence now includes a contributed NavInfo WEY VV6 with selected reads/controls, contributed live-tested BeanTech status through the released C# add-on, and independent offline Python parity for both status routes. Gate A-CN still needs a suitable sanitized live Python read before either claimed platform can be exposed; heating, platform-specific controls, charging, other models, and broader response encodings retain their own later evidence requirements.
+- China evidence includes a contributed NavInfo WEY VV6 with selected reads and controls, contributed live-tested BeanTech status through the released C# add-on, and independent offline Python parity for both status routes. The user accepts released `main` as the migration capability baseline. Manual standalone testing can still identify model-specific transport or response differences without reducing the exposed parity set in advance.
 - The Python cloud DTOs and normalized snapshots now carry the released BeanTech platform/capability fields and additional status values with mixed-platform isolation proven offline. Broader live response/model variation remains unverified, so absent, malformed, and unknown platform data must continue to fail closed or stay vehicle-local.
 - Tasks 17-21 now fixture-prove climate, lock/window, extended China controls, charging routes, ownership cleanup, platform-specific request/result routing, polling windows, terminal-code interpretation, restart behavior, cancellation-safe persistence, and ordered unload. Every family's live provider behavior, including charging and the released BeanTech command mappings, remains unverified until separately approved.
 - Availability of safe test accounts/vehicles for every regional read and write matrix.

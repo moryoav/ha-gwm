@@ -167,8 +167,6 @@ class GwmCloudAuthenticator:
 
         regional_credentials = credentials.client_credentials()
         if credentials.region == REGION_CHINA:
-            if not allow_password_login:
-                raise GwmConfigurationError(operation="login")
             if state is not None and type(state) is not ChinaAuthState:
                 raise GwmConfigurationError(operation="login")
             client = self._china_client_factory(ChinaClientConfig())
@@ -178,6 +176,7 @@ class GwmCloudAuthenticator:
                     regional_credentials,
                     state=state,
                     verification_code=verification_code,
+                    allow_sms_login=allow_password_login,
                 )
             finally:
                 await client.aclose()

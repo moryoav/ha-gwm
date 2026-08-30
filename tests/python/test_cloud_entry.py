@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ssl
+from dataclasses import replace
 from types import MappingProxyType, SimpleNamespace
 from typing import Any
 
@@ -36,6 +37,7 @@ from custom_components.gwm_ora.const import (
     CONF_CONNECTION_TYPE,
     CONF_COUNTRY,
     CONF_ENABLE_CHARGING_CONTROL,
+    CONF_ENABLE_REMOTE_COMMANDS,
     CONF_PASSWORD,
     CONF_POLL_INTERVAL_SECONDS,
     CONF_REGION,
@@ -45,6 +47,9 @@ from custom_components.gwm_ora.const import (
 )
 from custom_components.gwm_ora.diagnostics import async_get_config_entry_diagnostics
 from gwm_client import (
+    ChinaAuthenticated,
+    ChinaAuthState,
+    ChinaInitializationRequired,
     EuAuthenticated,
     EuAuthState,
     EuCredentials,
@@ -118,6 +123,57 @@ def _bootstrap(entry: ConfigEntry, token: str = "synthetic-access-token") -> Gwm
             ssl.create_default_context(),
         ),
     )
+
+
+def _china_entry_and_bootstrap() -> tuple[
+    ConfigEntry,
+    GwmCloudCredentials,
+    GwmCloudBootstrap,
+]:
+    data = {
+        CONF_CONNECTION_TYPE: CONNECTION_TYPE_CLOUD,
+        CONF_REGION: "cn",
+        CONF_COUNTRY: "CN",
+        CONF_ACCOUNT: "13800138000",
+    }
+    credentials = GwmCloudCredentials(
+        "cn",
+        "CN",
+        str(data[CONF_ACCOUNT]),
+        None,
+        _DEVICE_ID,
+    )
+    state = replace(
+        ChinaAuthState.for_credentials(credentials.client_credentials()),
+        g_token="synthetic-g-token",
+        g_refresh_token="synthetic-g-refresh-token",
+        user_id="synthetic-g-user",
+        bean_id="synthetic-g-bean",
+        bean_tech_access_token="synthetic-bean-access-token",
+        auto_ai_token_id="synthetic-auto-token",
+        auto_ai_user_id="synthetic-auto-user",
+    )
+    entry = ConfigEntry(
+        data=data,
+        discovery_keys=MappingProxyType({}),
+        domain=DOMAIN,
+        entry_id="synthetic-china-entry",
+        minor_version=1,
+        options={
+            CONF_ENABLE_REMOTE_COMMANDS: True,
+            CONF_ENABLE_CHARGING_CONTROL: True,
+        },
+        source="user",
+        subentries_data=None,
+        title="GWM China",
+        unique_id=cloud_unique_id(credentials),
+        version=1,
+    )
+    bootstrap = GwmCloudBootstrap.from_authentication(
+        credentials,
+        ChinaAuthenticated(state),
+    )
+    return entry, credentials, bootstrap
 
 
 @pytest.mark.asyncio
@@ -354,6 +410,121 @@ async def test_process_restart_resumes_and_rotates_durable_session_without_login
     ).async_load_auth_state(dict(entry.data))
     assert isinstance(restored, EuAuthState)
     assert restored.access_token == "rotated-access-token"
+
+
+@pytest.mark.asyncio
+async def test_china_restart_resumes_complete_state_and_enables_no_pin_commands(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Any,
+) -> None:
+    entry, credentials, bootstrap = _china_entry_and_bootstrap()
+    first_hass = HomeAssistant(str(tmp_path))
+    await cloud_state_store(
+        first_hass,
+        entry.unique_id or "",
+    ).async_save_auth_state(credentials, bootstrap.state)
+
+    class Cloud:
+        region = "cn"
+        reusable_bootstrap = bootstrap
+
+        async def aclose(self) -> None:
+            return None
+
+    cloud = Cloud()
+
+    def runtime(*args: Any, **kwargs: Any) -> Cloud:
+        assert args[2].region == "cn"
+        assert args[2].session is None
+        assert kwargs["climate_commands_enabled"] is True
+        assert kwargs["lock_window_commands_enabled"] is True
+        assert kwargs["charging_control_enabled"] is True
+        return cloud
+
+    class Coordinator:
+        data = {"region": "cn", "vehicles": []}
+
+        def __init__(self, *args: Any, **kwargs: Any) -> None:
+            assert kwargs["cloud_client"] is cloud
+
+        async def async_config_entry_first_refresh(self) -> None:
+            return None
+
+        def async_track_command(self, command: object) -> None:
+            raise AssertionError(command)
+
+    class ConfigEntries:
+        async def async_forward_entry_setups(self, *args: Any) -> None:
+            return None
+
+    class Authenticator:
+        async def async_authenticate(
+            self,
+            supplied: GwmCloudCredentials,
+            **kwargs: Any,
+        ) -> object:
+            assert supplied == credentials
+            assert kwargs["state"] == bootstrap.state
+            assert kwargs["allow_password_login"] is False
+            assert kwargs["allow_session_reclaim"] is False
+            return ChinaAuthenticated(bootstrap.state)
+
+    restarted_hass = HomeAssistant(str(tmp_path))
+    restarted_hass.config_entries = ConfigEntries()  # type: ignore[assignment]
+    monkeypatch.setattr(gwm_ora, "GwmCloudAuthenticator", Authenticator)
+    monkeypatch.setattr(
+        gwm_ora.GwmCloudClient,
+        "from_entry_data",
+        classmethod(lambda cls, *args, **kwargs: runtime(*args, **kwargs)),
+    )
+    monkeypatch.setattr(gwm_ora, "GwmDataUpdateCoordinator", Coordinator)
+    monkeypatch.setattr(gwm_ora, "_async_register_services", lambda hass: None)
+
+    assert await async_setup_entry(restarted_hass, entry)
+    assert entry.runtime_data.cloud is cloud
+
+
+@pytest.mark.asyncio
+async def test_china_restart_preserves_rotated_partial_initialization_state(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Any,
+) -> None:
+    entry, credentials, bootstrap = _china_entry_and_bootstrap()
+    first_hass = HomeAssistant(str(tmp_path))
+    await cloud_state_store(
+        first_hass,
+        entry.unique_id or "",
+    ).async_save_auth_state(credentials, bootstrap.state)
+    partial = replace(
+        bootstrap.state,
+        bean_tech_access_token=None,
+        bean_tech_refresh_token=None,
+        bean_tech_sso_token=None,
+        bean_tech_bean_id=None,
+        auto_ai_token_id=None,
+        auto_ai_user_id=None,
+        auto_ai_gw_id=None,
+    )
+
+    class Authenticator:
+        async def async_authenticate(self, *args: Any, **kwargs: Any) -> object:
+            return ChinaInitializationRequired(
+                partial,
+                ("bean_tech:network_error",),
+            )
+
+    restarted_hass = HomeAssistant(str(tmp_path))
+    monkeypatch.setattr(gwm_ora, "GwmCloudAuthenticator", Authenticator)
+
+    with pytest.raises(ConfigEntryNotReady, match="initialization attempt"):
+        await async_setup_entry(restarted_hass, entry)
+
+    restored_hass = HomeAssistant(str(tmp_path))
+    restored = await cloud_state_store(
+        restored_hass,
+        entry.unique_id or "",
+    ).async_load_auth_state(dict(entry.data))
+    assert restored == partial
 
 
 @pytest.mark.asyncio
