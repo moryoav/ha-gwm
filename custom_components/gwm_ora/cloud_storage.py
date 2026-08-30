@@ -8,7 +8,7 @@ import re
 import secrets
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, cast
 
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.storage import Store
@@ -52,6 +52,7 @@ _COMMAND_TRANSITIONS = {
     "failed": frozenset({"failed"}),
 }
 _MAX_COMMANDS = 100
+_MAX_CHARGING_PLANS = 100
 _MAX_COMMAND_IDENTIFIER_LENGTH = 512
 _MAX_COMMAND_NAME_LENGTH = 80
 
@@ -93,12 +94,43 @@ class DirectCommandJournalEntry:
 
 
 @dataclass(frozen=True, slots=True, repr=False)
+class DirectOwnedChargingPlan:
+    """The exact charging plan written by this integration for one vehicle."""
+
+    vehicle_id: str = field(repr=False)
+    plan_id: int | None
+    plan_type: int
+    start_time_ms: int
+    end_time_ms: int
+    weeks: str = ""
+
+    def __post_init__(self) -> None:
+        if (
+            not _bounded_command_text(self.vehicle_id, _MAX_COMMAND_IDENTIFIER_LENGTH)
+            or self.plan_id is not None
+            and not _int64(self.plan_id)
+            or not _int32(self.plan_type)
+            or not _int64(self.start_time_ms)
+            or not _int64(self.end_time_ms)
+            or self.end_time_ms - self.start_time_ms < 5 * 60 * 1000
+            or not isinstance(self.weeks, str)
+            or len(self.weeks) > 64
+            or any(ord(character) < 0x20 for character in self.weeks)
+        ):
+            raise ValueError("owned_charging_plan_invalid")
+
+
+@dataclass(frozen=True, slots=True, repr=False)
 class _DirectCloudRecord:
     region: str
     account_binding: str = field(repr=False)
     context_binding: str = field(repr=False)
     auth_state: CloudAuthState | None = field(default=None, repr=False)
     commands: tuple[DirectCommandJournalEntry, ...] = field(
+        default=(),
+        repr=False,
+    )
+    charging_plans: tuple[DirectOwnedChargingPlan, ...] = field(
         default=(),
         repr=False,
     )
@@ -114,6 +146,13 @@ class _DirectCloudRecord:
             or len(self.commands) > _MAX_COMMANDS
             or any(type(command) is not DirectCommandJournalEntry for command in self.commands)
             or len({command.journal_id for command in self.commands}) != len(self.commands)
+            or not isinstance(self.charging_plans, tuple)
+            or len(self.charging_plans) > _MAX_CHARGING_PLANS
+            or any(
+                type(plan) is not DirectOwnedChargingPlan for plan in self.charging_plans
+            )
+            or len({plan.vehicle_id.casefold() for plan in self.charging_plans})
+            != len(self.charging_plans)
         ):
             raise ValueError("direct_cloud_state_invalid")
         if self.auth_state is not None:
@@ -180,10 +219,16 @@ class DirectCloudStateStore:
                 if self._record_matches(credentials) and self._record is not None
                 else ()
             )
+            charging_plans = (
+                self._record.charging_plans
+                if self._record_matches(credentials) and self._record is not None
+                else ()
+            )
             record = _record_for_credentials(
                 credentials,
                 auth_state=auth_state,
                 commands=commands,
+                charging_plans=charging_plans,
             )
             await self._async_save(record)
 
@@ -201,11 +246,17 @@ class DirectCloudStateStore:
                 if self._record_matches(credentials) and self._record is not None
                 else ()
             )
+            charging_plans = (
+                self._record.charging_plans
+                if self._record_matches(credentials) and self._record is not None
+                else ()
+            )
             await self._async_save(
                 _record_for_credentials(
                     credentials,
                     auth_state=None,
                     commands=commands,
+                    charging_plans=charging_plans,
                 )
             )
 
@@ -260,6 +311,7 @@ class DirectCloudStateStore:
                     credentials,
                     auth_state=self._record.auth_state,
                     commands=commands,
+                    charging_plans=self._record.charging_plans,
                 )
             )
         return entry
@@ -306,10 +358,85 @@ class DirectCloudStateStore:
                         credentials,
                         auth_state=self._record.auth_state,
                         commands=tuple(commands),
+                        charging_plans=self._record.charging_plans,
                     )
                 )
                 return updated
         raise KeyError("command_not_found")
+
+    async def async_get_owned_charging_plans(
+        self,
+        entry_data: dict[str, object],
+    ) -> tuple[DirectOwnedChargingPlan, ...]:
+        """Return exact same-account charging plans owned by the integration."""
+
+        credentials = _credentials_from_entry(entry_data)
+        async with self._lock:
+            await self._async_ensure_loaded()
+            if not self._record_matches(credentials):
+                if self._record is not None or self._invalid_loaded_data:
+                    await self._async_replace_for_context(credentials, auth_state=None)
+                return ()
+            return self._record.charging_plans if self._record is not None else ()
+
+    async def async_set_owned_charging_plan(
+        self,
+        credentials: DirectCloudCredentials,
+        plan: DirectOwnedChargingPlan,
+    ) -> None:
+        """Atomically remember one exact plan after GWM accepts the write."""
+
+        _validate_credentials_for_store(self.unique_id, credentials)
+        if type(plan) is not DirectOwnedChargingPlan:
+            raise ValueError("owned_charging_plan_invalid")
+        async with self._lock:
+            await self._async_ensure_loaded()
+            if not self._record_matches(credentials) or self._record is None:
+                raise ValueError("direct_cloud_state_invalid")
+            retained = tuple(
+                current
+                for current in self._record.charging_plans
+                if current.vehicle_id.casefold() != plan.vehicle_id.casefold()
+            )
+            charging_plans = (*retained, plan)[-_MAX_CHARGING_PLANS:]
+            await self._async_save(
+                _record_for_credentials(
+                    credentials,
+                    auth_state=self._record.auth_state,
+                    commands=self._record.commands,
+                    charging_plans=charging_plans,
+                )
+            )
+
+    async def async_remove_owned_charging_plan(
+        self,
+        credentials: DirectCloudCredentials,
+        vehicle_id: str,
+    ) -> None:
+        """Forget one owned plan without touching any vehicle-side schedule."""
+
+        _validate_credentials_for_store(self.unique_id, credentials)
+        if not _bounded_command_text(vehicle_id, _MAX_COMMAND_IDENTIFIER_LENGTH):
+            raise ValueError("owned_charging_plan_invalid")
+        async with self._lock:
+            await self._async_ensure_loaded()
+            if not self._record_matches(credentials) or self._record is None:
+                raise ValueError("direct_cloud_state_invalid")
+            charging_plans = tuple(
+                plan
+                for plan in self._record.charging_plans
+                if plan.vehicle_id.casefold() != vehicle_id.casefold()
+            )
+            if charging_plans == self._record.charging_plans:
+                return
+            await self._async_save(
+                _record_for_credentials(
+                    credentials,
+                    auth_state=self._record.auth_state,
+                    commands=self._record.commands,
+                    charging_plans=charging_plans,
+                )
+            )
 
     async def async_remove(self) -> None:
         """Remove all persisted state for a deleted or replaced config entry."""
@@ -355,6 +482,7 @@ class DirectCloudStateStore:
                 credentials,
                 auth_state=auth_state,
                 commands=(),
+                charging_plans=(),
             )
         )
 
@@ -465,6 +593,7 @@ def _record_for_credentials(
     *,
     auth_state: CloudAuthState | None,
     commands: tuple[DirectCommandJournalEntry, ...],
+    charging_plans: tuple[DirectOwnedChargingPlan, ...],
 ) -> _DirectCloudRecord:
     return _DirectCloudRecord(
         region=credentials.region,
@@ -472,6 +601,7 @@ def _record_for_credentials(
         context_binding=direct_authentication_context_binding(credentials),
         auth_state=auth_state,
         commands=commands,
+        charging_plans=charging_plans,
     )
 
 
@@ -534,16 +664,26 @@ def _encode_record(record: _DirectCloudRecord) -> dict[str, Any]:
             None if record.auth_state is None else _encode_auth_state(record.auth_state)
         ),
         "commands": [_encode_command(command) for command in record.commands],
+        "charging_plans": [
+            _encode_owned_charging_plan(plan) for plan in record.charging_plans
+        ],
     }
 
 
 def _decode_record(data: object) -> _DirectCloudRecord:
-    value = _exact_dict(
-        data,
-        {"region", "account_binding", "context_binding", "auth_state", "commands"},
-    )
+    if not isinstance(data, dict):
+        raise ValueError("direct_cloud_state_invalid")
+    old_keys = {"region", "account_binding", "context_binding", "auth_state", "commands"}
+    new_keys = {*old_keys, "charging_plans"}
+    actual_keys = set(data)
+    if actual_keys != old_keys and actual_keys != new_keys:
+        raise ValueError("direct_cloud_state_invalid")
+    value = data
     commands = value["commands"]
     if not isinstance(commands, list) or len(commands) > _MAX_COMMANDS:
+        raise ValueError("direct_cloud_state_invalid")
+    charging_plans = value.get("charging_plans", [])
+    if not isinstance(charging_plans, list) or len(charging_plans) > _MAX_CHARGING_PLANS:
         raise ValueError("direct_cloud_state_invalid")
     auth_data = value["auth_state"]
     region = _required_text(value["region"], 8)
@@ -555,6 +695,9 @@ def _decode_record(data: object) -> _DirectCloudRecord:
             None if auth_data is None else _decode_auth_state(region, auth_data)
         ),
         commands=tuple(_decode_command(command) for command in commands),
+        charging_plans=tuple(
+            _decode_owned_charging_plan(plan) for plan in charging_plans
+        ),
     )
 
 
@@ -768,6 +911,35 @@ def _decode_command(data: object) -> DirectCommandJournalEntry:
     )
 
 
+def _encode_owned_charging_plan(plan: DirectOwnedChargingPlan) -> dict[str, Any]:
+    return {
+        "vehicle_id": plan.vehicle_id,
+        "plan_id": plan.plan_id,
+        "plan_type": plan.plan_type,
+        "start_time": plan.start_time_ms,
+        "end_time": plan.end_time_ms,
+        "weeks": plan.weeks,
+    }
+
+
+def _decode_owned_charging_plan(data: object) -> DirectOwnedChargingPlan:
+    value = _exact_dict(
+        data,
+        {"vehicle_id", "plan_id", "plan_type", "start_time", "end_time", "weeks"},
+    )
+    plan_id = value["plan_id"]
+    if plan_id is not None and not _int64(plan_id):
+        raise ValueError("owned_charging_plan_invalid")
+    return DirectOwnedChargingPlan(
+        vehicle_id=_required_text(value["vehicle_id"], _MAX_COMMAND_IDENTIFIER_LENGTH),
+        plan_id=plan_id,
+        plan_type=_required_int32(value["plan_type"]),
+        start_time_ms=_required_int64(value["start_time"]),
+        end_time_ms=_required_int64(value["end_time"]),
+        weeks=_required_bounded_string(value["weeks"], 64),
+    )
+
+
 def _exact_dict(value: object, keys: set[str]) -> dict[str, Any]:
     if not isinstance(value, dict) or set(value) != keys:
         raise ValueError("direct_cloud_state_invalid")
@@ -813,6 +985,36 @@ def _required_bool(value: object) -> bool:
     return value
 
 
+def _int64(value: object) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool) and -(2**63) <= value < 2**63
+
+
+def _int32(value: object) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool) and -(2**31) <= value < 2**31
+
+
+def _required_int64(value: object) -> int:
+    if not _int64(value):
+        raise ValueError("direct_cloud_state_invalid")
+    return cast(int, value)
+
+
+def _required_int32(value: object) -> int:
+    if not _int32(value):
+        raise ValueError("direct_cloud_state_invalid")
+    return cast(int, value)
+
+
+def _required_bounded_string(value: object, maximum: int) -> str:
+    if (
+        not isinstance(value, str)
+        or len(value) > maximum
+        or any(ord(character) < 0x20 for character in value)
+    ):
+        raise ValueError("direct_cloud_state_invalid")
+    return value
+
+
 def _encode_datetime(value: datetime | None) -> str | None:
     return None if value is None else _normalized_datetime(value).isoformat()
 
@@ -844,6 +1046,7 @@ def _normalized_datetime(value: datetime) -> datetime:
 __all__ = [
     "DirectCloudStateStore",
     "DirectCommandJournalEntry",
+    "DirectOwnedChargingPlan",
     "async_remove_direct_cloud_state",
     "credentials_for_auth_state",
     "direct_authentication_context_binding",

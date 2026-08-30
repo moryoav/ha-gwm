@@ -49,6 +49,7 @@ from .const import (
     ATTR_START_TIME,
     ATTR_VIN,
     CONF_CONNECTION_TYPE,
+    CONF_ENABLE_CHARGING_CONTROL,
     CONF_ENABLE_REMOTE_COMMANDS,
     CONF_POLL_INTERVAL_SECONDS,
     CONF_SECURITY_PIN,
@@ -112,23 +113,43 @@ def _async_register_services(hass: HomeAssistant) -> None:
 
     def _resolve_for_vin(
         vin: str,
-    ) -> tuple[GwmOraApiClient, GwmOraDataUpdateCoordinator, str]:
+    ) -> tuple[
+        GwmOraApiClient | DirectReadOnlyCommandApi | DirectClimateCommandApi,
+        GwmOraDataUpdateCoordinator,
+        str,
+    ]:
         """Resolve a user-supplied VIN to its (api, internal VIN).
 
         Accepts either the display VIN (device serial) or the encoded VIN and
         returns the encoded ``vin`` the add-on API expects.
         """
         identifier = vin.strip()
+        fallback = None
         for entry in hass.config_entries.async_loaded_entries(DOMAIN):
-            if entry.data.get(CONF_CONNECTION_TYPE) == CONNECTION_TYPE_CLOUD:
-                continue
             vehicle = entry.runtime_data.coordinator.resolve_vehicle(identifier)
             if vehicle is not None:
-                return (
+                resolved = (
                     entry.runtime_data.api,
                     entry.runtime_data.coordinator,
                     vehicle["vin"],
                 )
+                capabilities = vehicle.get("capabilities")
+                charging_available = (
+                    capabilities.get("charging_control") is True
+                    if isinstance(capabilities, dict)
+                    and "charging_control" in capabilities
+                    else bool(
+                        (entry.runtime_data.coordinator.data or {}).get(
+                            "charging_control_enabled"
+                        )
+                    )
+                )
+                if charging_available:
+                    return resolved
+                if fallback is None:
+                    fallback = resolved
+        if fallback is not None:
+            return fallback
         raise ServiceValidationError(f"No GWM vehicle found with VIN {identifier}")
 
     async def _set_charging_plan(call: ServiceCall) -> None:
@@ -241,6 +262,7 @@ async def _async_setup_direct_entry(
 
     try:
         command_enabled = entry.options.get(CONF_ENABLE_REMOTE_COMMANDS) is True
+        charging_enabled = entry.options.get(CONF_ENABLE_CHARGING_CONTROL) is True
         security_pin = entry.options.get(CONF_SECURITY_PIN)
         climate_enabled = command_enabled and isinstance(security_pin, str) and bool(security_pin.strip())
         cloud = DirectCloudReadClient.from_entry_data(
@@ -250,6 +272,7 @@ async def _async_setup_direct_entry(
             state_store=state_store,
             climate_commands_enabled=climate_enabled,
             lock_window_commands_enabled=climate_enabled,
+            charging_control_enabled=charging_enabled,
         )
     except (GwmConfigurationError, TypeError, ValueError) as err:
         raise ConfigEntryAuthFailed(
@@ -263,6 +286,7 @@ async def _async_setup_direct_entry(
             state_store,
             credentials,
             enabled=command_enabled,
+            charging_enabled=charging_enabled,
             security_pin=security_pin if isinstance(security_pin, str) else None,
         )
     except (TypeError, ValueError) as err:

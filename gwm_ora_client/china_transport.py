@@ -58,6 +58,8 @@ type _ChinaOperation = Literal[
     "initialize_auto_ai",
     "acquire_vehicles",
     "get_last_status",
+    "get_charging_plan",
+    "set_charging_plan",
     "send_climate_command",
     "send_lock_command",
     "send_close_windows_command",
@@ -115,6 +117,8 @@ _LOWER_HEX_32 = re.compile(r"[0-9a-f]{32}")
 _LOWER_HEX_64 = re.compile(r"[0-9a-f]{64}")
 _BEAN_TECH_SEQUENCE = re.compile(r"[0-9a-f]{32}[0-9]{4}")
 _BASE64_SHA1 = re.compile(r"[A-Za-z0-9+/]{27}=")
+_CLOCK_TIME = re.compile(r"([01][0-9]|2[0-3]):[0-5][0-9]")
+_WEEKLY_REPEAT = re.compile(r"[01]{7}")
 _G_APP_BASE_HEADERS = frozenset(
     {
         "Authorization",
@@ -261,8 +265,10 @@ class _ChinaTransportRequest:
             _validate_auto_ai_login_request(self, copied)
         elif self.operation == "acquire_vehicles":
             _validate_discovery_request(self, copied)
-        elif self.operation == "get_last_status":
+        elif self.operation in {"get_last_status", "get_charging_plan"}:
             _validate_status_request(self, copied)
+        elif self.operation == "set_charging_plan":
+            _validate_charging_plan_request(self, copied)
         elif self.operation == "send_climate_command":
             _validate_climate_command_request(self, copied)
         elif self.operation == "send_lock_command":
@@ -965,6 +971,66 @@ def _validate_climate_command_request(
         or not valid_route
     ):
         raise ValueError("route_invalid")
+
+
+def _validate_charging_plan_request(
+    request: _ChinaTransportRequest,
+    headers: Mapping[str, str],
+) -> None:
+    if (
+        request.service != "auto_ai"
+        or request.method != "GET"
+        or request.body is not None
+        or set(headers) != _STATUS_HEADERS
+        or not _valid_auto_ai_headers(headers, token_required=True)
+        or not _valid_auto_ai_url(
+            request.url,
+            headers,
+            origin=_AUTO_AI_ORIGIN,
+            path=_AUTO_AI_PATH,
+            function="GW.M.SEND_CHARGE_SETTINGS_WEEKLY",
+            body_validator=_valid_charging_plan_body,
+            token_required=True,
+        )
+    ):
+        raise ValueError("route_invalid")
+
+
+def _valid_charging_plan_body(body: Mapping[str, object]) -> bool:
+    if (
+        list(body)
+        != [
+            "flag",
+            "signStr",
+            "userId",
+            "userType",
+            "vin",
+            "chargeingMode",
+            "chargingStartTime",
+            "chargingEndTime",
+            "repeatTimes",
+        ]
+        or body.get("flag") != 1
+        or _LOWER_HEX_32.fullmatch(str(body.get("signStr", ""))) is None
+        or not _safe_wire_text(body.get("userId"), maximum=16 * 1024)
+        or body.get("userType") != "0"
+        or _VIN.fullmatch(str(body.get("vin", ""))) is None
+        or body.get("chargeingMode") not in {"0", "1"}
+    ):
+        return False
+    start = body.get("chargingStartTime")
+    end = body.get("chargingEndTime")
+    repeat = body.get("repeatTimes")
+    if body.get("chargeingMode") == "1":
+        return start == "00:00" and end == "00:00" and repeat == "0000000"
+    return (
+        isinstance(start, str)
+        and _CLOCK_TIME.fullmatch(start) is not None
+        and isinstance(end, str)
+        and _CLOCK_TIME.fullmatch(end) is not None
+        and isinstance(repeat, str)
+        and _WEEKLY_REPEAT.fullmatch(repeat) is not None
+    )
 
 
 def _validate_lock_window_command_request(

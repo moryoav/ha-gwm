@@ -24,6 +24,11 @@ from .anz_auth import (
     _AnzAuthProgress,
 )
 from .anz_auth import authenticate_anz as _run_anz_authentication
+from .charging import (
+    ChargingPlanCommand,
+    ChargingPlanInfo,
+    parse_charging_plan_info,
+)
 from .commands import (
     ClimateCommand,
     CloseWindowsCommand,
@@ -85,6 +90,7 @@ from .signing import SignedRequest, SigningProfile, sign_request
 from .transport import AiohttpTransport
 
 _MAX_JSON_DEPTH = 64
+_CHARGING_SEQUENCE = re.compile(r"[0-9a-f]{32}1234")
 
 
 @dataclass(frozen=True, slots=True)
@@ -537,6 +543,107 @@ class GwmClient:
         timeout: float | None = None,
     ) -> CloudVehicleBasics:
         return await self._execute(_VEHICLE_BASICS, identifier=identifier, timeout=timeout)
+
+    async def get_charging_plan(
+        self,
+        identifier: VehicleIdentifier,
+        *,
+        timeout: float | None = None,
+    ) -> ChargingPlanInfo:
+        """Read one overseas vehicle's charging plan from the H5 gateway."""
+
+        operation = "get_charging_plan"
+        if type(identifier) is not VehicleIdentifier:
+            raise GwmConfigurationError(operation=operation)
+        encoded_vin = quote(
+            identifier.value,
+            safe="",
+            encoding="utf-8",
+            errors="strict",
+        )
+
+        async def action(
+            session: GwmSession,
+            deadline: _Deadline,
+        ) -> ChargingPlanInfo:
+            request = self._prepare_command_request(
+                operation=operation,
+                gateway_role=GatewayRole.H5_V1,
+                method="GET",
+                path=f"vehicleCharge/getChargingInfos?vin={encoded_vin}",
+                body=None,
+                session=session,
+                vin_header=identifier if self.region is Region.ANZ else None,
+            )
+            data = await self._send_command_request(request, deadline=deadline)
+            try:
+                return parse_charging_plan_info(
+                    data,
+                    allow_numeric_strings=self.region is Region.RUSSIA,
+                )
+            except (TypeError, ValueError):
+                raise GwmSchemaError(operation=operation) from None
+
+        return await self._execute_authenticated_command(
+            operation,
+            timeout=timeout,
+            action=action,
+        )
+
+    async def set_charging_plan(
+        self,
+        command: ChargingPlanCommand,
+        *,
+        timeout: float | None = None,
+    ) -> None:
+        """Set or clear one overseas charging plan without a security PIN."""
+
+        operation = "set_charging_plan"
+        try:
+            sequence_number = self._sequence_source()
+            if (
+                type(command) is not ChargingPlanCommand
+                or not isinstance(sequence_number, str)
+                or _CHARGING_SEQUENCE.fullmatch(sequence_number) is None
+            ):
+                raise ValueError("charging_plan_invalid")
+        except (TypeError, ValueError):
+            raise GwmConfigurationError(operation=operation) from None
+        payload: dict[str, object] = {
+            "enable": command.enable,
+            "seqNo": sequence_number,
+            "vin": command.identifier.value,
+        }
+        if command.enable:
+            payload.update(
+                {
+                    "planType": command.plan_type or 0,
+                    "startTime": str(command.start_time_ms),
+                    "endTime": str(command.end_time_ms),
+                    "weeks": command.weeks or "",
+                }
+            )
+        body = encode_dotnet_json(payload)
+
+        async def action(session: GwmSession, deadline: _Deadline) -> None:
+            request = self._prepare_command_request(
+                operation=operation,
+                gateway_role=GatewayRole.H5_V1,
+                method="POST",
+                path="vehicleCharge/setChargingPlan",
+                body=body,
+                session=session,
+                vin_header=(
+                    command.identifier if self.region is Region.ANZ else None
+                ),
+            )
+            await self._send_command_request(request, deadline=deadline)
+
+        await self._execute_authenticated_command(
+            operation,
+            timeout=timeout,
+            action=action,
+        )
 
     async def update_climate_defaults(
         self,

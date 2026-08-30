@@ -53,7 +53,20 @@ class GwmOraDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     async def _async_update_data(self) -> dict[str, Any]:
         if self.direct_client is not None:
             try:
-                return await self.direct_client.async_get_vehicle_data()
+                data = await self.direct_client.async_get_vehicle_data()
+                if (
+                    isinstance(self.api, DirectClimateCommandApi)
+                    and self.config_entry is not None
+                ):
+                    try:
+                        await self.api.async_cleanup_owned_charging_plans(
+                            dict(self.config_entry.data)
+                        )
+                    except Exception:
+                        _LOGGER.warning(
+                            "Could not inspect owned charging plans; the next poll will retry"
+                        )
+                return data
             except GwmAuthenticationError as err:
                 with suppress(Exception):
                     await self.direct_client.async_authentication_rejected()

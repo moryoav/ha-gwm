@@ -2,15 +2,19 @@
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
+import logging
 import secrets
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
-from typing import Any, Never, cast
+from typing import Any, cast
 
 from gwm_ora_client import (
     DEFAULT_OPERATION_TIME_MINUTES,
     DEFAULT_TEMPERATURE_C,
+    ChargingPlanCommand,
+    ChargingPlanItem,
     ChinaVehicleControlCommand,
     ClimateCommand,
     ClimateMode,
@@ -29,10 +33,15 @@ from gwm_ora_client import (
 from .api import GwmOraApiError, GwmOraApiForbidden
 from .cloud_auth import DirectCloudCredentials
 from .cloud_runtime import DirectCloudReadClient
-from .cloud_storage import DirectCloudStateStore, DirectCommandJournalEntry
+from .cloud_storage import (
+    DirectCloudStateStore,
+    DirectCommandJournalEntry,
+    DirectOwnedChargingPlan,
+)
 
 _DEFAULT_RESULT_TIMEOUT = timedelta(seconds=90)
 _RUSSIA_RESULT_TIMEOUT = timedelta(seconds=300)
+_LOGGER = logging.getLogger(__name__)
 
 
 class DirectClimateCommandApi:
@@ -45,6 +54,7 @@ class DirectClimateCommandApi:
         credentials: DirectCloudCredentials,
         *,
         enabled: bool,
+        charging_enabled: bool = False,
         security_pin: str | None,
         clock: Callable[[], datetime] | None = None,
     ) -> None:
@@ -52,6 +62,7 @@ class DirectClimateCommandApi:
             type(state_store) is not DirectCloudStateStore
             or type(credentials) is not DirectCloudCredentials
             or type(enabled) is not bool
+            or type(charging_enabled) is not bool
             or (security_pin is not None and not isinstance(security_pin, str))
             or (clock is not None and not callable(clock))
         ):
@@ -60,6 +71,7 @@ class DirectClimateCommandApi:
         self._state_store = state_store
         self._credentials = credentials
         self._enabled = enabled
+        self._charging_enabled = charging_enabled
         self._security_pin = security_pin.strip() if security_pin else ""
         self._clock = clock or (lambda: datetime.now(UTC))
         self._commands: dict[str, DirectCommandJournalEntry] = {}
@@ -419,24 +431,179 @@ class DirectClimateCommandApi:
             raise GwmOraApiError("Direct command clock is invalid")
         return value.astimezone(UTC)
 
-    @staticmethod
-    def _unavailable() -> Never:
-        raise GwmOraApiForbidden("This direct-cloud write is not available yet")
-
     async def async_get_charging_plan(
-        self, *args: object, **kwargs: object
+        self,
+        vin: str,
     ) -> dict[str, object]:
-        self._unavailable()
+        """Return the current validated charging-plan shape."""
+
+        self._ensure_charging_available()
+        identifier = _vehicle_identifier(vin, command_name="Charging plan")
+        return (await self._cloud.async_get_charging_plan(identifier)).as_dict()
 
     async def async_set_charging_plan(
-        self, *args: object, **kwargs: object
+        self,
+        vin: str,
+        *,
+        enable: bool,
+        start_time: int | None = None,
+        end_time: int | None = None,
+        plan_type: int | None = None,
+        weeks: str | None = None,
     ) -> dict[str, object]:
-        self._unavailable()
+        """Set or clear one exact integration-owned charging plan."""
+
+        self._ensure_charging_available()
+        identifier = _vehicle_identifier(vin, command_name="Charging plan")
+        try:
+            command = ChargingPlanCommand(
+                identifier=identifier,
+                enable=enable,
+                start_time_ms=start_time,
+                end_time_ms=end_time,
+                plan_type=plan_type,
+                weeks=weeks,
+            )
+        except (TypeError, ValueError):
+            raise GwmOraApiError("Charging plan requires a valid window and options") from None
+        await self._cloud.async_set_charging_plan(command)
+        if not enable:
+            await self._durably_remove_owned_plan(identifier.value)
+            return {}
+
+        assert start_time is not None
+        assert end_time is not None
+        owned = DirectOwnedChargingPlan(
+            vehicle_id=identifier.value,
+            plan_id=None,
+            plan_type=plan_type or 0,
+            start_time_ms=start_time,
+            end_time_ms=end_time,
+            weeks=weeks or "",
+        )
+        await self._durably_save_owned_plan(owned)
+        try:
+            current = await self._cloud.async_get_charging_plan(identifier)
+            matching = next(
+                (
+                    candidate
+                    for candidate in current.items
+                    if _charging_plan_matches(candidate, owned)
+                ),
+                None,
+            )
+            if matching is not None:
+                await self._durably_save_owned_plan(
+                    DirectOwnedChargingPlan(
+                        vehicle_id=owned.vehicle_id,
+                        plan_id=matching.plan_id,
+                        plan_type=owned.plan_type,
+                        start_time_ms=owned.start_time_ms,
+                        end_time_ms=owned.end_time_ms,
+                        weeks=owned.weeks,
+                    )
+                )
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            _LOGGER.warning(
+                "Charging plan was set, but its server ID could not be confirmed"
+            )
+        return {}
+
+    async def async_cleanup_owned_charging_plans(
+        self,
+        entry_data: dict[str, object],
+    ) -> None:
+        """Clear only unchanged integration-owned plans after opt-out."""
+
+        if self._charging_enabled:
+            return
+        owned_plans = await self._state_store.async_get_owned_charging_plans(entry_data)
+        for owned in owned_plans:
+            try:
+                identifier = VehicleIdentifier(owned.vehicle_id)
+                current = await self._cloud.async_get_charging_plan(identifier)
+                matching = next(
+                    (
+                        candidate
+                        for candidate in current.items
+                        if _charging_plan_matches(candidate, owned)
+                    ),
+                    None,
+                )
+                if matching is not None:
+                    await self._cloud.async_set_charging_plan(
+                        ChargingPlanCommand(identifier=identifier, enable=False)
+                    )
+                    _LOGGER.info(
+                        "Cleared an unchanged integration-owned charging plan after opt-out"
+                    )
+                elif any(candidate.active for candidate in current.items):
+                    _LOGGER.info(
+                        "Left a charging plan unchanged because the official app replaced it"
+                    )
+                await self._durably_remove_owned_plan(identifier.value)
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                _LOGGER.warning(
+                    "Could not inspect or clear an owned charging plan; the next poll will retry"
+                )
+
+    def _ensure_charging_available(self) -> None:
+        if not self._charging_enabled:
+            raise GwmOraApiForbidden("Direct-cloud charging control is disabled")
+
+    async def _durably_save_owned_plan(self, plan: DirectOwnedChargingPlan) -> None:
+        task = asyncio.create_task(
+            self._state_store.async_set_owned_charging_plan(self._credentials, plan)
+        )
+        try:
+            await asyncio.shield(task)
+        except asyncio.CancelledError:
+            await task
+            raise
+        except Exception as err:
+            raise GwmOraApiError(
+                "GWM accepted the charging plan but ownership could not be saved; do not retry"
+            ) from err
+
+    async def _durably_remove_owned_plan(self, vehicle_id: str) -> None:
+        task = asyncio.create_task(
+            self._state_store.async_remove_owned_charging_plan(
+                self._credentials,
+                vehicle_id,
+            )
+        )
+        try:
+            await asyncio.shield(task)
+        except asyncio.CancelledError:
+            await task
+            raise
+        except Exception as err:
+            raise GwmOraApiError(
+                "GWM cleared the charging plan but ownership could not be updated; do not retry"
+            ) from err
 
 
 def _climate_is_on(status: object) -> bool:
     items = getattr(status, "items", ()) if status is not None else ()
     return any(item.code == "2202001" and str(item.value) == "1" for item in items)
+
+
+def _charging_plan_matches(
+    candidate: ChargingPlanItem,
+    owned: DirectOwnedChargingPlan,
+) -> bool:
+    return (
+        candidate.active
+        and (owned.plan_id is None or candidate.plan_id == owned.plan_id)
+        and candidate.plan_type == str(owned.plan_type)
+        and candidate.start_time_ms == owned.start_time_ms
+        and candidate.end_time_ms == owned.end_time_ms
+        and candidate.weeks == owned.weeks
+    )
 
 
 def _security_password_hash(pin: str) -> str:

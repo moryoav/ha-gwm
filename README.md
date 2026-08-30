@@ -136,7 +136,7 @@ GWM models and regions do not all return the same status signals. Model-specific
 
 ### Charging schedule control
 
-Charging schedule writes are disabled by default. Set `enable_charging_control: true` in the add-on, restart it, and reload the integration to make the controls available. This opt-in is separate from normal remote commands and does not use the vehicle security PIN.
+Charging schedule writes are disabled by default. For the add-on flow, set `enable_charging_control: true`, restart the add-on, and reload the integration. On the integration-only branch, enable charging control in the direct cloud entry options. This opt-in is separate from normal remote commands and does not use the vehicle security PIN.
 
 The **Scheduled charging** switch is an assumed-state convenience control:
 
@@ -161,7 +161,7 @@ data:
   vin: "LGWTEST00XX000001"
 ```
 
-The add-on records the exact plan it writes. If charging control is later disabled, it retries cleanup of that plan, but leaves a schedule alone when the official GWM app has replaced or changed it. The feature was live-tested on an ANZ ORA 5. The separate China NavInfo charging implementation remains experimental and untested. BeanTech charging control is not implemented.
+The active backend records the exact plan it writes. If charging control is later disabled, it retries cleanup of that plan, but leaves a schedule alone when the official GWM app has replaced or changed it. The add-on feature was live-tested on an ANZ ORA 5. Direct charging in the integration-only branch is offline-tested only. The separate China NavInfo charging implementation remains experimental and untested. BeanTech charging control is not implemented.
 
 ### Use the charging status with evcc
 

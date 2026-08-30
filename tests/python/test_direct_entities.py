@@ -26,6 +26,7 @@ from custom_components.gwm_ora.sensor import (
     GwmOraSensor,
     _sensor_descriptions_for_vehicle,
 )
+from custom_components.gwm_ora.switch import GwmOraChargingScheduleSwitch
 
 
 def _vehicle(
@@ -37,6 +38,7 @@ def _vehicle(
     climate_commands: bool = False,
     lock_window_commands: bool = False,
     china_vehicle_commands: bool = False,
+    charging_control: bool = False,
 ) -> dict[str, Any]:
     return {
         "vin": vin,
@@ -50,7 +52,7 @@ def _vehicle(
             "climate_commands": climate_commands,
             "lock_window_commands": lock_window_commands,
             "china_vehicle_commands": china_vehicle_commands,
-            "charging_control": False,
+            "charging_control": charging_control,
         },
         "values": {"soc": soc, "charge_soc": charge_soc},
         "timestamps": {},
@@ -307,3 +309,26 @@ async def test_task19_china_buttons_are_capability_and_platform_filtered() -> No
         "horn",
         "sound_horn",
     ).available
+
+
+@pytest.mark.asyncio
+async def test_task20_capability_exposes_existing_charging_switch_only_when_enabled() -> None:
+    api = DirectReadOnlyCommandApi()
+    coordinator = GwmOraDataUpdateCoordinator(
+        HomeAssistant("synthetic-config"),
+        api,
+        direct_client=SimpleNamespace(),  # type: ignore[arg-type]
+    )
+    coordinator.async_set_updated_data(
+        {
+            "region": "eu",
+            "charging_control_enabled": True,
+            "vehicles": [
+                _vehicle("SYNTHETIC-A", 80, charging_control=True),
+                _vehicle("SYNTHETIC-B", 70),
+            ],
+        }
+    )
+
+    assert GwmOraChargingScheduleSwitch(api, coordinator, "SYNTHETIC-A").available
+    assert not GwmOraChargingScheduleSwitch(api, coordinator, "SYNTHETIC-B").available

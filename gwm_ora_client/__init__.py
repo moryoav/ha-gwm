@@ -8,6 +8,7 @@ from .anz_auth import (
     AnzSessionReclaimRequired,
     AnzVerificationRequired,
 )
+from .charging import ChargingPlanCommand, ChargingPlanInfo, ChargingPlanItem
 from .china_client import (
     ChinaAuthenticated,
     ChinaAuthenticationResult,
@@ -147,6 +148,9 @@ __all__ = [
     "CloudVehicle",
     "CloudVehicleBasics",
     "CloudVehicleStatus",
+    "ChargingPlanCommand",
+    "ChargingPlanInfo",
+    "ChargingPlanItem",
     "ClimateSnapshot",
     "CloseWindowsCommand",
     "ClimateCommand",

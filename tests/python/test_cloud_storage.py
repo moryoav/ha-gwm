@@ -22,6 +22,7 @@ from custom_components.gwm_ora.cloud_auth import (
     direct_unique_id,
 )
 from custom_components.gwm_ora.cloud_storage import (
+    DirectOwnedChargingPlan,
     async_remove_direct_cloud_state,
     direct_authentication_context_binding,
     direct_cloud_state_store,
@@ -167,16 +168,28 @@ async def test_account_context_change_atomically_retires_state_and_commands(
         cloud_command_id="SYNTHETIC-CLOUD-COMMAND",
         accepted_at=_NOW,
     )
+    await store.async_set_owned_charging_plan(
+        credentials,
+        DirectOwnedChargingPlan(
+            vehicle_id="LGWTEST0000000001",
+            plan_id=42,
+            plan_type=0,
+            start_time_ms=1_800_000_000_000,
+            end_time_ms=1_800_003_600_000,
+        ),
+    )
 
     assert direct_authentication_context_binding(changed) != (
         direct_authentication_context_binding(credentials)
     )
     assert await store.async_load_auth_state(direct_entry_data(changed)) is None
     assert await store.async_get_command_journal(direct_entry_data(changed)) == ()
+    assert await store.async_get_owned_charging_plans(direct_entry_data(changed)) == ()
 
     stored_text = next((tmp_path / ".storage").glob("gwm_ora.direct_cloud.*")).read_text()
     assert "private-eu-access" not in stored_text
     assert "SYNTHETIC-CLOUD-COMMAND" not in stored_text
+    assert "LGWTEST0000000001" not in stored_text
     assert "private-account" not in stored_text
     assert "replacement-password" not in stored_text
     assert "replacement-account" not in stored_text
@@ -244,6 +257,68 @@ async def test_accepted_commands_are_serialized_and_restart_safe(
         unique_id,
     ).async_get_command_journal(direct_entry_data(credentials))
     assert after_update[0].state == "completed"
+
+
+@pytest.mark.asyncio
+async def test_owned_charging_plan_is_restart_safe_replaceable_and_removable(
+    tmp_path: Path,
+) -> None:
+    credentials = _credentials()
+    unique_id = direct_unique_id(credentials)
+    first_hass = HomeAssistant(str(tmp_path))
+    first = direct_cloud_state_store(first_hass, unique_id)
+    await first.async_save_auth_state(credentials, _state(credentials))
+    initial = DirectOwnedChargingPlan(
+        vehicle_id="LGWTEST0000000001",
+        plan_id=None,
+        plan_type=0,
+        start_time_ms=1_800_000_000_000,
+        end_time_ms=1_800_003_600_000,
+        weeks="0101010",
+    )
+    await first.async_set_owned_charging_plan(credentials, initial)
+
+    second_hass = HomeAssistant(str(tmp_path))
+    second = direct_cloud_state_store(second_hass, unique_id)
+    assert await second.async_get_owned_charging_plans(
+        direct_entry_data(credentials)
+    ) == (initial,)
+    confirmed = replace(initial, plan_id=42)
+    await second.async_set_owned_charging_plan(credentials, confirmed)
+    assert await second.async_get_owned_charging_plans(
+        direct_entry_data(credentials)
+    ) == (confirmed,)
+
+    await second.async_remove_owned_charging_plan(credentials, initial.vehicle_id)
+    assert await second.async_get_owned_charging_plans(
+        direct_entry_data(credentials)
+    ) == ()
+
+
+@pytest.mark.asyncio
+async def test_pre_task20_storage_without_charging_key_remains_loadable(
+    tmp_path: Path,
+) -> None:
+    credentials = _credentials()
+    unique_id = direct_unique_id(credentials)
+    first_hass = HomeAssistant(str(tmp_path))
+    await direct_cloud_state_store(first_hass, unique_id).async_save_auth_state(
+        credentials,
+        _state(credentials),
+    )
+    path = next((tmp_path / ".storage").glob("gwm_ora.direct_cloud.*"))
+    document = json.loads(path.read_text())
+    document["data"].pop("charging_plans")
+    path.write_text(json.dumps(document))
+
+    second_hass = HomeAssistant(str(tmp_path))
+    second = direct_cloud_state_store(second_hass, unique_id)
+    assert await second.async_load_auth_state(direct_entry_data(credentials)) == _state(
+        credentials
+    )
+    assert await second.async_get_owned_charging_plans(
+        direct_entry_data(credentials)
+    ) == ()
 
 
 @pytest.mark.asyncio

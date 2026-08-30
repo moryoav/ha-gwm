@@ -28,6 +28,8 @@ from custom_components.gwm_ora.cloud_runtime import (
 from gwm_ora_client import (
     AnzAuthenticated,
     AnzAuthState,
+    ChargingPlanCommand,
+    ChargingPlanInfo,
     CloudClimateConfiguration,
     CloudStatusItem,
     CloudVehicle,
@@ -107,6 +109,7 @@ class _ReadClient:
             ),
         }
         self.calls: list[tuple[str, str | None]] = []
+        self.charging_commands: list[ChargingPlanCommand] = []
 
     async def acquire_vehicles(self) -> tuple[CloudVehicle, ...]:
         self.calls.append(("vehicles", None))
@@ -122,6 +125,16 @@ class _ReadClient:
         if isinstance(value, Exception):
             raise value
         return value
+
+    async def get_charging_plan(
+        self,
+        identifier: VehicleIdentifier,
+    ) -> ChargingPlanInfo:
+        self.calls.append(("charging", identifier.value))
+        return ChargingPlanInfo()
+
+    async def set_charging_plan(self, command: ChargingPlanCommand) -> None:
+        self.charging_commands.append(command)
 
     async def aclose(self) -> None:
         self.closed = True
@@ -193,6 +206,29 @@ async def test_optional_basics_is_not_hidden_outside_anz() -> None:
 
     with pytest.raises(GwmOptionalEndpointError):
         await runtime.async_get_vehicle_data()
+
+
+@pytest.mark.asyncio
+async def test_charging_capability_and_typed_delegation_follow_independent_opt_in() -> None:
+    client = _ReadClient()
+    runtime = DirectCloudReadClient(
+        "aus",
+        client,
+        clock=lambda: _REFRESHED_AT,
+        charging_control_enabled=True,
+    )
+
+    result = await runtime.async_get_vehicle_data()
+    assert result["charging_control_enabled"] is True
+    assert all(
+        vehicle["capabilities"]["charging_control"] is True
+        for vehicle in result["vehicles"]
+    )
+    identifier = VehicleIdentifier("SYNTHETIC-VEHICLE-A")
+    assert await runtime.async_get_charging_plan(identifier) == ChargingPlanInfo()
+    command = ChargingPlanCommand(identifier, False)
+    await runtime.async_set_charging_plan(command)
+    assert client.charging_commands == [command]
 
 
 @pytest.mark.asyncio

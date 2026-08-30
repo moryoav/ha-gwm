@@ -16,12 +16,13 @@ import re
 import secrets
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass, field, replace
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime, timedelta, timezone
 from typing import Literal, Self, cast
 from urllib.parse import quote
 
 from ._dotnet_json import encode_dotnet_json
 from ._protocol import _Deadline
+from .charging import ChargingPlanCommand, ChargingPlanInfo, ChargingPlanItem
 from .china_crypto import (
     AUTO_AI_CKEY,
     BEAN_TECH_APP_KEY,
@@ -84,6 +85,9 @@ __all__ = [
     "ChinaVehicleStatus",
     "ChinaVerificationRequired",
     "ChinaVehicleControlCommand",
+    "ChargingPlanCommand",
+    "ChargingPlanInfo",
+    "ChargingPlanItem",
     "CloseWindowsCommand",
     "ClimateCommand",
     "DoorLockCommand",
@@ -131,6 +135,8 @@ _DEVICE_ID = re.compile(r"[0-9A-Fa-f]{32}")
 _VIN = re.compile(r"[A-HJ-NPR-Z0-9]{17}", re.IGNORECASE)
 _NONCE = re.compile(r"[0-9a-f]{16}")
 _BEAN_TECH_SEQUENCE = re.compile(r"[0-9a-f]{32}[0-9]{4}")
+_CLOCK_TIME = re.compile(r"([01][0-9]|2[0-3]):([0-5][0-9])")
+_CHINA_TIMEZONE = timezone(timedelta(hours=8))
 
 
 @dataclass(frozen=True, slots=True)
@@ -417,6 +423,8 @@ class ChinaClient:
         self._session: ChinaAuthState | None = None
         self._session_revision = 0
         self._vehicles: dict[str, ChinaVehicle] = {}
+        self._charging_plans: dict[str, ChargingPlanInfo] = {}
+        self._written_charging_plan_vins: set[str] = set()
         self._consumed_verification_bindings: set[str] = set()
         self._closed = False
         self._closing = False
@@ -450,6 +458,8 @@ class ChinaClient:
                         await self._transport.aclose()
                     self._session = None
                     self._vehicles = {}
+                    self._charging_plans = {}
+                    self._written_charging_plan_vins.clear()
                     self._consumed_verification_bindings.clear()
                     self._session_revision += 1
             except BaseException:
@@ -665,6 +675,46 @@ class ChinaClient:
             ),
         )
 
+    async def get_charging_plan(
+        self,
+        identifier: VehicleIdentifier,
+        *,
+        timeout: float | None = None,
+    ) -> ChargingPlanInfo:
+        """Read or return the synthesized NavInfo weekly charging plan."""
+
+        operation = "get_charging_plan"
+        if type(identifier) is not VehicleIdentifier:
+            raise GwmConfigurationError(operation=operation)
+        return await self._run_read(
+            operation,
+            timeout=timeout,
+            action=lambda deadline: self._get_charging_plan_locked(
+                identifier,
+                deadline=deadline,
+            ),
+        )
+
+    async def set_charging_plan(
+        self,
+        command: ChargingPlanCommand,
+        *,
+        timeout: float | None = None,
+    ) -> None:
+        """Set or clear one NavInfo weekly charging plan without a PIN."""
+
+        operation = "set_charging_plan"
+        if type(command) is not ChargingPlanCommand:
+            raise GwmConfigurationError(operation=operation)
+        await self._run_read(
+            operation,
+            timeout=timeout,
+            action=lambda deadline: self._set_charging_plan_locked(
+                command,
+                deadline=deadline,
+            ),
+        )
+
     async def _authenticate_locked(
         self,
         credentials: ChinaCredentials,
@@ -681,6 +731,8 @@ class ChinaClient:
             except GwmAuthenticationError:
                 self._session = None
                 self._vehicles = {}
+                self._charging_plans = {}
+                self._written_charging_plan_vins.clear()
                 return await self._refresh_or_sms(
                     credentials,
                     candidate,
@@ -1055,6 +1107,13 @@ class ChinaClient:
         try:
             if platform == "navinfo":
                 body = _decode_auto_ai_envelope(response, operation="get_last_status")
+                key = vehicle.identifier.value.casefold()
+                if key not in self._written_charging_plan_vins:
+                    self._charging_plans[key] = _parse_china_charging_plan(
+                        body,
+                        identifier=vehicle.identifier,
+                        now=self._read_clock(operation="get_last_status"),
+                    )
                 mapped = map_china_status(
                     body,
                     identifier=vehicle.identifier,
@@ -1081,6 +1140,104 @@ class ChinaClient:
             raise
         except (RecursionError, OverflowError, TypeError, ValueError):
             raise GwmSchemaError(operation="get_last_status") from None
+
+    async def _get_charging_plan_locked(
+        self,
+        identifier: VehicleIdentifier,
+        *,
+        deadline: _Deadline,
+    ) -> ChargingPlanInfo:
+        operation: Literal["get_charging_plan"] = "get_charging_plan"
+        state = self._required_session(operation=operation)
+        vehicle = self._vehicles.get(identifier.value.casefold())
+        if vehicle is None or (vehicle.platform or "").strip().casefold() != "navinfo":
+            raise GwmRoutePolicyError(operation=operation)
+        cached = self._charging_plans.get(identifier.value.casefold())
+        if cached is not None:
+            return cached
+        response = await self._send_locked(
+            self._build_auto_ai_request(
+                operation=operation,
+                state=state,
+                function="GW.M.GET_VEHICLE_STATE",
+                body={"vin": identifier.value},
+                url=_AUTO_AI_DIRECT,
+                include_token=True,
+            ),
+            deadline=deadline,
+        )
+        try:
+            body = _decode_auto_ai_envelope(response, operation=operation)
+            result = _parse_china_charging_plan(
+                body,
+                identifier=identifier,
+                now=self._read_clock(operation=operation),
+            )
+            self._charging_plans[identifier.value.casefold()] = result
+            return result
+        except GwmClientError:
+            raise
+        except (RecursionError, OverflowError, TypeError, ValueError):
+            raise GwmSchemaError(operation=operation) from None
+
+    async def _set_charging_plan_locked(
+        self,
+        command: ChargingPlanCommand,
+        *,
+        deadline: _Deadline,
+    ) -> None:
+        operation: Literal["set_charging_plan"] = "set_charging_plan"
+        state = self._required_session(operation=operation)
+        vehicle = self._vehicles.get(command.identifier.value.casefold())
+        if vehicle is None or (vehicle.platform or "").strip().casefold() != "navinfo":
+            raise GwmRoutePolicyError(operation=operation)
+        if state.auto_ai_token_id is None or state.auto_ai_user_id is None:
+            raise GwmAuthenticationError(operation=operation)
+        body = {
+            "flag": 1,
+            "signStr": hashlib.md5(
+                (command.identifier.value + state.auto_ai_token_id).encode("utf-8"),
+                usedforsecurity=False,
+            ).hexdigest(),
+            "userId": state.auto_ai_user_id,
+            "userType": "0",
+            "vin": command.identifier.value,
+            "chargeingMode": "0" if command.enable else "1",
+            "chargingStartTime": _china_clock_time(command.start_time_ms),
+            "chargingEndTime": _china_clock_time(command.end_time_ms),
+            "repeatTimes": _china_repeat_times(command),
+        }
+        response = await self._send_locked(
+            self._build_auto_ai_request(
+                operation=operation,
+                state=state,
+                function="GW.M.SEND_CHARGE_SETTINGS_WEEKLY",
+                body=body,
+                url=_AUTO_AI_DIRECT,
+                include_token=True,
+            ),
+            deadline=deadline,
+        )
+        _decode_auto_ai_envelope(response, operation=operation)
+        key = command.identifier.value.casefold()
+        if command.enable:
+            assert command.start_time_ms is not None
+            assert command.end_time_ms is not None
+            result = ChargingPlanInfo(
+                (
+                    ChargingPlanItem(
+                        plan_id=_china_stable_plan_id(command.identifier),
+                        plan_type="0",
+                        start_time_ms=command.start_time_ms,
+                        end_time_ms=command.end_time_ms,
+                        weeks=_china_repeat_times(command),
+                    ),
+                )
+            )
+        else:
+            result = ChargingPlanInfo()
+        self._charging_plans[key] = result
+        self._written_charging_plan_vins.add(key)
 
     async def _send_climate_command_locked(
         self,
@@ -1767,6 +1924,8 @@ class ChinaClient:
         operation: Literal[
             "initialize_auto_ai",
             "get_last_status",
+            "get_charging_plan",
+            "set_charging_plan",
             "send_climate_command",
             "send_lock_command",
             "send_close_windows_command",
@@ -1866,6 +2025,8 @@ class ChinaClient:
         if self._session_revision == expected_revision:
             self._session = state
             self._vehicles = {vehicle.identifier.value.casefold(): vehicle for vehicle in vehicles}
+            self._charging_plans = {}
+            self._written_charging_plan_vins.clear()
             self._session_revision += 1
 
     def _clear_if_revision(self, *, expected_revision: int) -> None:
@@ -1875,10 +2036,17 @@ class ChinaClient:
     def _revoke_session(self) -> None:
         self._session = None
         self._vehicles = {}
+        self._charging_plans = {}
+        self._written_charging_plan_vins.clear()
         self._session_revision += 1
 
     def _commit_vehicles(self, vehicles: tuple[ChinaVehicle, ...]) -> None:
         self._vehicles = {vehicle.identifier.value.casefold(): vehicle for vehicle in vehicles}
+        discovered = set(self._vehicles)
+        self._charging_plans = {
+            key: value for key, value in self._charging_plans.items() if key in discovered
+        }
+        self._written_charging_plan_vins.intersection_update(discovered)
 
 
 def _normalize_device_id(value: str) -> str:
@@ -2065,6 +2233,125 @@ def _parse_vehicles(value: object) -> tuple[ChinaVehicle, ...]:
             )
         )
     return tuple(vehicles)
+
+
+def _parse_china_charging_plan(
+    value: object,
+    *,
+    identifier: VehicleIdentifier,
+    now: datetime,
+) -> ChargingPlanInfo:
+    """Synthesize AutoAI's weekly schedule as the shared charging-plan shape."""
+
+    try:
+        vehicle_status = _property(value, "vehicleSts")
+        if vehicle_status is None:
+            vehicle_status = value
+        settings = _property(vehicle_status, "chargeSettings")
+        mode = _scalar_text(_property(settings, "mode"))
+        if not isinstance(settings, Mapping) or mode is None or not mode.strip() or mode == "1":
+            return ChargingPlanInfo()
+        start_text = _first_nonempty_scalar(
+            _property(settings, "phoneStrtHourMin"),
+            _property(settings, "discountStartTime"),
+        )
+        end_text = _first_nonempty_scalar(
+            _property(settings, "phoneEndHourMin"),
+            _property(settings, "discountEndTime"),
+        )
+        start_match = _CLOCK_TIME.fullmatch(start_text)
+        end_match = _CLOCK_TIME.fullmatch(end_text)
+        if start_match is None or end_match is None:
+            return ChargingPlanInfo()
+        local_now = now.astimezone(_CHINA_TIMEZONE)
+        start_local = local_now.replace(
+            hour=int(start_match.group(1)),
+            minute=int(start_match.group(2)),
+            second=0,
+            microsecond=0,
+        )
+        end_local = local_now.replace(
+            hour=int(end_match.group(1)),
+            minute=int(end_match.group(2)),
+            second=0,
+            microsecond=0,
+        )
+        if end_local <= start_local:
+            end_local += timedelta(days=1)
+        repeat = _scalar_text(_property(settings, "repeatTimes"))
+        if repeat is None or not repeat.strip():
+            repeat = "".join(
+                _china_day_enabled(settings, name)
+                for name in (
+                    "sundayUseTime",
+                    "saturdayUseTime",
+                    "fridayUseTime",
+                    "thurdayUseTime",
+                    "wednesdayUseTime",
+                    "tuesdayUseTime",
+                    "mondayUseTime",
+                )
+            )
+        if len(repeat) > 64 or any(ord(character) < 0x20 for character in repeat):
+            return ChargingPlanInfo()
+        return ChargingPlanInfo(
+            (
+                ChargingPlanItem(
+                    plan_id=_china_stable_plan_id(identifier),
+                    plan_type="0",
+                    start_time_ms=_epoch_milliseconds(start_local),
+                    end_time_ms=_epoch_milliseconds(end_local),
+                    weeks=repeat,
+                ),
+            )
+        )
+    except (OverflowError, TypeError, ValueError):
+        return ChargingPlanInfo()
+
+
+def _first_nonempty_scalar(*values: object) -> str:
+    for value in values:
+        text = _scalar_text(value)
+        if text is not None and text.strip():
+            return text
+    return ""
+
+
+def _china_day_enabled(settings: Mapping[object, object], name: str) -> str:
+    raw = _property(settings, name)
+    if type(raw) is bool:
+        return "1" if raw else "0"
+    value = _scalar_text(raw)
+    return "0" if value is None or not value.strip() or value == "0" else "1"
+
+
+def _china_stable_plan_id(identifier: VehicleIdentifier) -> int:
+    return int(sha256_hex(identifier.value)[:15], 16)
+
+
+def _china_clock_time(milliseconds: int | None) -> str:
+    if milliseconds is None or milliseconds <= 0:
+        return "00:00"
+    instant = datetime.fromtimestamp(milliseconds / 1000, tz=UTC)
+    return instant.astimezone(_CHINA_TIMEZONE).strftime("%H:%M")
+
+
+def _china_repeat_times(command: ChargingPlanCommand) -> str:
+    if not command.enable:
+        return "0000000"
+    if command.weeks is not None and len(command.weeks) == 7:
+        return command.weeks
+    if command.start_time_ms is None or command.start_time_ms <= 0:
+        return "0000000"
+    local = datetime.fromtimestamp(command.start_time_ms / 1000, tz=UTC).astimezone(
+        _CHINA_TIMEZONE
+    )
+    auto_ai_index = {6: 0, 5: 1, 4: 2, 3: 3, 2: 4, 1: 5, 0: 6}[
+        local.weekday()
+    ]
+    days = list("0000000")
+    days[auto_ai_index] = "1"
+    return "".join(days)
 
 
 def _parse_navinfo_command_results(

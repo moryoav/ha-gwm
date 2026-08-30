@@ -6,7 +6,7 @@ import asyncio
 import json
 from collections import Counter, deque
 from collections.abc import Mapping
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 from urllib.parse import unquote, urlsplit
@@ -14,6 +14,7 @@ from urllib.parse import unquote, urlsplit
 import pytest
 
 from gwm_ora_client._protocol import _Deadline
+from gwm_ora_client.charging import ChargingPlanCommand
 from gwm_ora_client.china_client import (
     ChinaAuthenticated,
     ChinaAuthState,
@@ -819,6 +820,93 @@ def _auto_ai_payload(request: _ChinaTransportRequest) -> dict[str, Any]:
     parsed = urlsplit(request.url)
     assert parsed.query.startswith("p=")
     return json.loads(unquote(parsed.query[2:]))
+
+
+@pytest.mark.asyncio
+async def test_navinfo_charging_schedule_read_write_clear_and_china_weekday_contract() -> None:
+    transport = _FakeTransport(
+        acquire_vehicles=[FIXTURE["responses"]["discovery"]],
+        get_charging_plan=[
+            {
+                "header": {"c": "0"},
+                "body": {
+                    "vehicleSts": {
+                        "chargeSettings": {
+                            "mode": "0",
+                            "phoneStrtHourMin": "23:30",
+                            "phoneEndHourMin": "06:15",
+                            "sundayUseTime": True,
+                            "thurdayUseTime": 1,
+                        }
+                    }
+                },
+            }
+        ],
+        set_charging_plan=[
+            {"header": {"c": "0"}, "body": {}},
+            {"header": {"c": "0"}, "body": {}},
+        ],
+    )
+    client = _client(transport)
+    authenticated = await client.authenticate(_credentials(), state=_complete_state())
+    assert isinstance(authenticated, ChinaAuthenticated)
+    identifier = VehicleIdentifier(VIN)
+
+    current = await client.get_charging_plan(identifier)
+    assert current.items[0].start_time_ms == int(
+        datetime(2024, 8, 12, 15, 30, tzinfo=UTC).timestamp() * 1000
+    )
+    assert current.items[0].end_time_ms == int(
+        datetime(2024, 8, 12, 22, 15, tzinfo=UTC).timestamp() * 1000
+    )
+    assert current.items[0].weeks == "1001000"
+
+    start = int(datetime(2024, 8, 17, 18, 0, tzinfo=UTC).timestamp() * 1000)
+    end = int(datetime(2024, 8, 17, 19, 0, tzinfo=UTC).timestamp() * 1000)
+    await client.set_charging_plan(
+        ChargingPlanCommand(identifier, True, start, end)
+    )
+    written = await client.get_charging_plan(identifier)
+    assert written.items[0].start_time_ms == start
+    assert written.items[0].end_time_ms == end
+    assert written.items[0].weeks == "1000000"
+    await client.set_charging_plan(ChargingPlanCommand(identifier, False))
+
+    read_payload = _auto_ai_payload(
+        next(call for call in transport.calls if call.operation == "get_charging_plan")
+    )
+    assert read_payload["header"]["fn"] == "GW.M.GET_VEHICLE_STATE"
+    assert read_payload["body"] == {"vin": VIN}
+    write_requests = [
+        call for call in transport.calls if call.operation == "set_charging_plan"
+    ]
+    enabled_body = _auto_ai_payload(write_requests[0])["body"]
+    assert enabled_body["chargeingMode"] == "0"
+    assert enabled_body["chargingStartTime"] == "02:00"
+    assert enabled_body["chargingEndTime"] == "03:00"
+    assert enabled_body["repeatTimes"] == "1000000"
+    clear_body = _auto_ai_payload(write_requests[1])["body"]
+    assert clear_body["chargeingMode"] == "1"
+    assert clear_body["chargingStartTime"] == "00:00"
+    assert clear_body["chargingEndTime"] == "00:00"
+    assert clear_body["repeatTimes"] == "0000000"
+
+
+@pytest.mark.asyncio
+async def test_beantech_charging_is_rejected_before_transport() -> None:
+    transport = _FakeTransport(acquire_vehicles=[FIXTURE["responses"]["discovery"]])
+    client = _client(transport)
+    authenticated = await client.authenticate(_credentials(), state=_complete_state())
+    assert isinstance(authenticated, ChinaAuthenticated)
+    identifier = VehicleIdentifier("LGWTEST0000000003")
+    before = len(transport.calls)
+
+    with pytest.raises(GwmRoutePolicyError):
+        await client.get_charging_plan(identifier)
+    with pytest.raises(GwmRoutePolicyError):
+        await client.set_charging_plan(ChargingPlanCommand(identifier, False))
+
+    assert len(transport.calls) == before
 
 
 @pytest.mark.asyncio

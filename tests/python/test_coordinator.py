@@ -10,6 +10,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers.update_coordinator import UpdateFailed
 
+from custom_components.gwm_ora.cloud_commands import DirectClimateCommandApi
 from custom_components.gwm_ora.cloud_runtime import DirectReadOnlyCommandApi
 from custom_components.gwm_ora.coordinator import GwmOraDataUpdateCoordinator
 from gwm_ora_client import GwmAuthenticationError, GwmNetworkError
@@ -74,6 +75,38 @@ async def test_direct_coordinator_uses_configured_account_interval() -> None:
 
     assert await coordinator._async_update_data() == {"region": "eu", "vehicles": []}
     assert coordinator.update_interval.total_seconds() == 120
+
+
+@pytest.mark.asyncio
+async def test_direct_coordinator_runs_owned_charging_cleanup_after_each_refresh() -> None:
+    calls: list[dict[str, object]] = []
+
+    class DirectClient:
+        async def async_get_vehicle_data(self) -> dict[str, object]:
+            return {"region": "eu", "vehicles": []}
+
+    api = object.__new__(DirectClimateCommandApi)
+
+    async def cleanup(entry_data: dict[str, object]) -> None:
+        calls.append(entry_data)
+
+    api.async_cleanup_owned_charging_plans = cleanup  # type: ignore[method-assign]
+    coordinator = GwmOraDataUpdateCoordinator(
+        HomeAssistant("synthetic-config"),
+        api,
+        direct_client=DirectClient(),  # type: ignore[arg-type]
+    )
+    coordinator.config_entry = type("Entry", (), {"data": {"region": "eu"}})()
+
+    assert await coordinator._async_update_data() == {"region": "eu", "vehicles": []}
+    assert calls == [{"region": "eu"}]
+
+    async def failed_cleanup(entry_data: dict[str, object]) -> None:
+        del entry_data
+        raise ValueError("synthetic storage failure")
+
+    api.async_cleanup_owned_charging_plans = failed_cleanup  # type: ignore[method-assign]
+    assert await coordinator._async_update_data() == {"region": "eu", "vehicles": []}
 
 
 @pytest.mark.asyncio

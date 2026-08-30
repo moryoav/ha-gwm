@@ -24,6 +24,9 @@ from custom_components.gwm_ora.cloud_commands import DirectClimateCommandApi
 from custom_components.gwm_ora.cloud_runtime import DirectClimateContext
 from custom_components.gwm_ora.cloud_storage import direct_cloud_state_store
 from gwm_ora_client import (
+    ChargingPlanCommand,
+    ChargingPlanInfo,
+    ChargingPlanItem,
     ChinaAuthState,
     ChinaCredentials,
     ChinaVehicleControlCommand,
@@ -63,6 +66,9 @@ class _Cloud:
         self.lock_sent = []
         self.windows_sent = []
         self.vehicle_controls_sent: list[ChinaVehicleControlCommand] = []
+        self.charging_sent: list[ChargingPlanCommand] = []
+        self.charging_info = ChargingPlanInfo()
+        self.charging_error: BaseException | None = None
         self.poll_results: list[tuple[RemoteCommandResultItem, ...]] = []
         self.send_error: BaseException | None = None
 
@@ -152,6 +158,20 @@ class _Cloud:
     async def async_get_vehicle_data(self) -> dict[str, object]:
         return {"region": self.region, "vehicles": []}
 
+    async def async_get_charging_plan(
+        self,
+        identifier: VehicleIdentifier,
+    ) -> ChargingPlanInfo:
+        assert identifier.value == _VIN
+        if self.charging_error is not None:
+            raise self.charging_error
+        return self.charging_info
+
+    async def async_set_charging_plan(self, command: ChargingPlanCommand) -> None:
+        if self.charging_error is not None:
+            raise self.charging_error
+        self.charging_sent.append(command)
+
 
 def _credentials() -> DirectCloudCredentials:
     return DirectCloudCredentials(
@@ -183,6 +203,7 @@ async def _api(
     clock: _Clock,
     *,
     enabled: bool = True,
+    charging_enabled: bool = False,
 ) -> tuple[DirectClimateCommandApi, Any, DirectCloudCredentials]:
     credentials = _credentials()
     hass = HomeAssistant(str(tmp_path))
@@ -193,6 +214,7 @@ async def _api(
         store,
         credentials,
         enabled=enabled,
+        charging_enabled=charging_enabled,
         security_pin="1234" if enabled else None,
         clock=clock,
     )
@@ -421,6 +443,139 @@ async def test_lock_window_validation_rejection_and_disabled_mode_are_fail_close
     )
     with pytest.raises(GwmOraApiForbidden):
         await disabled.async_close_windows(_VIN)
+
+
+@pytest.mark.asyncio
+async def test_charging_plan_write_read_and_clear_persist_exact_ownership(
+    tmp_path: Path,
+) -> None:
+    clock = _Clock()
+    cloud = _Cloud()
+    start = int(_NOW.timestamp() * 1000)
+    end = start + 60 * 60 * 1000
+    cloud.charging_info = ChargingPlanInfo(
+        (ChargingPlanItem(42, "0", start, end, ""),)
+    )
+    api, store, credentials = await _api(
+        tmp_path,
+        cloud,
+        clock,
+        charging_enabled=True,
+    )
+
+    assert await api.async_set_charging_plan(
+        _VIN,
+        enable=True,
+        start_time=start,
+        end_time=end,
+        plan_type=0,
+    ) == {}
+    owned = await store.async_get_owned_charging_plans(direct_entry_data(credentials))
+    assert len(owned) == 1
+    assert owned[0].plan_id == 42
+    assert owned[0].start_time_ms == start
+    assert (await api.async_get_charging_plan(_VIN))["charge_plan_list"][0][
+        "plan_id"
+    ] == 42
+
+    assert await api.async_set_charging_plan(_VIN, enable=False) == {}
+    assert len(cloud.charging_sent) == 2
+    assert cloud.charging_sent[1] == ChargingPlanCommand(
+        VehicleIdentifier(_VIN),
+        False,
+    )
+    assert await store.async_get_owned_charging_plans(
+        direct_entry_data(credentials)
+    ) == ()
+
+
+@pytest.mark.asyncio
+async def test_charging_opt_out_clears_exact_match_but_preserves_app_replacement(
+    tmp_path: Path,
+) -> None:
+    clock = _Clock()
+    cloud = _Cloud()
+    start = int(_NOW.timestamp() * 1000)
+    end = start + 60 * 60 * 1000
+    cloud.charging_info = ChargingPlanInfo(
+        (ChargingPlanItem(42, "0", start, end, ""),)
+    )
+    enabled, store, credentials = await _api(
+        tmp_path,
+        cloud,
+        clock,
+        charging_enabled=True,
+    )
+    await enabled.async_set_charging_plan(
+        _VIN,
+        enable=True,
+        start_time=start,
+        end_time=end,
+    )
+    disabled = DirectClimateCommandApi(
+        cloud,  # type: ignore[arg-type]
+        store,
+        credentials,
+        enabled=False,
+        charging_enabled=False,
+        security_pin=None,
+        clock=clock,
+    )
+
+    await disabled.async_cleanup_owned_charging_plans(direct_entry_data(credentials))
+    assert [command.enable for command in cloud.charging_sent] == [True, False]
+    assert await store.async_get_owned_charging_plans(
+        direct_entry_data(credentials)
+    ) == ()
+
+    cloud.charging_info = ChargingPlanInfo(
+        (ChargingPlanItem(50, "0", start, end, ""),)
+    )
+    await enabled.async_set_charging_plan(
+        _VIN,
+        enable=True,
+        start_time=start,
+        end_time=end,
+    )
+    cloud.charging_info = ChargingPlanInfo(
+        (ChargingPlanItem(99, "0", start + 1000, end + 1000, ""),)
+    )
+    before = len(cloud.charging_sent)
+    await disabled.async_cleanup_owned_charging_plans(direct_entry_data(credentials))
+
+    assert len(cloud.charging_sent) == before
+    assert await store.async_get_owned_charging_plans(
+        direct_entry_data(credentials)
+    ) == ()
+
+
+@pytest.mark.asyncio
+async def test_charging_disabled_and_provider_rejection_are_fail_closed(
+    tmp_path: Path,
+) -> None:
+    clock = _Clock()
+    cloud = _Cloud()
+    disabled, _store, _credentials_value = await _api(tmp_path, cloud, clock)
+    with pytest.raises(GwmOraApiForbidden):
+        await disabled.async_set_charging_plan(_VIN, enable=False)
+    assert cloud.charging_sent == []
+
+    enabled, provider_store, provider_credentials = await _api(
+        tmp_path / "provider-error",
+        cloud,
+        clock,
+        charging_enabled=True,
+    )
+    cloud.charging_error = GwmApiError(
+        operation="set_charging_plan",
+        api_code="607777",
+    )
+    with pytest.raises(GwmApiError):
+        await enabled.async_set_charging_plan(_VIN, enable=False)
+    assert cloud.charging_sent == []
+    assert await provider_store.async_get_owned_charging_plans(
+        direct_entry_data(provider_credentials)
+    ) == ()
 
 
 @pytest.mark.asyncio

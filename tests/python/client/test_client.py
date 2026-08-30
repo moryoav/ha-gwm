@@ -300,12 +300,14 @@ def test_only_closed_operation_surfaces_and_typed_public_methods_exist() -> None
         "authenticate_anz",
         "authenticate_eu",
         "authenticate_russia",
+        "get_charging_plan",
         "get_last_status",
         "get_remote_command_results",
         "get_vehicle_basics",
         "send_close_windows_command",
         "send_climate_command",
         "send_lock_command",
+        "set_charging_plan",
         "update_climate_defaults",
     }
     for forbidden in (
@@ -314,7 +316,6 @@ def test_only_closed_operation_surfaces_and_typed_public_methods_exist() -> None
         "login",
         "refresh_token",
         "send_command",
-        "set_charging_plan",
     ):
         assert not hasattr(GwmClient, forbidden)
 

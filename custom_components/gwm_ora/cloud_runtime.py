@@ -19,6 +19,8 @@ from homeassistant.core import HomeAssistant
 from gwm_ora_client import (
     AnzAuthenticated,
     AnzAuthState,
+    ChargingPlanCommand,
+    ChargingPlanInfo,
     ClimateCommand,
     CloseWindowsCommand,
     CloudVehicle,
@@ -77,6 +79,13 @@ class _OverseasReadClient(Protocol):
         self,
         identifier: VehicleIdentifier,
     ) -> CloudVehicleBasics: ...
+
+    async def get_charging_plan(
+        self,
+        identifier: VehicleIdentifier,
+    ) -> ChargingPlanInfo: ...
+
+    async def set_charging_plan(self, command: ChargingPlanCommand) -> None: ...
 
     async def update_climate_defaults(
         self,
@@ -257,6 +266,7 @@ class DirectCloudReadClient:
         entry_data: dict[str, object] | None = None,
         climate_commands_enabled: bool = False,
         lock_window_commands_enabled: bool = False,
+        charging_control_enabled: bool = False,
     ) -> None:
         if region not in {REGION_EU, REGION_ANZ, REGION_RUSSIA}:
             raise GwmConfigurationError(operation="request")
@@ -269,10 +279,12 @@ class DirectCloudReadClient:
         if (
             type(climate_commands_enabled) is not bool
             or type(lock_window_commands_enabled) is not bool
+            or type(charging_control_enabled) is not bool
         ):
             raise GwmConfigurationError(operation="request")
         self._climate_commands_enabled = climate_commands_enabled
         self._lock_window_commands_enabled = lock_window_commands_enabled
+        self._charging_control_enabled = charging_control_enabled
         self._vehicles: dict[str, CloudVehicle] = {}
 
     @classmethod
@@ -285,6 +297,7 @@ class DirectCloudReadClient:
         state_store: _AuthStateStore | None = None,
         climate_commands_enabled: bool = False,
         lock_window_commands_enabled: bool = False,
+        charging_control_enabled: bool = False,
     ) -> DirectCloudReadClient:
         """Validate a staged handoff against the current config entry."""
 
@@ -322,6 +335,7 @@ class DirectCloudReadClient:
             entry_data=data,
             climate_commands_enabled=climate_commands_enabled,
             lock_window_commands_enabled=lock_window_commands_enabled,
+            charging_control_enabled=charging_control_enabled,
         )
 
     @property
@@ -363,6 +377,7 @@ class DirectCloudReadClient:
                 capabilities = dict(capability_data)
                 capabilities["climate_commands"] = self._climate_commands_enabled
                 capabilities["lock_window_commands"] = self._lock_window_commands_enabled
+                capabilities["charging_control"] = self._charging_control_enabled
                 capabilities["china_vehicle_commands"] = False
                 snapshot["capabilities"] = capabilities
                 snapshots.append(snapshot)
@@ -378,7 +393,7 @@ class DirectCloudReadClient:
             "remote_commands_enabled": (
                 self._climate_commands_enabled or self._lock_window_commands_enabled
             ),
-            "charging_control_enabled": False,
+            "charging_control_enabled": self._charging_control_enabled,
             "vehicles": snapshots,
         }
 
@@ -416,6 +431,19 @@ class DirectCloudReadClient:
             temperature=temperature,
             operation_time_minutes=operation_time_minutes,
         )
+
+    async def async_get_charging_plan(
+        self,
+        identifier: VehicleIdentifier,
+    ) -> ChargingPlanInfo:
+        """Read the current charging plan through the authenticated client."""
+
+        return await self._client.get_charging_plan(identifier)
+
+    async def async_set_charging_plan(self, command: ChargingPlanCommand) -> None:
+        """Set or clear the charging plan through the authenticated client."""
+
+        await self._client.set_charging_plan(command)
 
     async def async_send_climate_command(
         self,

@@ -35,6 +35,7 @@ from custom_components.gwm_ora.const import (
     CONF_ACCOUNT,
     CONF_CONNECTION_TYPE,
     CONF_COUNTRY,
+    CONF_ENABLE_CHARGING_CONTROL,
     CONF_PASSWORD,
     CONF_POLL_INTERVAL_SECONDS,
     CONF_REGION,
@@ -135,7 +136,12 @@ async def test_direct_entry_setup_and_unload_own_runtime_lifecycle(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Any,
 ) -> None:
-    entry = _direct_entry(options={CONF_POLL_INTERVAL_SECONDS: 180})
+    entry = _direct_entry(
+        options={
+            CONF_POLL_INTERVAL_SECONDS: 180,
+            CONF_ENABLE_CHARGING_CONTROL: True,
+        }
+    )
     hass = HomeAssistant(str(tmp_path))
     bootstrap = _bootstrap(entry)
     stage_direct_cloud_bootstrap(hass, entry.unique_id or "", bootstrap)
@@ -167,10 +173,14 @@ async def test_direct_entry_setup_and_unload_own_runtime_lifecycle(
         def async_cancel_command_tasks(self) -> None:
             self.cancelled = True
 
+    def direct_runtime(*args: Any, **kwargs: Any) -> Cloud:
+        assert kwargs["charging_control_enabled"] is True
+        return cloud
+
     monkeypatch.setattr(
         gwm_ora.DirectCloudReadClient,
         "from_entry_data",
-        classmethod(lambda cls, *args, **kwargs: cloud),
+        classmethod(lambda cls, *args, **kwargs: direct_runtime(*args, **kwargs)),
     )
     monkeypatch.setattr(gwm_ora, "GwmOraDataUpdateCoordinator", Coordinator)
     monkeypatch.setattr(gwm_ora, "_async_register_services", lambda hass: None)
