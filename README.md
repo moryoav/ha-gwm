@@ -314,9 +314,15 @@ Your GWM account details and vehicle PIN are configured in the add-on, not the i
 
 Remote commands can affect the real vehicle. Use them carefully.
 
+## Naming and Compatibility
+
+I use **GWM** for the project and for new code because vehicle support is not limited to ORA models. The unpublished Python distribution is `gwm-client`, and its import package is `gwm_client`.
+
+I retain the existing `gwm_ora` Home Assistant domain, action namespace, add-on slug, and discovery identifier as compatibility identifiers. Renaming them in place would break existing config entries, entity and device registry links, automations, add-on configuration, and discovery. These identifiers do not limit which compatible GWM vehicles the integration can support. Historical ORA vehicle results and attribution to `ora2mqtt` remain named where they are factually relevant.
+
 ## Packaging and Protocol Materials
 
-I am preparing the Home Assistant-independent client as a separate Python distribution, but I have not published or activated it. The current release still uses the add-on. I recorded the planned dependency boundary, bundled certificate renewal dates, source evidence, and unresolved redistribution conditions in [Third-Party and Protocol Material Notice](THIRD_PARTY_NOTICES.md).
+I am preparing `gwm-client` as a separate Home Assistant-independent Python distribution, but I have not published or activated it. The current release still uses the add-on. I recorded the planned dependency boundary, bundled certificate renewal dates, source evidence, and unresolved redistribution conditions in [Third-Party and Protocol Material Notice](THIRD_PARTY_NOTICES.md).
 
 ## Disclaimer
 

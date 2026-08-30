@@ -16,7 +16,7 @@ from typing import Never, Protocol
 
 from homeassistant.core import HomeAssistant
 
-from gwm_ora_client import (
+from gwm_client import (
     AnzAuthenticated,
     AnzAuthState,
     ChargingPlanCommand,

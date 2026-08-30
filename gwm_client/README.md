@@ -1,4 +1,4 @@
-# GWM ORA Client
+# GWM Client
 
 I use this internal alpha package as the Home Assistant independent protocol boundary for the GWM integration. It provides typed async clients for the EU, Australia and New Zealand, Russia, and isolated mainland China cloud strategies.
 

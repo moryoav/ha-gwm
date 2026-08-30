@@ -19,7 +19,7 @@ from homeassistant.helpers import issue_registry as ir
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.util import dt as dt_util
 
-from gwm_ora_client import (
+from gwm_client import (
     AnzAuthenticated,
     EuAuthenticated,
     GwmAuthenticationError,

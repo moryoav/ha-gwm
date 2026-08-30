@@ -13,9 +13,9 @@ from urllib.parse import unquote, urlsplit
 
 import pytest
 
-from gwm_ora_client._protocol import _Deadline
-from gwm_ora_client.charging import ChargingPlanCommand
-from gwm_ora_client.china_client import (
+from gwm_client._protocol import _Deadline
+from gwm_client.charging import ChargingPlanCommand
+from gwm_client.china_client import (
     ChinaAuthenticated,
     ChinaAuthState,
     ChinaClient,
@@ -27,19 +27,19 @@ from gwm_ora_client.china_client import (
     ChinaVehicleStatus,
     ChinaVerificationRequired,
 )
-from gwm_ora_client.china_transport import (
+from gwm_client.china_transport import (
     _ChinaTransportRequest,
     _ChinaTransportResponse,
 )
-from gwm_ora_client.commands import (
+from gwm_client.commands import (
     ChinaVehicleControlCommand,
     ClimateCommand,
     CloseWindowsCommand,
     DoorLockCommand,
     RemoteCommandResultItem,
 )
-from gwm_ora_client.config import RequestTimeouts
-from gwm_ora_client.errors import (
+from gwm_client.config import RequestTimeouts
+from gwm_client.errors import (
     GwmApiError,
     GwmAuthenticationError,
     GwmClientError,
@@ -52,7 +52,7 @@ from gwm_ora_client.errors import (
     GwmSchemaError,
     GwmTlsError,
 )
-from gwm_ora_client.models import CloudVehicle, CloudVehicleStatus, VehicleIdentifier
+from gwm_client.models import CloudVehicle, CloudVehicleStatus, VehicleIdentifier
 
 FIXTURE = json.loads(
     (Path(__file__).with_name("fixtures") / "china_auth_contracts_v1.json").read_text(

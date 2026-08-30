@@ -61,6 +61,9 @@ _VERIFICATION_INTERVAL = timedelta(minutes=10)
 _VERIFICATION_REQUIRED_CODE = "110641"
 _RUSSIA_COUNTRY = "RU"
 _RUSSIA_AGREEMENTS = (1, 2, 18, 19)
+# These values are persisted or proven wire contracts, not vehicle-scope names.
+_LEGACY_ACCOUNT_BINDING_DOMAIN = b"gwm-ora-russia-account-v1\0"
+_LEGACY_APP_MODEL = "ha-gwm-ora"
 
 
 @dataclass(frozen=True, slots=True)
@@ -105,7 +108,7 @@ class RussiaCredentials:
         """Return a domain-separated pseudonymous account binding."""
 
         digest = hashlib.sha256()
-        digest.update(b"gwm-ora-russia-account-v1\0")
+        digest.update(_LEGACY_ACCOUNT_BINDING_DOMAIN)
         digest.update(self.account.encode("utf-8"))
         return digest.hexdigest()
 
@@ -783,7 +786,7 @@ def _password_login_body(credentials: RussiaCredentials) -> dict[str, object]:
         "country": credentials.country,
         "deviceId": credentials.device_id,
         "isEncrypt": False,
-        "model": "ha-gwm-ora",
+        "model": _LEGACY_APP_MODEL,
         "password": credentials.password,
         "pushToken": "",
         "type": 1,
@@ -800,7 +803,7 @@ def _verification_login_body(
         "country": credentials.country,
         "deviceId": credentials.device_id,
         "email": credentials.account,
-        "model": "ha-gwm-ora",
+        "model": _LEGACY_APP_MODEL,
         "pushToken": "",
         "smsCode": code,
     }

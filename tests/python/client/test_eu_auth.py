@@ -17,13 +17,13 @@ from urllib.parse import urlsplit
 
 import pytest
 
-import gwm_ora_client.eu_auth as eu_auth
-from gwm_ora_client._dotnet_json import encode_dotnet_json
-from gwm_ora_client._protocol import _Deadline, _TransportRequest, _TransportResponse
-from gwm_ora_client.client import GwmClient
-from gwm_ora_client.config import GwmClientConfig, RequestTimeouts
-from gwm_ora_client.crypto import GeneratedClientCertificateRequest
-from gwm_ora_client.errors import (
+import gwm_client.eu_auth as eu_auth
+from gwm_client._dotnet_json import encode_dotnet_json
+from gwm_client._protocol import _Deadline, _TransportRequest, _TransportResponse
+from gwm_client.client import GwmClient
+from gwm_client.config import GwmClientConfig, RequestTimeouts
+from gwm_client.crypto import GeneratedClientCertificateRequest
+from gwm_client.errors import (
     GwmApiError,
     GwmAuthenticationError,
     GwmConfigurationError,
@@ -34,16 +34,16 @@ from gwm_ora_client.errors import (
     GwmRoutePolicyError,
     GwmSchemaError,
 )
-from gwm_ora_client.eu_auth import (
+from gwm_client.eu_auth import (
     EuAuthenticated,
     EuAuthState,
     EuCredentials,
     EuVerificationRequired,
 )
-from gwm_ora_client.eu_identity import EuBootstrapMaterial, EuIdentityError, EuIssuedIdentity
-from gwm_ora_client.models import GwmSession
-from gwm_ora_client.signing import SignedRequest, SigningProfile
-from gwm_ora_client.tls import create_gwm_ssl_context
+from gwm_client.eu_identity import EuBootstrapMaterial, EuIdentityError, EuIssuedIdentity
+from gwm_client.models import GwmSession
+from gwm_client.signing import SignedRequest, SigningProfile
+from gwm_client.tls import create_gwm_ssl_context
 
 FIXTURE_PATH = Path(__file__).with_name("fixtures") / "eu_auth_contracts_v1.json"
 READ_FIXTURE_PATH = Path(__file__).with_name("fixtures") / "eu_read_responses_v1.json"

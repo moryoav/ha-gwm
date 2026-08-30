@@ -27,7 +27,7 @@ from custom_components.gwm_ora.cloud_storage import (
     direct_authentication_context_binding,
     direct_cloud_state_store,
 )
-from gwm_ora_client import (
+from gwm_client import (
     AnzAuthState,
     ChinaAuthState,
     EuAuthState,

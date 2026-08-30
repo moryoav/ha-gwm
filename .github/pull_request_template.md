@@ -33,7 +33,7 @@ Describe the testing you performed.
 - [ ] The add-on starts when affected.
 - [ ] Relevant entities, diagnostics, repairs, or remote commands were tested.
 - [ ] `dotnet test` passes.
-- [ ] `python -m ruff check gwm_ora_client custom_components tests/python` passes.
+- [ ] `python -m ruff check gwm_client custom_components tests/python` passes.
 - [ ] `python -m pytest tests/python` passes.
 - [ ] Documentation-only change; no runtime testing needed.
 

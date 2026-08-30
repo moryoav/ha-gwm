@@ -10,7 +10,7 @@ from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from typing import Any, cast
 
-from gwm_ora_client import (
+from gwm_client import (
     DEFAULT_OPERATION_TIME_MINUTES,
     DEFAULT_TEMPERATURE_C,
     ChargingPlanCommand,

@@ -24,7 +24,7 @@ from custom_components.gwm_ora.const import (
     CONF_REGION,
     CONNECTION_TYPE_CLOUD,
 )
-from gwm_ora_client import (
+from gwm_client import (
     ChinaClientConfig,
     EuBootstrapMaterial,
     GwmClientConfig,

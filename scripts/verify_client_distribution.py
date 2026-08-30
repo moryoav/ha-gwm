@@ -9,9 +9,9 @@ from email.message import Message
 from email.parser import Parser
 from pathlib import Path, PurePosixPath
 
-_DISTRIBUTION_NAME = "gwm-ora-client"
+_DISTRIBUTION_NAME = "gwm-client"
 _DISTRIBUTION_VERSION = "0.1.0"
-_IMPORT_PACKAGE = "gwm_ora_client"
+_IMPORT_PACKAGE = "gwm_client"
 _DIST_INFO = f"{_IMPORT_PACKAGE}-{_DISTRIBUTION_VERSION}.dist-info"
 _EGG_INFO = f"{_IMPORT_PACKAGE}.egg-info"
 _LICENSE_EXPRESSION = "MIT AND LicenseRef-GWM-Protocol-Materials"
@@ -143,7 +143,7 @@ def _verify_wheel(path: Path) -> None:
 
 
 def _verify_source_distribution(path: Path) -> None:
-    source_root = f"gwm_ora_client-{_DISTRIBUTION_VERSION}"
+    source_root = f"gwm_client-{_DISTRIBUTION_VERSION}"
     with tarfile.open(path, "r:gz") as archive:
         members = archive.getnames()
         _assert_safe_members(members, source_root=source_root)

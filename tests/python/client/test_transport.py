@@ -11,8 +11,8 @@ import aiohttp
 import pytest
 from yarl import URL
 
-from gwm_ora_client._protocol import _Deadline, _TransportRequest
-from gwm_ora_client.errors import (
+from gwm_client._protocol import _Deadline, _TransportRequest
+from gwm_client.errors import (
     GwmClosedError,
     GwmConfigurationError,
     GwmDeadlineExceededError,
@@ -23,7 +23,7 @@ from gwm_ora_client.errors import (
     GwmRoutePolicyError,
     GwmTlsError,
 )
-from gwm_ora_client.transport import AiohttpTransport
+from gwm_client.transport import AiohttpTransport
 
 SENSITIVE = "SENSITIVE-transport-material-019fea1b"
 

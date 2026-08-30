@@ -25,7 +25,7 @@ from custom_components.gwm_ora.cloud_runtime import (
     consume_direct_cloud_bootstrap,
     stage_direct_cloud_bootstrap,
 )
-from gwm_ora_client import (
+from gwm_client import (
     AnzAuthenticated,
     AnzAuthState,
     ChargingPlanCommand,

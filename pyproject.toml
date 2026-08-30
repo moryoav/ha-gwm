@@ -3,10 +3,10 @@ requires = ["setuptools>=77.0.3"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "gwm-ora-client"
+name = "gwm-client"
 version = "0.1.0"
 description = "Async, typed client for the regional GWM vehicle cloud protocols"
-readme = "gwm_ora_client/README.md"
+readme = "gwm_client/README.md"
 requires-python = ">=3.13"
 license = "MIT AND LicenseRef-GWM-Protocol-Materials"
 license-files = ["LICENSE", "THIRD_PARTY_NOTICES.md"]
@@ -30,11 +30,11 @@ Issues = "https://github.com/moryoav/ha-gwm/issues"
 Repository = "https://github.com/moryoav/ha-gwm"
 
 [tool.setuptools]
-packages = ["gwm_ora_client"]
+packages = ["gwm_client"]
 include-package-data = false
 
 [tool.setuptools.package-data]
-gwm_ora_client = ["py.typed"]
+gwm_client = ["py.typed"]
 
 [tool.ruff]
 target-version = "py313"
@@ -50,4 +50,4 @@ testpaths = ["tests/python"]
 [tool.mypy]
 python_version = "3.13"
 strict = true
-exclude = ["^gwm_ora_client/live_poc\\.py$"]
+exclude = ["^gwm_client/live_poc\\.py$"]

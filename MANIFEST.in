@@ -1,9 +1,9 @@
 include LICENSE
 include THIRD_PARTY_NOTICES.md
-include gwm_ora_client/README.md
-include gwm_ora_client/py.typed
+include gwm_client/README.md
+include gwm_client/py.typed
 exclude README.md
-recursive-include gwm_ora_client *.py
+recursive-include gwm_client *.py
 prune addons
 prune custom_components
 prune docs

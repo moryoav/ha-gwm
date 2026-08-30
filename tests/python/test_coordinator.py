@@ -15,7 +15,7 @@ from homeassistant.helpers.update_coordinator import UpdateFailed
 from custom_components.gwm_ora.cloud_commands import DirectClimateCommandApi
 from custom_components.gwm_ora.cloud_runtime import DirectReadOnlyCommandApi
 from custom_components.gwm_ora.coordinator import GwmOraDataUpdateCoordinator
-from gwm_ora_client import GwmAuthenticationError, GwmNetworkError
+from gwm_client import GwmAuthenticationError, GwmNetworkError
 
 
 def _coordinator_with(vehicles: list[dict]) -> GwmOraDataUpdateCoordinator:

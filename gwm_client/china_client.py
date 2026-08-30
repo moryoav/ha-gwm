@@ -72,6 +72,9 @@ from .errors import (
 )
 from .models import CloudVehicle, CloudVehicleStatus, VehicleIdentifier
 
+# This persisted hash-domain value is a compatibility contract, not a vehicle-scope name.
+_LEGACY_ACCOUNT_BINDING_DOMAIN = b"gwm-ora-china-account-v1\0"
+
 __all__ = [
     "ChinaAuthenticated",
     "ChinaAuthenticationResult",
@@ -190,7 +193,7 @@ class ChinaCredentials:
     @property
     def account_binding(self) -> str:
         digest = hashlib.sha256()
-        digest.update(b"gwm-ora-china-account-v1\0")
+        digest.update(_LEGACY_ACCOUNT_BINDING_DOMAIN)
         digest.update(self.phone.encode("utf-8"))
         return digest.hexdigest()
 

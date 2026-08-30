@@ -16,9 +16,9 @@ jobs:
           python-version: "3.13"
       - run: python -m pip install --upgrade pip
       - run: python -m pip install "aiohttp==3.13.3" build "cryptography==46.0.2" mypy pytest pytest-asyncio ruff "setuptools>=77.0.3" twine wheel "yarl==1.22.0"
-      - run: ruff check gwm_ora_client tests/python/client scripts/verify_client_distribution.py
-      - run: python -m mypy gwm_ora_client
-      - run: python -m compileall -q gwm_ora_client tests/python/client scripts/verify_client_distribution.py
+      - run: ruff check gwm_client tests/python/client scripts/verify_client_distribution.py
+      - run: python -m mypy gwm_client
+      - run: python -m compileall -q gwm_client tests/python/client scripts/verify_client_distribution.py
       - run: pytest tests/python/client
       - run: python -m build --no-isolation
       - run: python -m twine check dist/*
@@ -33,6 +33,6 @@ jobs:
           python-version: "3.13"
       - run: python -m pip install --upgrade pip
       - run: python -m pip install aiohttp cryptography homeassistant pytest pytest-asyncio ruff
-      - run: ruff check gwm_ora_client custom_components tests/python
-      - run: python -m compileall -q gwm_ora_client custom_components tests/python
+      - run: ruff check gwm_client custom_components tests/python
+      - run: python -m compileall -q gwm_client custom_components tests/python
       - run: pytest tests/python

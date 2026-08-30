@@ -44,7 +44,7 @@ from custom_components.gwm_ora.const import (
     DOMAIN,
 )
 from custom_components.gwm_ora.diagnostics import async_get_config_entry_diagnostics
-from gwm_ora_client import (
+from gwm_client import (
     EuAuthenticated,
     EuAuthState,
     EuCredentials,

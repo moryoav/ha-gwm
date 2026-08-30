@@ -134,10 +134,12 @@ addons/gwm_ora/                 Home Assistant add-on metadata, container packag
 addons/gwm_ora/src/GwmOra.Addon/ .NET add-on service
 addons/gwm_ora/src/LibGwmApi/   GWM API client adapted from ora2mqtt behavior
 custom_components/gwm_ora/      Home Assistant custom integration
-gwm_ora_client/                 Home Assistant-independent async GWM cloud client
+gwm_client/                     Home Assistant-independent async GWM cloud client
 tests/                          .NET and Python tests
 .github/workflows/              CI and release workflows
 ```
+
+I use neutral **GWM** names for new user-facing text, Python packages, and internal symbols. The `gwm-client` distribution imports as `gwm_client`. I preserve the existing `gwm_ora` Home Assistant domain, action namespace, add-on slug, and discovery identifier for compatibility, so do not copy that legacy prefix into new identifiers unless a compatibility contract requires it.
 
 For local Home Assistant testing, install or copy the integration into:
 
@@ -168,9 +170,9 @@ Run:
 
 ```powershell
 dotnet test
-python -m ruff check gwm_ora_client custom_components tests/python
-python -m mypy gwm_ora_client
-python -m compileall gwm_ora_client custom_components tests/python
+python -m ruff check gwm_client custom_components tests/python
+python -m mypy gwm_client
+python -m compileall gwm_client custom_components tests/python
 python -m pytest tests/python
 ```
 

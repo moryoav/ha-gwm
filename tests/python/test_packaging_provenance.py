@@ -12,7 +12,7 @@ from cryptography.hazmat.primitives import serialization
 from cryptography.x509.oid import NameOID
 
 from custom_components.gwm_ora.cloud_auth import _RESOURCE_DIRECTORY
-from gwm_ora_client.crypto import load_certificate, recover_transformed_private_key
+from gwm_client.crypto import load_certificate, recover_transformed_private_key
 
 ROOT = Path(__file__).resolve().parents[2]
 RESOURCE_DIRECTORY = ROOT / "custom_components" / "gwm_ora" / "resources"
@@ -114,7 +114,7 @@ def test_packaging_decision_keeps_the_client_separate_and_activation_deferred() 
         (ROOT / "custom_components" / "gwm_ora" / "manifest.json").read_text(encoding="utf-8")
     )
 
-    assert project["name"] == "gwm-ora-client"
+    assert project["name"] == "gwm-client"
     assert project["version"] == "0.1.0"
     assert project["requires-python"] == ">=3.13"
     assert project["license"] == "MIT AND LicenseRef-GWM-Protocol-Materials"
@@ -125,10 +125,13 @@ def test_packaging_decision_keeps_the_client_separate_and_activation_deferred() 
         "yarl>=1.22.0,<2",
     }
     assert manifest["requirements"] == []
+    assert manifest["domain"] == "gwm_ora"
     assert _RESOURCE_DIRECTORY == RESOURCE_DIRECTORY
+    assert (ROOT / "gwm_client" / "__init__.py").is_file()
+    assert not (ROOT / "gwm_ora_client").exists()
     assert not any(
         path.suffix.casefold() in {".cer", ".key", ".pem"}
-        for path in (ROOT / "gwm_ora_client").rglob("*")
+        for path in (ROOT / "gwm_client").rglob("*")
     )
 
 
@@ -140,4 +143,30 @@ def test_protocol_material_notice_is_shipped_with_the_hacs_integration() -> None
 
     assert integration_notice == root_notice
     assert "LicenseRef-GWM-Protocol-Materials" in root_notice
+    assert "planned `gwm-client` distribution" in root_notice
     assert "I will not publish the client package or complete the integration-only release" in root_notice
+
+
+def test_new_client_name_has_only_explicit_legacy_compatibility_values() -> None:
+    allowed_lines = {
+        "anz_auth.py": {'_LEGACY_ACCOUNT_BINDING_DOMAIN = b"gwm-ora-anz-account-v1\\0"'},
+        "china_client.py": {'_LEGACY_ACCOUNT_BINDING_DOMAIN = b"gwm-ora-china-account-v1\\0"'},
+        "eu_auth.py": {'_LEGACY_ACCOUNT_BINDING_DOMAIN = b"gwm-ora-eu-account-v1\\0"'},
+        "live_poc.py": {'/ "gwm_ora"'},
+        "russia_auth.py": {
+            '_LEGACY_ACCOUNT_BINDING_DOMAIN = b"gwm-ora-russia-account-v1\\0"',
+            '_LEGACY_APP_MODEL = "ha-gwm-ora"',
+        },
+    }
+    actual_lines: dict[str, set[str]] = {}
+
+    for path in sorted((ROOT / "gwm_client").glob("*.py")):
+        matching_lines = {
+            line.strip()
+            for line in path.read_text(encoding="utf-8").splitlines()
+            if any(marker in line for marker in ("gwm-ora", "gwm_ora", "GwmOra", "GWM ORA"))
+        }
+        if matching_lines:
+            actual_lines[path.name] = matching_lines
+
+    assert actual_lines == allowed_lines

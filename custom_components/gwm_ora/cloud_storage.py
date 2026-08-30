@@ -13,7 +13,7 @@ from typing import Any, cast
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.storage import Store
 
-from gwm_ora_client import (
+from gwm_client import (
     AnzAuthState,
     ChinaAuthState,
     EuAuthState,
@@ -55,6 +55,8 @@ _MAX_COMMANDS = 100
 _MAX_CHARGING_PLANS = 100
 _MAX_COMMAND_IDENTIFIER_LENGTH = 512
 _MAX_COMMAND_NAME_LENGTH = 80
+# This persisted hash-domain value is a compatibility contract, not a vehicle-scope name.
+_LEGACY_DIRECT_CONTEXT_DOMAIN = b"gwm-ora-direct-auth-context-v1\0"
 
 
 @dataclass(frozen=True, slots=True, repr=False)
@@ -538,7 +540,7 @@ def direct_authentication_context_binding(
     if type(credentials) is not DirectCloudCredentials:
         raise ValueError("credentials_invalid")
     digest = hashlib.sha256()
-    digest.update(b"gwm-ora-direct-auth-context-v1\0")
+    digest.update(_LEGACY_DIRECT_CONTEXT_DOMAIN)
     for value in (
         credentials.region,
         credentials.country,

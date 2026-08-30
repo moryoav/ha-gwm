@@ -13,7 +13,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from gwm_ora_client import (
+from gwm_client import (
     AnzAuthState,
     AnzCredentials,
     ChinaAuthState,
@@ -31,10 +31,10 @@ from gwm_ora_client import (
     RussiaBootstrapMaterial,
     RussiaCredentials,
 )
-from gwm_ora_client.anz_auth import AnzAuthenticationResult
-from gwm_ora_client.china_client import ChinaAuthenticationResult
-from gwm_ora_client.eu_auth import EuAuthenticationResult
-from gwm_ora_client.russia_auth import RussiaAuthenticationResult
+from gwm_client.anz_auth import AnzAuthenticationResult
+from gwm_client.china_client import ChinaAuthenticationResult
+from gwm_client.eu_auth import EuAuthenticationResult
+from gwm_client.russia_auth import RussiaAuthenticationResult
 
 from .const import (
     CONF_ACCOUNT,

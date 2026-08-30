@@ -14,7 +14,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
-from gwm_ora_client import GwmAuthenticationError, GwmClientError
+from gwm_client import GwmAuthenticationError, GwmClientError
 
 from .api import GwmOraApiAuthError, GwmOraApiClient, GwmOraApiError, GwmOraApiUnavailable
 from .cloud_commands import DirectClimateCommandApi

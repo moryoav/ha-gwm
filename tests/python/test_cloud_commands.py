@@ -24,7 +24,7 @@ from custom_components.gwm_ora.cloud_auth import (
 from custom_components.gwm_ora.cloud_commands import DirectClimateCommandApi
 from custom_components.gwm_ora.cloud_runtime import DirectClimateContext
 from custom_components.gwm_ora.cloud_storage import direct_cloud_state_store
-from gwm_ora_client import (
+from gwm_client import (
     AnzAuthState,
     ChargingPlanCommand,
     ChargingPlanInfo,

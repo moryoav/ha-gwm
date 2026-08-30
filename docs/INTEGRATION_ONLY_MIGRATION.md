@@ -6,7 +6,7 @@ This document is the durable plan, behavior contract, decision log, and test led
 
 - Working branch: `feature/integration-only`
 - Branch point: `1184737` (`Update README GWM logo to SVG`)
-- Current checkpoint: Task 22 complete; the planned `gwm-ora-client` 0.1.0 distribution, integration-local resource boundary, provenance inventory, renewal controls, and archive checks are now explicit, while publication and manifest activation remain on hold
+- Current checkpoint: Task 22 complete with its naming correction; the brand-neutral `gwm-client` 0.1.0 distribution, integration-local resource boundary, provenance inventory, renewal controls, and archive checks are now explicit, while publication and manifest activation remain on hold
 - Next checkpoint: Task 23 - implement the approved existing-installation migration path (not yet approved)
 - Synchronized `main`: `7b599cb` (`v0.13.0`) through a two-parent merge without rebasing or selective cherry-picks
 - Task 22 resolves the technical packaging choice without publishing or activating it. Direct China remains hidden behind Gate A-CN, the add-on remains supported, no installation was migrated, no live request or vehicle operation was made, and unresolved protocol-material permission and replacement conditions remain release holds
@@ -293,6 +293,7 @@ The changed checkpoints stay intentionally narrow:
 - Task 20 adds charging control without opening Gate A-CN. Overseas plans use the exact H5 routes and regional headers. NavInfo uses its separate AutoAI weekly schedule, fixed UTC+08 clock conversion, and weekday order. Exact account-bound ownership survives restart, opt-out cleanup clears only an unchanged owned plan, and official-app replacements are preserved. BeanTech fails before transport and all evidence remains synthetic unless I receive separate approval for a live operation.
 - Task 21 closes the offline Gate C matrix without opening Gate A-CN. EU, ANZ, and Russia share one cancellation-safe journal lifecycle while retaining separate route and result contracts. NavInfo and BeanTech keep their exact platform capabilities and local rejection boundaries. Accepted commands and observed state transitions finish durable persistence before cancellation propagates, unload joins polling tasks before transport close, and every command context must match its account region. No live operation is included.
 - Task 22 selects a separately versioned Python client and makes the HACS integration self-contained for its protocol resources. The local package build contains only the HA-independent client and its legal notices, while the six shared bootstrap files stay outside the client archives with exact provenance and renewal controls. Publication, the integration manifest dependency, existing-install migration, add-on removal, direct China activation, and live traffic remain outside this checkpoint.
+- The Task 22 naming correction uses `gwm-client` and `gwm_client` for the unpublished multi-brand client. Existing `gwm_ora` Home Assistant and add-on identifiers remain compatibility contracts, not vehicle-scope claims. I defer renaming surviving internal `GwmOra*` Python symbols until Task 24 removes the proxy path, so the cleanup happens once without changing the external domain or action namespace.
 - Tasks 17 through 24 preserve the original command, charging, hardening, packaging, migration, and cutover progression. I keep the platform capability explicit: BeanTech supports lock/unlock, close windows, remote start/stop, horn, flash, and close sunroof. It does not support the climate entity, climate run-time number, tailgate operations, other sunroof positions, combined horn/lights, or charging schedules. Task 19 keeps these experimental controls separate from the already-supported command families and from direct China activation.
 
 ## Decision Log
@@ -308,7 +309,7 @@ The changed checkpoints stay intentionally narrow:
 | D-007 | 2026-08-22 | Preserve separate regional strategies and tests. | EU, ANZ, Russia, and China differ in authentication, signing, TLS/transport, payloads, session shape, and response behavior. |
 | D-008 | 2026-08-22 | Require separate approval before every live write test. | Remote commands and charging schedules affect a real vehicle. |
 | D-009 | 2026-08-22 | Defer PyPI/bundling and installation-migration decisions until after the POC. | Avoid release and migration work before feasibility is demonstrated. |
-| D-010 | 2026-08-24 | Keep the POC in a repository-root `gwm_ora_client` package with no HA imports. | Prove the protocol boundary independently while packaging for HACS versus PyPI remains deferred. |
+| D-010 | 2026-08-24 | Keep the POC in a repository-root `gwm_client` package with no HA imports. | Prove the protocol boundary independently while packaging for HACS versus PyPI remains deferred. |
 | D-011 | 2026-08-24 | Apply `DEFAULT@SECLEVEL=0` only to a newly created GWM `SSLContext`, retaining Python's default protocol bounds, hostname checks, certificate verification, and system trust. | The legacy SHA-1 CA chain requires OpenSSL authentication level 0, but unrelated HA HTTPS traffic must retain its normal security policy. |
 | D-012 | 2026-08-24 | Pass the unchanged OEM CA bundles directly to OpenSSL after strict PEM/DER-envelope validation. | Modern `cryptography` rejects invalid characters in the legacy CA subjects; rewriting signed certificates would invalidate them, while OpenSSL accepts the original bundles at the required scoped security level. |
 | D-013 | 2026-08-24 | Make the live POC reuse-only and limit it to vehicle discovery plus one status read. | Existing add-on state avoids login, refresh, verification, enrollment, and ANZ session-reclaim side effects; omitting user-profile retrieval minimizes personal data handled by the proof. |
@@ -357,9 +358,10 @@ The changed checkpoints stay intentionally narrow:
 | D-056 | 2026-08-29 | I keep Task 19 behind an extended-China capability and the existing Gate A-CN activation block. | I can complete and test exact requests, no-PIN journaling, restart polling, and Home Assistant button filtering without presenting synthetic evidence as live China readiness. I expose all eleven actions only for NavInfo and only remote start/stop, horn, flash, and sunroof close for BeanTech. |
 | D-057 | 2026-08-30 | I activate direct overseas charging behind its independent opt-in and keep direct China behind Gate A-CN. | Charging needs no PIN, but it needs exact account-bound ownership and conservative cleanup. NavInfo's separate weekly contract can be proven offline while BeanTech remains unavailable and official-app replacements remain untouched. |
 | D-058 | 2026-08-30 | I make the Task 21 write lifecycle cancellation-safe and region-bound before calling the offline Gate C matrix complete. | A provider-accepted command or observed terminal result must finish its atomic journal write before cancellation propagates. Failed setup and entry unload must join every polling task before closing the transport, and a command API cannot use a state store from another region. China keeps its no-PIN contract and direct activation remains blocked by Gate A-CN. |
-| D-059 | 2026-08-30 | I package the HA-independent code as the separately versioned `gwm-ora-client` distribution. | The package preserves D-005, declares only `aiohttp`, `cryptography`, and `yarl` as direct runtime dependencies, and lets the integration eventually pin one client requirement. Version 0.1.0 is buildable but remains unpublished, and the integration manifest remains unchanged until publication and activation receive separate approval. |
+| D-059 | 2026-08-30 | I package the HA-independent code as the separately versioned `gwm-client` distribution. | The package preserves D-005, declares only `aiohttp`, `cryptography`, and `yarl` as direct runtime dependencies, and lets the integration eventually pin one client requirement. Version 0.1.0 is buildable but remains unpublished, and the integration manifest remains unchanged until publication and activation receive separate approval. |
 | D-060 | 2026-08-30 | I keep shared GWM bootstrap material in the HACS integration and exclude it from the Python client archives. | HACS must deliver a self-contained `custom_components/gwm_ora` tree, while the reusable client accepts caller-supplied material and does not need to redistribute certificates or transformed keys. The add-on and integration copies remain byte-identical until the add-on is removed, and automated archive checks reject protocol files and unrelated repository trees. |
 | D-061 | 2026-08-30 | I make protocol-material provenance, permission, and certificate renewal explicit release controls. | Exact hashes, source evidence, certificate identities, and 90-day renewal deadlines are machine-readable and tested. The project will not fetch replacement identities at runtime, and package publication or final cutover stays blocked until redistribution is authorized or the affected material is replaced through a documented authorized path. |
+| D-062 | 2026-08-30 | I name the unpublished distribution `gwm-client` and its import package `gwm_client`, while preserving external `gwm_ora` compatibility identifiers. | The standalone client covers compatible GWM vehicles across brands and regions, so an ORA-specific new name is misleading. No published package or released import needs migration. The Home Assistant domain, action namespace, add-on slug, discovery identifier, persisted hash domains, and proven wire values cannot be renamed cosmetically without breaking installations, stored state, or protocol fidelity. Historical ORA model evidence and `ora2mqtt` attribution remain factual. |
 
 ## Post-Branch Main Drift Review
 
@@ -474,10 +476,10 @@ Validation:
 python -m pytest tests/python/client
 44 passed
 
-python -m ruff check gwm_ora_client custom_components tests/python
+python -m ruff check gwm_client custom_components tests/python
 All checks passed!
 
-python -m compileall -q gwm_ora_client custom_components tests/python
+python -m compileall -q gwm_client custom_components tests/python
 # no output; exit 0
 
 python -m pytest tests/python
@@ -516,10 +518,10 @@ Validation:
 python -m pytest tests/python/client
 104 passed
 
-python -m ruff check gwm_ora_client custom_components tests/python
+python -m ruff check gwm_client custom_components tests/python
 All checks passed!
 
-python -m compileall -q gwm_ora_client custom_components tests/python
+python -m compileall -q gwm_client custom_components tests/python
 # no output; exit 0
 
 python -m pytest tests/python
@@ -555,13 +557,13 @@ Validation:
 python -m pytest tests/python/client
 321 passed
 
-python -m mypy gwm_ora_client
+python -m mypy gwm_client
 Success: no issues found in 11 source files
 
-python -m ruff check gwm_ora_client custom_components tests/python
+python -m ruff check gwm_client custom_components tests/python
 All checks passed!
 
-python -m compileall -q gwm_ora_client custom_components tests/python
+python -m compileall -q gwm_client custom_components tests/python
 # no output; exit 0
 
 python -m pytest tests/python
@@ -604,13 +606,13 @@ python -m pytest \
   tests/python/client/test_transport.py
 188 passed
 
-python -m mypy gwm_ora_client
+python -m mypy gwm_client
 Success: no issues found in 14 source files
 
-python -m ruff check gwm_ora_client custom_components tests/python
+python -m ruff check gwm_client custom_components tests/python
 All checks passed!
 
-python -m compileall -q gwm_ora_client custom_components tests/python
+python -m compileall -q gwm_client custom_components tests/python
 # no output; exit 0
 
 python -m pytest tests/python
@@ -647,13 +649,13 @@ python -m pytest tests/python/client
 python -m pytest tests/python/client
 487 passed
 
-python -m mypy gwm_ora_client
+python -m mypy gwm_client
 Success: no issues found in 15 source files
 
-python -m ruff check gwm_ora_client custom_components tests/python
+python -m ruff check gwm_client custom_components tests/python
 All checks passed!
 
-python -m compileall -q gwm_ora_client custom_components tests/python
+python -m compileall -q gwm_client custom_components tests/python
 # no output; exit 0
 
 python -m pytest tests/python
@@ -674,7 +676,7 @@ Delivered:
 - Merged the complete local `main` release history through `9daff32` (`v0.12.0`) as a two-parent merge. No rebase, selective China cherry-pick, duplicate patch, or history rewrite was used.
 - Brought the existing add-on/proxy path forward with the released China foundation and follow-up fixes for Alpine time handling, transport fidelity, corrected discovery routing, VV6 status mapping, account-context invalidation, heating, extended controls, and charging/reference behavior.
 - Preserved main's idempotent release workflow and documentation updates while retaining the integration-only branch's standalone-client CI, strict typing, synthetic-fixture guidance, and synthetic VIN examples.
-- Verified that all main-only source/configuration/test paths match `main`, all feature-only paths remain intact, the patch-equivalent regional-guide/issue-link changes are not duplicated, and no `gwm_ora_client` implementation or client fixture changed. Only the documented Task 7 semantic wording corrections differ from the auto-merged documentation/translation result.
+- Verified that all main-only source/configuration/test paths match `main`, all feature-only paths remain intact, the patch-equivalent regional-guide/issue-link changes are not duplicated, and no `gwm_client` implementation or client fixture changed. Only the documented Task 7 semantic wording corrections differ from the auto-merged documentation/translation result.
 - Semantically reviewed the auto-merged documentation and translations. Clarified that China is partially live-validated rather than wholly untested, and made the remote-command error describe a security PIN only where the selected region requires one.
 - Kept Task 8 entirely deferred: no China crypto, transport, session, signing, read, authentication, persistence, or Home Assistant direct-cloud behavior was implemented in Python.
 
@@ -688,13 +690,13 @@ git diff --cached --check
 python -m pytest tests/python/client
 487 passed
 
-python -m mypy gwm_ora_client
+python -m mypy gwm_client
 Success: no issues found in 15 source files
 
-python -m ruff check gwm_ora_client custom_components tests/python
+python -m ruff check gwm_client custom_components tests/python
 All checks passed!
 
-python -m compileall -q gwm_ora_client custom_components tests/python
+python -m compileall -q gwm_client custom_components tests/python
 # no output; exit 0
 
 python -m pytest tests/python
@@ -718,7 +720,7 @@ Delivered:
 - Added a separate China-only `aiohttp` adapter using ordinary verified TLS 1.2+, exact G-App and AutoAI route/method/header validation, no redirects, ambient proxies, cookies, default authentication, hidden headers, retries, or implicit decompression, and independent compressed-wire/decompressed-body ceilings. It accepts one valid gzip member and rejects unsupported/multiple encodings, duplicate security-relevant headers, truncated/corrupt/trailing/concatenated streams, decompression bombs, lying lengths, and unsafe external-session state.
 - Modeled all three protocol services without inventing a third read call: the synthetic round trip sends G-App discovery then direct AutoAI status; BeanTech's distinct signing vector and use of its access token are proven, while BeanTech HTTP initialization remains Task 9 work.
 - Added a versioned, fully synthetic request/response contract with static discovery signature, exact full AutoAI URL, fixed timestamps, two synthetic vehicles, and a non-empty status. The selected adapter completed the gzip-compressed synthetic discovery-to-status round trip end to end.
-- Kept the POC outside `gwm_ora_client.__all__`, the production `GwmClient`/`Region` strategy, Home Assistant, persistence, and released add-on/proxy behavior. Failed re-discovery and AutoAI authentication revoke status eligibility; full logical operations share one deadline/lock and are covered for cancellation, close, concurrency, parser, error-category, and redaction behavior.
+- Kept the POC outside `gwm_client.__all__`, the production `GwmClient`/`Region` strategy, Home Assistant, persistence, and released add-on/proxy behavior. Failed re-discovery and AutoAI authentication revoke status eligibility; full logical operations share one deadline/lock and are covered for cancellation, close, concurrency, parser, error-category, and redaction behavior.
 - Recorded the transport result conservatively: bounded China gzip over HTTP/1.1 is proven synthetically, but no live China request was approved. HTTP/2 preference, live gateway acceptance, and Gate A-CN cutover readiness remain explicitly unresolved.
 
 Validation:
@@ -731,13 +733,13 @@ py -3.13 -m pytest -q tests/python/client/test_boundaries.py tests/python/client
 py -3.13 -m pytest tests/python/client
 647 passed
 
-py -3.13 -m mypy gwm_ora_client
+py -3.13 -m mypy gwm_client
 Success: no issues found in 18 source files
 
-py -3.13 -m ruff check gwm_ora_client custom_components tests/python
+py -3.13 -m ruff check gwm_client custom_components tests/python
 All checks passed!
 
-py -3.13 -m compileall -q gwm_ora_client custom_components tests/python
+py -3.13 -m compileall -q gwm_client custom_components tests/python
 # no output; exit 0
 
 py -3.13 -m pytest tests/python
@@ -750,10 +752,10 @@ dotnet test --configuration Release
 python -m pytest tests/python/client
 647 passed
 
-python -m mypy gwm_ora_client
+python -m mypy gwm_client
 Success: no issues found in 18 source files
 
-ruff check gwm_ora_client tests/python/client
+ruff check gwm_client tests/python/client
 All checks passed!
 ```
 
@@ -787,13 +789,13 @@ py -3.13 -m pytest -q tests/python/client
 py -3.13 -m pytest -q tests/python
 832 passed, 1 warning
 
-py -3.13 -m mypy gwm_ora_client
+py -3.13 -m mypy gwm_client
 Success: no issues found in 20 source files
 
-py -3.13 -m ruff check gwm_ora_client custom_components tests/python
+py -3.13 -m ruff check gwm_client custom_components tests/python
 All checks passed!
 
-py -3.13 -m compileall -q gwm_ora_client custom_components tests/python
+py -3.13 -m compileall -q gwm_client custom_components tests/python
 # no output; exit 0
 
 dotnet test --configuration Release --nologo --verbosity quiet
@@ -803,10 +805,10 @@ dotnet test --configuration Release --nologo --verbosity quiet
 python -m pytest -q tests/python/client
 794 passed
 
-python -m mypy gwm_ora_client
+python -m mypy gwm_client
 Success: no issues found in 20 source files
 
-ruff check gwm_ora_client tests/python/client
+ruff check gwm_client tests/python/client
 All checks passed!
 ```
 
@@ -840,13 +842,13 @@ py -3.13 -m pytest -q tests/python/client
 py -3.13 -m pytest -q tests/python
 925 passed, 1 warning
 
-py -3.13 -m mypy gwm_ora_client
+py -3.13 -m mypy gwm_client
 Success: no issues found in 22 source files
 
-py -3.13 -m ruff check gwm_ora_client custom_components tests/python
+py -3.13 -m ruff check gwm_client custom_components tests/python
 All checks passed!
 
-py -3.13 -m compileall -q gwm_ora_client custom_components tests/python
+py -3.13 -m compileall -q gwm_client custom_components tests/python
 # no output; exit 0
 
 dotnet test --configuration Release --nologo --verbosity quiet
@@ -856,10 +858,10 @@ dotnet test --configuration Release --nologo --verbosity quiet
 python -m pytest -q tests/python/client
 887 passed
 
-python -m mypy gwm_ora_client
+python -m mypy gwm_client
 Success: no issues found in 22 source files
 
-ruff check gwm_ora_client tests/python/client
+ruff check gwm_client tests/python/client
 All checks passed!
 ```
 
@@ -891,13 +893,13 @@ py -3.13 -m pytest -q tests/python/client
 py -3.13 -m pytest -q tests/python
 958 passed, 1 warning
 
-py -3.13 -m mypy gwm_ora_client
+py -3.13 -m mypy gwm_client
 Success: no issues found in 23 source files
 
-py -3.13 -m ruff check gwm_ora_client custom_components tests/python
+py -3.13 -m ruff check gwm_client custom_components tests/python
 All checks passed!
 
-py -3.13 -m compileall -q gwm_ora_client custom_components tests/python
+py -3.13 -m compileall -q gwm_client custom_components tests/python
 # no output; exit 0
 
 dotnet test --configuration Release --nologo --verbosity quiet
@@ -907,10 +909,10 @@ dotnet test --configuration Release --nologo --verbosity quiet
 python -m pytest -q tests/python/client
 920 passed
 
-python -m mypy gwm_ora_client
+python -m mypy gwm_client
 Success: no issues found in 23 source files
 
-ruff check gwm_ora_client tests/python/client
+ruff check gwm_client tests/python/client
 All checks passed!
 ```
 
@@ -940,13 +942,13 @@ python -m pytest -q tests/python/test_cloud_auth.py tests/python/test_config_flo
 python -m pytest -q tests/python
 985 passed, 1 warning
 
-python -m mypy gwm_ora_client
+python -m mypy gwm_client
 Success: no issues found in 23 source files
 
-ruff check custom_components/gwm_ora gwm_ora_client tests/python
+ruff check custom_components/gwm_ora gwm_client tests/python
 All checks passed!
 
-python -m compileall -q custom_components/gwm_ora gwm_ora_client tests/python
+python -m compileall -q custom_components/gwm_ora gwm_client tests/python
 # no output; exit 0
 
 dotnet test GwmOra.sln --no-restore --nologo
@@ -956,10 +958,10 @@ dotnet test GwmOra.sln --no-restore --nologo
 python -m pytest -q tests/python/client
 920 passed
 
-python -m mypy gwm_ora_client
+python -m mypy gwm_client
 Success: no issues found in 23 source files
 
-ruff check gwm_ora_client tests/python/client
+ruff check gwm_client tests/python/client
 All checks passed!
 ```
 
@@ -991,13 +993,13 @@ python -m pytest -q tests/python/test_cloud_runtime.py tests/python/test_config_
 python -m pytest -q tests/python
 997 passed, 1 warning
 
-python -m mypy gwm_ora_client
+python -m mypy gwm_client
 Success: no issues found in 23 source files
 
-ruff check custom_components/gwm_ora gwm_ora_client tests/python
+ruff check custom_components/gwm_ora gwm_client tests/python
 All checks passed!
 
-python -m compileall -q custom_components/gwm_ora gwm_ora_client tests/python
+python -m compileall -q custom_components/gwm_ora gwm_client tests/python
 # no output; exit 0
 
 dotnet test GwmOra.sln --no-restore --nologo
@@ -1007,10 +1009,10 @@ dotnet test GwmOra.sln --no-restore --nologo
 python -m pytest -q tests/python/client
 920 passed
 
-python -m mypy gwm_ora_client
+python -m mypy gwm_client
 Success: no issues found in 23 source files
 
-ruff check gwm_ora_client tests/python/client
+ruff check gwm_client tests/python/client
 All checks passed!
 ```
 
@@ -1045,13 +1047,13 @@ python -m pytest -q tests/python
 python -m pytest -q tests/python/client
 923 passed
 
-python -m mypy gwm_ora_client
+python -m mypy gwm_client
 Success: no issues found in 23 source files
 
-ruff check custom_components/gwm_ora gwm_ora_client tests/python
+ruff check custom_components/gwm_ora gwm_client tests/python
 All checks passed!
 
-python -m compileall -q custom_components/gwm_ora gwm_ora_client tests/python
+python -m compileall -q custom_components/gwm_ora gwm_client tests/python
 Passed
 
 dotnet test GwmOra.sln --configuration Release --nologo
@@ -1060,9 +1062,9 @@ dotnet test GwmOra.sln --configuration Release --nologo
 # WSL/Linux, CPython 3.13.13
 python -m pytest -q tests/python/client
 923 passed
-python -m mypy gwm_ora_client
+python -m mypy gwm_client
 Success: no issues found in 23 source files
-ruff check gwm_ora_client tests/python/client
+ruff check gwm_client tests/python/client
 All checks passed!
 ```
 
@@ -1117,13 +1119,13 @@ python -m pytest -q tests/python/test_entity_descriptions.py tests/python/test_q
 python -m pytest -q tests/python
 1023 passed, 1 warning
 
-python -m mypy gwm_ora_client
+python -m mypy gwm_client
 Success: no issues found in 23 source files
 
-ruff check custom_components/gwm_ora gwm_ora_client tests/python
+ruff check custom_components/gwm_ora gwm_client tests/python
 All checks passed!
 
-python -m compileall -q custom_components/gwm_ora gwm_ora_client tests/python
+python -m compileall -q custom_components/gwm_ora gwm_client tests/python
 Passed
 
 dotnet test GwmOra.sln --configuration Release --nologo
@@ -1158,13 +1160,13 @@ py -3.13 -m pytest -q tests/python/client/test_china_status.py tests/python/clie
 py -3.13 -m pytest -q
 1041 passed, 1 warning
 
-py -3.13 -m mypy gwm_ora_client
+py -3.13 -m mypy gwm_client
 Success: no issues found in 23 source files
 
-py -3.13 -m ruff check custom_components/gwm_ora gwm_ora_client tests/python
+py -3.13 -m ruff check custom_components/gwm_ora gwm_client tests/python
 All checks passed!
 
-py -3.13 -m compileall -q custom_components/gwm_ora gwm_ora_client tests/python
+py -3.13 -m compileall -q custom_components/gwm_ora gwm_client tests/python
 Passed
 
 dotnet test GwmOra.sln --configuration Release --nologo
@@ -1194,7 +1196,7 @@ Status: complete on 2026-08-24.
 
 Delivered:
 
-- Added HA-independent, offline signing, certificate/key recovery, CSR, and TLS-context primitives under `gwm_ora_client`.
+- Added HA-independent, offline signing, certificate/key recovery, CSR, and TLS-context primitives under `gwm_client`.
 - Ported every current C# signing golden vector and added canonicalization edge coverage.
 - Proved recovery and use of the existing EU and Russia transformed bootstrap keys.
 - Proved that the real regional legacy CA material and matching identities load into context-local OpenSSL policy without changing process defaults.
@@ -1457,14 +1459,15 @@ Status: complete on 2026-08-30; the packaging boundary and release controls pass
 
 Delivered:
 
-- I selected a separately versioned `gwm-ora-client` distribution for the HA-independent protocol layer and prepared version 0.1.0 with Python 3.13 metadata and only its three direct runtime dependencies.
+- I selected a separately versioned `gwm-client` distribution for the HA-independent protocol layer and prepared version 0.1.0 with Python 3.13 metadata and only its three direct runtime dependencies.
+- I corrected the unpublished import package from the historical ORA-specific name to `gwm_client`. Current code, tests, CI, package metadata, notices, and contributor guidance now use the brand-neutral name.
 - I made the HACS integration self-contained by placing byte-identical EU and Russia bootstrap resources under `custom_components/gwm_ora/resources/`. I kept the add-on copies unchanged for the supported legacy path.
 - I excluded certificates, transformed keys, CA bundles, Home Assistant code, add-on code, tests, documentation trees, APKs, and local reverse-engineering artifacts from the client wheel and source archive.
 - I added a machine-readable resource inventory with exact file hashes, source references, certificate identities, key pairing, and 90-day renewal deadlines. The EU renewal deadline is 2026-10-06 and the Russia deadline is 2030-01-21.
 - I added the third-party and protocol-material notice to both the repository and HACS integration. It records unresolved permission and source-history gaps as publication and cutover holds instead of treating attribution as permission.
 - I added deterministic build, metadata, archive-scope, isolated-install, resource-integrity, renewal, and notice checks. CI now builds both archives, runs Twine validation, and rejects a widened distribution.
 - I kept `custom_components/gwm_ora/manifest.json` at `requirements: []`. I did not reserve or publish the package name, and no released installation path changes in this task.
-- The complete Python suite passes 1,099 tests and the client-only suite passes 963 tests against the exact declared lower dependency bounds. The unchanged add-on suite passes 153 .NET tests. Repository-wide Ruff, strict mypy across all 25 client source files, Python 3.13 compilation, local wheel/source builds, Twine checks, archive verification, and isolated wheel import all pass. The one Python deprecation warning and existing .NET nullable-annotation warnings are unchanged baselines.
+- The complete Python suite passes 1,100 tests and the client-only suite passes 963 tests against the exact declared lower dependency bounds. The unchanged add-on suite passes 153 .NET tests. Repository-wide Ruff, strict mypy across all 25 client source files, Python 3.13 compilation, local `gwm-client` wheel/source builds, Twine checks, archive verification, and isolated `gwm_client` import all pass. The obsolete import is absent. The one Python deprecation warning and existing .NET nullable-annotation warnings are unchanged baselines.
 
 ### Next checkpoint (requires explicit approval)
 

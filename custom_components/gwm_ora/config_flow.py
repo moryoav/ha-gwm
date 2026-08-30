@@ -12,7 +12,7 @@ from homeassistant.helpers import selector
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.service_info.hassio import HassioServiceInfo
 
-from gwm_ora_client import (
+from gwm_client import (
     AnzAuthenticated,
     AnzSessionReclaimRequired,
     AnzVerificationRequired,

@@ -15,18 +15,18 @@ from urllib.parse import urlsplit
 
 import pytest
 
-import gwm_ora_client.anz_auth as anz_auth
-from gwm_ora_client._protocol import _Deadline, _TransportRequest, _TransportResponse
-from gwm_ora_client.anz_auth import (
+import gwm_client.anz_auth as anz_auth
+from gwm_client._protocol import _Deadline, _TransportRequest, _TransportResponse
+from gwm_client.anz_auth import (
     AnzAuthenticated,
     AnzAuthState,
     AnzCredentials,
     AnzSessionReclaimRequired,
     AnzVerificationRequired,
 )
-from gwm_ora_client.client import GwmClient
-from gwm_ora_client.config import GwmClientConfig, RequestTimeouts
-from gwm_ora_client.errors import (
+from gwm_client.client import GwmClient
+from gwm_client.config import GwmClientConfig, RequestTimeouts
+from gwm_client.errors import (
     GwmApiError,
     GwmConfigurationError,
     GwmDeadlineExceededError,
@@ -36,8 +36,8 @@ from gwm_ora_client.errors import (
     GwmRoutePolicyError,
     GwmSchemaError,
 )
-from gwm_ora_client.models import GwmSession
-from gwm_ora_client.signing import SignedRequest, SigningProfile
+from gwm_client.models import GwmSession
+from gwm_client.signing import SignedRequest, SigningProfile
 
 FIXTURE_PATH = Path(__file__).with_name("fixtures") / "anz_auth_contracts_v1.json"
 READ_FIXTURE_PATH = Path(__file__).with_name("fixtures") / "anz_read_responses_v1.json"

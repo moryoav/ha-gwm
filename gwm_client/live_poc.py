@@ -800,11 +800,9 @@ def _decode_secret_base64(value: str) -> bytes:
 def _default_resource_dir() -> Path:
     return (
         Path(__file__).resolve().parents[1]
-        / "addons"
+        / "custom_components"
         / "gwm_ora"
-        / "src"
-        / "LibGwmApi"
-        / "Resources"
+        / "resources"
     )
 
 

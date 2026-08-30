@@ -10,7 +10,7 @@ from urllib.parse import urlsplit
 
 import pytest
 
-from gwm_ora_client import (
+from gwm_client import (
     BEANTECH_CHINA_VEHICLE_CONTROL_ACTIONS,
     NAVINFO_CHINA_VEHICLE_CONTROL_ACTIONS,
     ChinaVehicleControlCommand,
@@ -28,7 +28,7 @@ from gwm_ora_client import (
     create_gwm_ssl_context,
     select_remote_command_result,
 )
-from gwm_ora_client._protocol import _Deadline, _TransportRequest, _TransportResponse
+from gwm_client._protocol import _Deadline, _TransportRequest, _TransportResponse
 
 FIXTURE_PATH = Path(__file__).with_name("fixtures") / "command_contracts_v1.json"
 

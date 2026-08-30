@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from gwm_ora_client.signing import (
+from gwm_client.signing import (
     ANZ_BT_AUTH,
     EU_BT_AUTH,
     EU_GWM_AUTH,
