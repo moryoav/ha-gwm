@@ -1,3 +1,24 @@
+# This repository is being retired
+
+> [!IMPORTANT]
+> I have moved active development to [ha-gwm-ev](https://github.com/moryoav/ha-gwm-ev), a new integration-only version that does not require the Docker add-on.
+>
+> The new project is still experimental and needs testing across more regions, vehicles, and account types. This repository remains available as a reference for existing add-on installations, but I will not add new features or bug fixes here. From now on, all new development, fixes, and releases will happen in the new repository.
+
+## Help test the new integration
+
+Please read the [new repository README](https://github.com/moryoav/ha-gwm-ev#readme) before installing it. If you test it, share both successful and unsuccessful results in the discussion for your region and vehicle platform:
+
+- [Europe, United Kingdom, and Israel](https://github.com/moryoav/ha-gwm-ev/discussions/3)
+- [Australia and New Zealand](https://github.com/moryoav/ha-gwm-ev/discussions/4)
+- [Russia](https://github.com/moryoav/ha-gwm-ev/discussions/5)
+- [Mainland China, NavInfo and AutoAI](https://github.com/moryoav/ha-gwm-ev/discussions/6)
+- [Mainland China, BeanTech](https://github.com/moryoav/ha-gwm-ev/discussions/7)
+
+Thank you for helping test the next version of the integration.
+
+---
+
 # GWM for Home Assistant
 [![HACS][hacs-badge]][hacs-url] [![release][release-badge]][release-url] [![license][license-badge]][license-url]
 
